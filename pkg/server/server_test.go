@@ -32,6 +32,17 @@ func sendRequest(t *testing.T, method, url string, body io.Reader, r *mux.Router
 	return rr
 }
 
+func assertFileHasContents(t *testing.T, filepath, expectedContent string) {
+	f, err := os.Open(filepath)
+	assert.Nil(t, err)
+	defer f.Close()
+	buf := make([]byte, 10000)
+	_, err = f.Read(buf)
+	assert.Nil(t, err)
+	fileContent := string(buf[:]) // This ends up looking like
+	assert.Contains(t, fileContent, expectedContent)
+}
+
 func TestHealthcheckHandler(t *testing.T) {
 	s := Server{}
 	r := s.getHandlers()
@@ -94,13 +105,15 @@ func TestAppHandler(t *testing.T) {
 	assert.Nil(t, err)
 	time.Sleep(500 * time.Millisecond)
 	procfile := fmt.Sprintf("/proc/%d/cmdline", pid)
-	f, err := os.Open(procfile)
-	assert.Nil(t, err)
-	content := make([]byte, 255)
-	_, err = f.Read(content)
-	assert.Nil(t, err)
-	cmdline := string(content[:]) // This ends up looking like
-	assert.True(t, strings.HasPrefix(cmdline, exe))
+	assertFileHasContents(t, procfile, exe)
+	//strings.HasPrefix(cmdline, exe)
+	// f, err := os.Open(procfile)
+	// assert.Nil(t, err)
+	// content := make([]byte, 255)
+	// _, err = f.Read(content)
+	// assert.Nil(t, err)
+	// cmdline := string(content[:]) // This ends up looking like
+	// assert.True(t, strings.HasPrefix(cmdline, exe))
 }
 
 func TestAppHandlerEnv(t *testing.T) {
@@ -128,13 +141,14 @@ func TestAppHandlerEnv(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	procfile := fmt.Sprintf("/proc/%d/environ", pid)
-	f, err := os.Open(procfile)
-	assert.Nil(t, err)
-	content := make([]byte, 10000)
-	_, err = f.Read(content)
-	assert.Nil(t, err)
-	envVars := string(content[:]) // This ends up looking like
-	assert.Contains(t, envVars, fmt.Sprintf("%s=%s", varName, varVal))
+	assertFileHasContents(t, procfile, fmt.Sprintf("%s=%s", varName, varVal))
+	// f, err := os.Open(procfile)
+	// assert.Nil(t, err)
+	// content := make([]byte, 10000)
+	// _, err = f.Read(content)
+	// assert.Nil(t, err)
+	// envVars := string(content[:]) // This ends up looking like
+	// assert.Contains(t, envVars, fmt.Sprintf("%s=%s", varName, varVal))
 }
 
 // generates a temporary filename for use in testing or whatever
@@ -177,9 +191,7 @@ func TestFileUploader(t *testing.T) {
 	r.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	// make sure the file exists
 	_, err = os.Stat(temppath)
 	assert.Nil(t, err)
-	// make sure it has the contents
-
+	assertFileHasContents(t, temppath, content)
 }

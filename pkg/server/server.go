@@ -46,8 +46,6 @@ func (s *Server) makeAppEnv() []string {
 }
 
 func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
-	// PUT
-	// Path: milpa/app/
 	// query parameters
 	// command
 	switch r.Method {
@@ -85,9 +83,6 @@ func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 	// POST
-	// Path: env/{varname}
-	// parameters: val
-
 	// curl -X POST -d "val=bar" http://localhost:8000/env/foo
 	switch r.Method {
 	case "GET":
@@ -119,8 +114,6 @@ func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
-	// GET
-	// milpa/health
 	switch r.Method {
 	case "GET":
 		fmt.Fprintf(w, "OK")
@@ -130,8 +123,6 @@ func (s *Server) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
-	// POST
-	// file/server_path
 	// example usage: curl -X POST http://localhost:8000/file/dest.txt -Ffile=@testfile.txt
 	switch r.Method {
 	case "POST":
@@ -158,8 +149,6 @@ func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
-	// POST
-	// milpa/log
 	// additional params: need PID of process
 	switch r.Method {
 	case "POST":
