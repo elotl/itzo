@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/elotl/agent/pkg/server"
+	"github.com/elotl/itzo/pkg/server"
 	"github.com/golang/glog"
 )
 

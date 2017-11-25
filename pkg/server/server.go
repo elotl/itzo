@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/google/shlex"
@@ -132,6 +133,12 @@ func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		localPath := r.URL.Path
+		dirpath := filepath.Dir(localPath)
+		err = os.MkdirAll(dirpath, 0760)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
 		destFile, err := os.Create(localPath)
 		if err != nil {
 			serverError(w, err)
