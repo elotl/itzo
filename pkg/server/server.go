@@ -123,6 +123,15 @@ func (s *Server) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) uptimeHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		fmt.Fprintf(w, "55") // random, donesn't matter
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// example usage: curl -X POST http://localhost:8000/file/dest.txt -Ffile=@testfile.txt
 	switch r.Method {
@@ -193,6 +202,7 @@ func (s *Server) getHandlers() *mux.Router {
 	r.PathPrefix("/file/").Handler(http.StripPrefix("/file/", http.HandlerFunc(s.fileUploadHandler))).Methods("POST")
 	r.HandleFunc("/app", s.appHandler).Methods("PUT")
 	r.HandleFunc("/milpa/health", s.healthcheckHandler).Methods("GET")
+	r.HandleFunc("/os/uptime", s.uptimeHandler).Methods("GET")
 	r.HandleFunc("/os/reboot", s.rebootHandler).Methods("POST")
 	r.HandleFunc("/milpa/logs/", s.logsHandler).Methods("POST")
 	return r

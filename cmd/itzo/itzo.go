@@ -16,6 +16,6 @@ func main() {
 	flag.Lookup("logtostderr").Value.Set("true")
 	glog.Info("Starting up agent")
 	server := server.New()
-	endpoint := fmt.Sprintf(":%d", *port)
+	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint)
 }

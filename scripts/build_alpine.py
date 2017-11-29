@@ -168,5 +168,6 @@ if __name__ == '__main__':
     install()
     provision()
     snapshot_id = make_snapshot(vol)
-    ami_name = 'milpa-alpine-20171128'
+    ts = datetime.datetime.utcnow().strftime("%Y%m%d-%H%M00")
+    ami_name = 'milpa-alpine-{}'.format(ts)
     make_ami_from_snapshot(ami_name, snapshot_id)

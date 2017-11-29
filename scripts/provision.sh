@@ -34,7 +34,10 @@ chmod 600 $sshdir
 # cd $DIR/../itzo/
 # go build
 echo "copying itzo to image"
-cp $DIR/itzo $alpine_mnt/usr/bin/itzo
+cp $DIR/itzo $alpine_mnt/usr/local/bin/itzo
+echo "make go think it has a clib"
+mkdir $alpine_mnt/lib64
+ln -s /lib/libc.musl-x86_64.so.1 $alpine_mnt/lib64/ld-linux-x86-64.so.2
 echo "setup itzo init scripts"
 cp $DIR/itzo.rc $alpine_mnt/etc/init.d/itzo
 ln -s /etc/init.d/itzo $alpine_mnt/etc/runlevels/default/itzo
