@@ -2,7 +2,7 @@
 
 name=$RC_SVCNAME
 # cfgfile="/etc/$RC_SVCNAME/$RC_SVCNAME.conf"
-command="/usr/local/bin/itzo"
+command="/usr/local/bin/itzo_download.sh"
 command_args=""
 command_user="root"
 pidfile="/run/$RC_SVCNAME/$RC_SVCNAME.pid"

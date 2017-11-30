@@ -28,16 +28,14 @@ fi
 cp $HOME/.ssh/authorized_keys ${sshdir}/authorized_keys
 chmod 600 $sshdir
 
-# we should be downloading our release of itzo from an s3 bucket after
-# it gets built by our CI system but we ain't go that yet
-# for now, we'll assume it's in the same directory
-# cd $DIR/../itzo/
-# go build
-echo "copying itzo to image"
-cp $DIR/itzo $alpine_mnt/usr/local/bin/itzo
-echo "make go think it has a clib"
+echo "make go think it has a libc"
 mkdir $alpine_mnt/lib64
 ln -s /lib/libc.musl-x86_64.so.1 $alpine_mnt/lib64/ld-linux-x86-64.so.2
+
+# echo "copying itzo to image"
+# cp $DIR/itzo $alpine_mnt/usr/local/bin/itzo
+echo "copying itzo downloader-launcher to image"
+cp $DIR/itzo_download.sh $alpine_mnt/usr/local/bin/itzo_download.sh
 echo "setup itzo init scripts"
 cp $DIR/itzo.rc $alpine_mnt/etc/init.d/itzo
 ln -s /etc/init.d/itzo $alpine_mnt/etc/runlevels/default/itzo

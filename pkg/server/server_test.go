@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,18 +18,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/elotl/milpa/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
-func sendRequest(t *testing.T, method, url string, body io.Reader, r *mux.Router) *httptest.ResponseRecorder {
+var s Server
+
+func TestMain(m *testing.M) {
+	// call flag.Parse() here if TestMain uses flags
+	s = Server{env: StringMap{data: map[string]string{}}}
+	//s.httpServer = &http.Server{Addr: "localhost:8000", Handler: &s}
+	s.getHandlers()
+	os.Exit(m.Run())
+}
+
+func sendRequest(t *testing.T, method, url string, body io.Reader) *httptest.ResponseRecorder {
 	req, err := http.NewRequest(method, url, body)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
-	// I'm a bit sad about how testing gorilla/mux handlers turned out
-	// you need to pass around the router
-	r.ServeHTTP(rr, req)
+	s.ServeHTTP(rr, req)
 	return rr
 }
 
@@ -44,23 +53,19 @@ func assertFileHasContents(t *testing.T, filepath, expectedContent string) {
 }
 
 func TestHealthcheckHandler(t *testing.T) {
-	s := Server{}
-	r := s.getHandlers()
-	rr := sendRequest(t, "GET", "/milpa/health", nil, r) //, s.healthcheckHandler)
+	rr := sendRequest(t, "GET", "/milpa/health", nil) //, s.healthcheckHandler)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "OK", rr.Body.String())
 }
 
 func TestEnvHandler(t *testing.T) {
-	s := Server{env: StringMap{data: map[string]string{}}}
-	r := s.getHandlers()
 	varName1 := "john"
 	varVal1 := "lenon"
 	path1 := fmt.Sprintf("/env/%s", varName1)
 	data := url.Values{}
 	data.Set("val", varVal1)
 	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "POST", path1, body, r)
+	rr := sendRequest(t, "POST", path1, body)
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	varName2 := "ringo"
@@ -69,72 +74,60 @@ func TestEnvHandler(t *testing.T) {
 	data = url.Values{}
 	data.Set("val", varVal2)
 	body = strings.NewReader(data.Encode())
-	rr = sendRequest(t, "POST", path2, body, r)
+	rr = sendRequest(t, "POST", path2, body)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "OK", rr.Body.String())
 
-	rr = sendRequest(t, "GET", path1, nil, r)
+	rr = sendRequest(t, "GET", path1, nil)
 	assert.Equal(t, varVal1, rr.Body.String())
-	rr = sendRequest(t, "GET", path2, nil, r)
+	rr = sendRequest(t, "GET", path2, nil)
 	assert.Equal(t, varVal2, rr.Body.String())
 
-	rr = sendRequest(t, "DELETE", path1, nil, r)
+	rr = sendRequest(t, "DELETE", path1, nil)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "OK", rr.Body.String())
-	rr = sendRequest(t, "GET", path1, nil, r)
+	rr = sendRequest(t, "GET", path1, nil)
 	assert.Equal(t, http.StatusNotFound, rr.Code)
 
-	rr = sendRequest(t, "GET", path2, nil, r)
+	rr = sendRequest(t, "GET", path2, nil)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, varVal2, rr.Body.String())
 
 }
 
 func TestAppHandler(t *testing.T) {
-	s := Server{env: StringMap{data: map[string]string{}}}
-	r := s.getHandlers()
 	exe := "/bin/sleep"
 	command := fmt.Sprintf("%s 3", exe)
-	path := "/app"
+	path := "/app/"
 	data := url.Values{}
 	data.Set("command", command)
 	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body, r)
+	rr := sendRequest(t, "PUT", path, body)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	pid, err := strconv.Atoi(rr.Body.String())
 	assert.Nil(t, err)
 	time.Sleep(500 * time.Millisecond)
 	procfile := fmt.Sprintf("/proc/%d/cmdline", pid)
 	assertFileHasContents(t, procfile, exe)
-	//strings.HasPrefix(cmdline, exe)
-	// f, err := os.Open(procfile)
-	// assert.Nil(t, err)
-	// content := make([]byte, 255)
-	// _, err = f.Read(content)
-	// assert.Nil(t, err)
-	// cmdline := string(content[:]) // This ends up looking like
-	// assert.True(t, strings.HasPrefix(cmdline, exe))
 }
 
 func TestAppHandlerEnv(t *testing.T) {
-	s := Server{env: StringMap{data: map[string]string{}}}
-	r := s.getHandlers()
 	varName := "THIS_IS_A_VERY_UNIQUE_VAR"
 	varVal := "bar"
 	path := fmt.Sprintf("/env/%s", varName)
 	data := url.Values{}
 	data.Set("val", varVal)
 	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "POST", path, body, r)
+	rr := sendRequest(t, "POST", path, body)
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	exe := "/bin/sleep"
-	command := fmt.Sprintf("%s 3", exe)
-	path = "/app"
+	command := fmt.Sprintf("%s 1", exe)
+	path = "/app/"
 	data = url.Values{}
 	data.Set("command", command)
 	body = strings.NewReader(data.Encode())
-	rr = sendRequest(t, "PUT", path, body, r)
+	rr = sendRequest(t, "PUT", path, body)
 	assert.Equal(t, rr.Code, http.StatusOK)
 	pid, err := strconv.Atoi(rr.Body.String())
 	assert.Nil(t, err)
@@ -142,13 +135,6 @@ func TestAppHandlerEnv(t *testing.T) {
 
 	procfile := fmt.Sprintf("/proc/%d/environ", pid)
 	assertFileHasContents(t, procfile, fmt.Sprintf("%s=%s", varName, varVal))
-	// f, err := os.Open(procfile)
-	// assert.Nil(t, err)
-	// content := make([]byte, 10000)
-	// _, err = f.Read(content)
-	// assert.Nil(t, err)
-	// envVars := string(content[:]) // This ends up looking like
-	// assert.Contains(t, envVars, fmt.Sprintf("%s=%s", varName, varVal))
 }
 
 // generates a temporary filename for use in testing or whatever
@@ -166,15 +152,30 @@ func deleteFile(path string) {
 	}
 }
 
+func getFileContents(localPath string) ([]byte, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return []byte{}, util.WrapError("Error opening local file for upload", err)
+	}
+	defer file.Close()
+	fileContents, err := ioutil.ReadAll(file)
+	if err != nil {
+		return fileContents, util.WrapError("Error reading local file for upload", err)
+	}
+	return fileContents, err
+}
+
 func TestFileUploader(t *testing.T) {
-	s := Server{env: StringMap{data: map[string]string{}}}
-	r := s.getHandlers()
+	//s := Server{env: StringMap{data: map[string]string{}}}
+	//s.getHandlers()
 
 	temppath := tempfileName("ServerTest", "")
 	defer deleteFile(temppath)
 	url := fmt.Sprintf("/file/%s", url.PathEscape(temppath))
-	content := fmt.Sprintf("The time at the tone is %s... BEEP!", time.Now().String())
-
+	//url := fmt.Sprintf("/file/%s", temppath)
+	//content := fmt.Sprintf("The time at the tone is %s... BEEP!", time.Now().String())
+	content, err := getFileContents("/home/bcox/go/src/github.com/elotl/itzo/cmd/echo/echo")
+	assert.Nil(t, err)
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile(MULTIPART_FILE_NAME, temppath)
@@ -188,10 +189,10 @@ func TestFileUploader(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
+	s.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	_, err = os.Stat(temppath)
 	assert.Nil(t, err)
-	assertFileHasContents(t, temppath, content)
+	//assertFileHasContents(t, temppath, string(content))
 }

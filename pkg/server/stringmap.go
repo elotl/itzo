@@ -33,5 +33,6 @@ func (m *StringMap) Items() [][2]string {
 		d := [2]string{k, v}
 		items = append(items, d)
 	}
+	m.RUnlock()
 	return items
 }

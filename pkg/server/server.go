@@ -1,3 +1,5 @@
+// aws s3 cp itzo s3://itzo-download/ --acl public-read
+
 package server
 
 import (
@@ -5,13 +7,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/shlex"
-	"github.com/gorilla/mux"
 	"golang.org/x/sys/unix"
 )
 
@@ -20,11 +24,14 @@ const MULTIPART_FILE_NAME = "file"
 type Server struct {
 	env        StringMap
 	httpServer *http.Server
+	mux        http.ServeMux
+	startTime  time.Time
 }
 
 func New() *Server {
 	return &Server{
-		env: StringMap{data: map[string]string{}},
+		env:       StringMap{data: map[string]string{}},
+		startTime: time.Now().UTC(),
 	}
 }
 
@@ -44,6 +51,46 @@ func (s *Server) makeAppEnv() []string {
 		e = append(e, fmt.Sprintf("%s=%s", d[0], d[1]))
 	}
 	return e
+}
+
+func getURLPart(i int, path string) (string, error) {
+	path = strings.TrimPrefix(path, "/")
+	parts := strings.Split(path, "/")
+	if i < 1 || i > len(parts) {
+		return "", fmt.Errorf("Could not find part %d of url", i)
+	}
+	return parts[i-1], nil
+}
+
+func isElf(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	header := make([]byte, 4)
+	n1, err := file.Read(header)
+	if err != nil {
+		return false
+	}
+	if n1 < 4 {
+		return false
+	}
+	if header[0] == 0x7F && string(header[1:]) == "ELF" {
+		return true
+	}
+	return false
+}
+
+func ensureExecutable(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("Could not stat file at %s", path)
+	}
+	perms := fi.Mode()
+	if (perms & 0110) == 0 {
+		os.Chmod(path, perms|0110)
+	}
+	return nil
 }
 
 func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
@@ -85,28 +132,34 @@ func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 	// POST
 	// curl -X POST -d "val=bar" http://localhost:8000/env/foo
+	key, err := getURLPart(2, r.URL.Path)
+	if err != nil {
+		badRequest(w, "Incorrect url format")
+		return
+	}
 	switch r.Method {
 	case "GET":
-		vars := mux.Vars(r)
-		key := vars["name"]
+		// vars := mux.Vars(r)
+		// key := vars["name"]
 		value, found := s.env.Get(key)
 		if !found {
 			http.NotFound(w, r)
+			return
 		}
 		fmt.Fprintf(w, value)
 	case "POST":
-		vars := mux.Vars(r)
+		//vars := mux.Vars(r)
 		if err := r.ParseForm(); err != nil {
 			fmt.Fprintf(w, "envHandler ParseForm() err: %v", err)
 			return
 		}
-		key := vars["name"]
+		//key := vars["name"]
 		value := r.FormValue("val")
 		s.env.Add(key, value)
 		fmt.Fprintf(w, "OK")
 	case "DELETE":
-		vars := mux.Vars(r)
-		key := vars["name"]
+		//vars := mux.Vars(r)
+		//key := vars["name"]
 		s.env.Delete(key)
 		fmt.Fprintf(w, "OK")
 	default:
@@ -126,7 +179,7 @@ func (s *Server) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) uptimeHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		fmt.Fprintf(w, "55") // random, donesn't matter
+		fmt.Fprintf(w, "55") // random, donesn't matter, could just
 	default:
 		http.NotFound(w, r)
 	}
@@ -136,12 +189,24 @@ func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// example usage: curl -X POST http://localhost:8000/file/dest.txt -Ffile=@testfile.txt
 	switch r.Method {
 	case "POST":
+		//fmt.Println("url:", r.URL.RawPath)
+		key, err := getURLPart(2, r.URL.RawPath)
+		if err != nil {
+			badRequest(w, "Incorrect url format")
+			return
+		}
+
 		formFile, _, err := r.FormFile(MULTIPART_FILE_NAME)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
-		localPath := r.URL.Path
+		localPath, err := url.PathUnescape(key)
+		if err != nil {
+			msg := fmt.Sprintf("Error unescaping path: %s", err.Error())
+			badRequest(w, msg)
+			return
+		}
 		dirpath := filepath.Dir(localPath)
 		err = os.MkdirAll(dirpath, 0760)
 		if err != nil {
@@ -159,6 +224,13 @@ func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = destFile.Close()
+		// if the user uploaded an elf, make it executable
+		if isElf(localPath) {
+			if err := ensureExecutable(localPath); err != nil {
+				serverError(w, err)
+				return
+			}
+		}
 	default:
 		http.NotFound(w, r)
 	}
@@ -181,7 +253,8 @@ func (s *Server) rebootHandler(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
 			// from https://github.com/golang/go/issues/9584
-			const c = unix.LINUX_REBOOT_CMD_HALT
+			const c = unix.LINUX_REBOOT_CMD_RESTART
+			syscall.Sync()
 			_ = unix.Reboot(-(c>>31)<<31 | c&(1<<31-1))
 		}()
 	default:
@@ -189,27 +262,31 @@ func (s *Server) rebootHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// We create the router and pass it back cause we end up using this in
-// unit tests.
-func (s *Server) getHandlers() *mux.Router {
-	r := mux.NewRouter()
-	// Gorilla.mux seems to have some terrible handling of paths and does
-	// cleaning of paths stragely (to me, at least). It shouldn't have been
-	// used because getting the embedded slashes to work in the /file handler
-	// took 10x more time than the framework saved.
-	r.SkipClean(true)
-	r.HandleFunc("/env/{name}", s.envHandler).Methods("GET", "POST", "DELETE")
-	r.PathPrefix("/file/").Handler(http.StripPrefix("/file/", http.HandlerFunc(s.fileUploadHandler))).Methods("POST")
-	r.HandleFunc("/app", s.appHandler).Methods("PUT")
-	r.HandleFunc("/milpa/health", s.healthcheckHandler).Methods("GET")
-	r.HandleFunc("/os/uptime", s.uptimeHandler).Methods("GET")
-	r.HandleFunc("/os/reboot", s.rebootHandler).Methods("POST")
-	r.HandleFunc("/milpa/logs/", s.logsHandler).Methods("POST")
-	return r
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/file") {
+		s.fileUploadHandler(w, r)
+	} else {
+		s.mux.ServeHTTP(w, r)
+	}
+}
+
+func (s *Server) getHandlers() {
+	// The /file/<path> endpoint is a real pain point
+	// by default, go's handlers will strip out double slashes //
+	// as well as a slash followed by an encoded slash (/%2F)
+	// So we create our own handler that handles /file specially
+	// and defer all other endpoints to our mux
+	s.mux = http.ServeMux{}
+	s.mux.HandleFunc("/env/", s.envHandler)
+	s.mux.HandleFunc("/app/", s.appHandler) // OSv seems to need trailing slash
+	s.mux.HandleFunc("/milpa/health", s.healthcheckHandler)
+	s.mux.HandleFunc("/os/uptime", s.uptimeHandler)
+	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
+	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
 }
 
 func (s *Server) ListenAndServe(addr string) {
-	http.Handle("/", s.getHandlers())
-	s.httpServer = &http.Server{Addr: addr, Handler: nil}
+	s.getHandlers()
+	s.httpServer = &http.Server{Addr: addr, Handler: s}
 	log.Fatal(s.httpServer.ListenAndServe())
 }
