@@ -3,8 +3,11 @@
 package server
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -19,7 +22,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const MULTIPART_FILE_NAME = "file"
+const (
+	MULTIPART_FILE_NAME = "file"
+	MULTIPART_PKG_NAME  = "pkg"
+)
 
 type Server struct {
 	env        StringMap
@@ -270,6 +276,138 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func saveFile(r io.Reader) (filename string, err error) {
+	tmpfile, err := ioutil.TempFile("", "milpa-pkg-")
+	if err != nil {
+		return "", err
+	}
+
+	defer tmpfile.Close()
+	filename = tmpfile.Name()
+
+	buf := make([]byte, 4096)
+	for {
+		n, err := r.Read(buf)
+		if n == 0 || err != nil {
+			break
+		}
+		_, err = tmpfile.Write(buf[:n])
+		if err != nil {
+			break
+		}
+	}
+
+	if err != nil {
+		os.Remove(filename)
+		filename = ""
+	}
+
+	return filename, err
+}
+
+func extractAndInstall(rootdir string, filename string) (err error) {
+	err = os.MkdirAll(rootdir, 0700)
+	if err != nil {
+		log.Println("ERROR creating rootdir ", rootdir, ":", err)
+		return err
+	}
+
+	f, err := os.Open(filename)
+	if err != nil {
+		log.Println("ERROR opening package file:", err)
+		return err
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		log.Println("ERROR uncompressing package:", err)
+		return err
+	}
+
+	tr := tar.NewReader(gzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Println("ERROR extracting package:", err)
+			return err
+		}
+
+		name := header.Name
+		if name == "ROOTFS" {
+			continue
+		}
+		if name[:7] != "ROOTFS/" {
+			log.Println("WARNING file outside of ROOTFS in package:", name)
+		}
+		name = rootdir + "/" + name[7:]
+
+		switch header.Typeflag {
+		case tar.TypeDir: // directory
+			log.Println("d", name)
+			os.Mkdir(name, os.FileMode(header.Mode))
+		case tar.TypeReg: // regular file
+			log.Println("f", name)
+			data := make([]byte, header.Size)
+			_, err := tr.Read(data)
+			if err != nil && err != io.EOF {
+				log.Println("ERROR extracting", name, ":", err)
+				return err
+			}
+			ioutil.WriteFile(name, data, os.FileMode(header.Mode))
+		case tar.TypeLink: // hard link
+			log.Println("h", name)
+			os.Remove(name) // Remove hardlink in case it exists.
+			err = os.Link(header.Linkname, name)
+			if err != nil {
+				log.Println("ERROR creating hardlink", name, "->", header.Linkname, ":", err)
+				return err
+			}
+		case tar.TypeSymlink: // symlink
+			log.Println("s", name)
+			os.Remove(name) // Remove symlink in case it exists.
+			err = os.Symlink(header.Linkname, name)
+			if err != nil {
+				log.Println("ERROR creating symlink", name, "->", header.Linkname, ":", err)
+				return err
+			}
+		default:
+			log.Println("Unknown type while extracting:", header.Typeflag)
+		}
+	}
+
+	return nil
+}
+
+func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		formFile, _, err := r.FormFile(MULTIPART_PKG_NAME)
+		if err != nil {
+			log.Println("ERROR parsing form for package deploy", err)
+			serverError(w, err)
+			return
+		}
+		defer formFile.Close()
+		pkgfile, err := saveFile(formFile)
+		if err != nil {
+			log.Println("ERROR saving file for package deploy", err)
+			serverError(w, err)
+		}
+		defer os.Remove(pkgfile)
+		log.Println("Package saved as: ", pkgfile)
+		if err = extractAndInstall(installRootdir, pkgfile); err != nil {
+			log.Println("ERROR extracting and installing package", err)
+			serverError(w, err)
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) getHandlers() {
 	// The /file/<path> endpoint is a real pain point
 	// by default, go's handlers will strip out double slashes //
@@ -283,6 +421,7 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/os/uptime", s.uptimeHandler)
 	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
 	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
+	s.mux.HandleFunc("/milpa/deploy", s.deployHandler)
 }
 
 func (s *Server) ListenAndServe(addr string) {
