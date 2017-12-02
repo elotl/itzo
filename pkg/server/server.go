@@ -34,6 +34,10 @@ type Server struct {
 	startTime  time.Time
 }
 
+// A safe default value for testing package uploads and deploys. Packages will
+// be installed under this directory (created if it does not exist).
+var installRootdir string = "/tmp/milpa-pkg"
+
 func New() *Server {
 	return &Server{
 		env:       StringMap{data: map[string]string{}},
@@ -424,7 +428,10 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/milpa/deploy", s.deployHandler)
 }
 
-func (s *Server) ListenAndServe(addr string) {
+func (s *Server) ListenAndServe(addr string, rootdir string) {
+	if rootdir != "" {
+		installRootdir = rootdir
+	}
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: addr, Handler: s}
 	log.Fatal(s.httpServer.ListenAndServe())
