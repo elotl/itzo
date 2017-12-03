@@ -176,7 +176,7 @@ func TestFileUploader(t *testing.T) {
 	url := fmt.Sprintf("/file/%s", url.PathEscape(temppath))
 	//url := fmt.Sprintf("/file/%s", temppath)
 	//content := fmt.Sprintf("The time at the tone is %s... BEEP!", time.Now().String())
-	content, err := getFileContents("/home/bcox/go/src/github.com/elotl/itzo/cmd/echo/echo")
+	content, err := getFileContents("../../cmd/echo/echo.go")
 	assert.Nil(t, err)
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
