@@ -285,33 +285,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func saveFile(r io.Reader) (filename string, err error) {
+func saveFile(r io.Reader) (filename string, n int64, err error) {
 	tmpfile, err := ioutil.TempFile("", "milpa-pkg-")
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	defer tmpfile.Close()
 	filename = tmpfile.Name()
 
-	buf := make([]byte, 4096)
-	for {
-		n, err := r.Read(buf)
-		if n == 0 || err != nil {
-			break
-		}
-		_, err = tmpfile.Write(buf[:n])
-		if err != nil {
-			break
-		}
-	}
-
+	written, err := io.Copy(tmpfile, r)
 	if err != nil {
 		os.Remove(filename)
 		filename = ""
 	}
 
-	return filename, err
+	return filename, written, err
 }
 
 func extractAndInstall(rootdir string, filename string) (err error) {
@@ -401,13 +390,13 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer formFile.Close()
-		pkgfile, err := saveFile(formFile)
+		pkgfile, n, err := saveFile(formFile)
 		if err != nil {
 			glog.Errorln("saving file for package deploy:", err)
 			serverError(w, err)
 		}
 		defer os.Remove(pkgfile)
-		glog.Infoln("package saved as:", pkgfile)
+		glog.Infoln("package saved as:", pkgfile, n, "bytes")
 		if err = extractAndInstall(s.installRootdir, pkgfile); err != nil {
 			glog.Errorln("extracting and installing package:", err)
 			serverError(w, err)
