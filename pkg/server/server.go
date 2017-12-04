@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/google/shlex"
 	"golang.org/x/sys/unix"
 )
@@ -317,20 +317,20 @@ func saveFile(r io.Reader) (filename string, err error) {
 func extractAndInstall(rootdir string, filename string) (err error) {
 	err = os.MkdirAll(rootdir, 0700)
 	if err != nil {
-		log.Println("ERROR creating rootdir", rootdir, ":", err)
+		glog.Errorln("creating rootdir", rootdir, ":", err)
 		return err
 	}
 
 	f, err := os.Open(filename)
 	if err != nil {
-		log.Println("ERROR opening package file:", err)
+		glog.Errorln("opening package file:", err)
 		return err
 	}
 	defer f.Close()
 
 	gzr, err := gzip.NewReader(f)
 	if err != nil {
-		log.Println("ERROR uncompressing package:", err)
+		glog.Errorln("uncompressing package:", err)
 		return err
 	}
 
@@ -341,7 +341,7 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 			break
 		}
 		if err != nil {
-			log.Println("ERROR extracting package:", err)
+			glog.Errorln("extracting package:", err)
 			return err
 		}
 
@@ -350,41 +350,41 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 			continue
 		}
 		if name[:7] != "ROOTFS/" {
-			log.Println("WARNING file outside of ROOTFS in package:", name)
+			glog.Warningln("file outside of ROOTFS in package:", name)
 		}
 		name = rootdir + "/" + name[7:]
 
 		switch header.Typeflag {
 		case tar.TypeDir: // directory
-			log.Println("d", name)
+			glog.Infoln("d", name)
 			os.Mkdir(name, os.FileMode(header.Mode))
 		case tar.TypeReg: // regular file
-			log.Println("f", name)
+			glog.Infoln("f", name)
 			data := make([]byte, header.Size)
 			_, err := tr.Read(data)
 			if err != nil && err != io.EOF {
-				log.Println("ERROR extracting", name, ":", err)
+				glog.Errorln("extracting", name, ":", err)
 				return err
 			}
 			ioutil.WriteFile(name, data, os.FileMode(header.Mode))
 		case tar.TypeLink: // hard link
-			log.Println("h", name)
+			glog.Infoln("h", name)
 			os.Remove(name) // Remove hardlink in case it exists.
 			err = os.Link(header.Linkname, name)
 			if err != nil {
-				log.Println("ERROR creating hardlink", name, "->", header.Linkname, ":", err)
+				glog.Errorln("creating hardlink", name, "->", header.Linkname, ":", err)
 				return err
 			}
 		case tar.TypeSymlink: // symlink
-			log.Println("s", name)
+			glog.Infoln("s", name)
 			os.Remove(name) // Remove symlink in case it exists.
 			err = os.Symlink(header.Linkname, name)
 			if err != nil {
-				log.Println("ERROR creating symlink", name, "->", header.Linkname, ":", err)
+				glog.Errorln("creating symlink", name, "->", header.Linkname, ":", err)
 				return err
 			}
 		default:
-			log.Println("Unknown type while extracting:", header.Typeflag)
+			glog.Warningln("unknown type while extracting:", header.Typeflag)
 		}
 	}
 
@@ -396,20 +396,20 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		formFile, _, err := r.FormFile(MULTIPART_PKG_NAME)
 		if err != nil {
-			log.Println("ERROR parsing form for package deploy", err)
+			glog.Errorln("parsing form for package deploy:", err)
 			serverError(w, err)
 			return
 		}
 		defer formFile.Close()
 		pkgfile, err := saveFile(formFile)
 		if err != nil {
-			log.Println("ERROR saving file for package deploy", err)
+			glog.Errorln("saving file for package deploy:", err)
 			serverError(w, err)
 		}
 		defer os.Remove(pkgfile)
-		log.Println("Package saved as:", pkgfile)
+		glog.Infoln("package saved as:", pkgfile)
 		if err = extractAndInstall(s.installRootdir, pkgfile); err != nil {
-			log.Println("ERROR extracting and installing package", err)
+			glog.Errorln("extracting and installing package:", err)
 			serverError(w, err)
 		}
 	default:
@@ -436,5 +436,5 @@ func (s *Server) getHandlers() {
 func (s *Server) ListenAndServe(addr string) {
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: addr, Handler: s}
-	log.Fatal(s.httpServer.ListenAndServe())
+	glog.Fatalln(s.httpServer.ListenAndServe())
 }
