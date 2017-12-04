@@ -1,9 +1,7 @@
 import boto3
-# import argparse
 import datetime
 import urllib
 import time
-# import json
 import os
 import subprocess
 
@@ -46,8 +44,6 @@ def setup():
     subprocess.check_call(cmd, shell=True)
     isodir = os.path.join(get_script_dir(), 'iso')
     safe_mkdir(isodir)
-    # if not os.path.exists(isodir):
-    #     os.makedirs(isodir)
     print('Downloading ISO')
     isofile = os.path.join(isodir, 'alpine-virt-3.6.2-x86_64.iso')
     if not os.path.exists(isofile):
@@ -100,21 +96,6 @@ def install():
 
 def provision():
     subprocess.check_call("sudo bash ./provision.sh", shell=True)
-
-    # print("mounting volume")
-    # mountdir = os.path.join(get_script_dir(), 'mount')
-    # safe_mkdir(mountdir)
-    # # cmd = 'sudo mount /dev/xvdf3 {}'.format(mountdir)
-    # # subprocess.check_call(cmd, shell=True)
-    # print("provisioning ssh")
-    # rootssh = os.path.join(mountdir, "root/.ssh")
-    # cmd = 'sudo mkdir {}'.format(rootssh)
-    # print cmd
-    # subprocess.check_call(cmd, shell=True)
-    # rootkeys = os.path.join(rootssh, 'authorized_keys')
-    # subprocess.check_call('sudo cp {}/authorized_keys {}'.format(
-    #     get_script_dir(), rootkeys), shell=True)
-    # subprocess.check_call('sudo chmod -R 600 {}'.format(rootssh), shell=True)
 
 
 def make_snapshot(vol):
