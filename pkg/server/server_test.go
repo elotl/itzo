@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elotl/milpa/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -154,18 +153,18 @@ func deleteFile(path string) {
 	}
 }
 
-func getFileContents(localPath string) ([]byte, error) {
-	file, err := os.Open(localPath)
-	if err != nil {
-		return []byte{}, util.WrapError("Error opening local file for upload", err)
-	}
-	defer file.Close()
-	fileContents, err := ioutil.ReadAll(file)
-	if err != nil {
-		return fileContents, util.WrapError("Error reading local file for upload", err)
-	}
-	return fileContents, err
-}
+// func getFileContents(localPath string) ([]byte, error) {
+// 	file, err := os.Open(localPath)
+// 	if err != nil {
+// 		return []byte{}, util.WrapError("Error opening local file for upload", err)
+// 	}
+// 	defer file.Close()
+// 	fileContents, err := ioutil.ReadAll(file)
+// 	if err != nil {
+// 		return fileContents, util.WrapError("Error reading local file for upload", err)
+// 	}
+// 	return fileContents, err
+// }
 
 func TestFileUploader(t *testing.T) {
 	//s := Server{env: StringMap{data: map[string]string{}}}
@@ -174,10 +173,7 @@ func TestFileUploader(t *testing.T) {
 	temppath := tempfileName("ServerTest", "")
 	defer deleteFile(temppath)
 	url := fmt.Sprintf("/file/%s", url.PathEscape(temppath))
-	//url := fmt.Sprintf("/file/%s", temppath)
-	//content := fmt.Sprintf("The time at the tone is %s... BEEP!", time.Now().String())
-	content, err := getFileContents("../../cmd/echo/echo.go")
-	assert.Nil(t, err)
+	content := fmt.Sprintf("The time at the tone is %s... BEEP!", time.Now().String())
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile(MULTIPART_FILE_NAME, temppath)
