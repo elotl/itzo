@@ -77,7 +77,7 @@ func getURLPart(i int, path string) (string, error) {
 	return parts[i-1], nil
 }
 
-func isElf(path string) bool {
+func isExecutable(path string) bool {
 	file, err := os.Open(path)
 	if err != nil {
 		return false
@@ -90,7 +90,8 @@ func isElf(path string) bool {
 	if n1 < 4 {
 		return false
 	}
-	if header[0] == 0x7F && string(header[1:]) == "ELF" {
+	if (header[0] == 0x7F && string(header[1:]) == "ELF") ||
+		string(header[0:2]) == "#!" {
 		return true
 	}
 	return false
@@ -240,7 +241,7 @@ func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = destFile.Close()
 		// if the user uploaded an elf, make it executable
-		if isElf(localPath) {
+		if isExecutable(localPath) {
 			if err := ensureExecutable(localPath); err != nil {
 				serverError(w, err)
 				return
