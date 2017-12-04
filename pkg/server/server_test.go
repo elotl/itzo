@@ -28,7 +28,6 @@ var s Server
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	s = Server{env: StringMap{data: map[string]string{}}}
-	//s.httpServer = &http.Server{Addr: "localhost:8000", Handler: &s}
 	s.getHandlers()
 	os.Exit(m.Run())
 }
@@ -153,23 +152,7 @@ func deleteFile(path string) {
 	}
 }
 
-// func getFileContents(localPath string) ([]byte, error) {
-// 	file, err := os.Open(localPath)
-// 	if err != nil {
-// 		return []byte{}, util.WrapError("Error opening local file for upload", err)
-// 	}
-// 	defer file.Close()
-// 	fileContents, err := ioutil.ReadAll(file)
-// 	if err != nil {
-// 		return fileContents, util.WrapError("Error reading local file for upload", err)
-// 	}
-// 	return fileContents, err
-// }
-
 func TestFileUploader(t *testing.T) {
-	//s := Server{env: StringMap{data: map[string]string{}}}
-	//s.getHandlers()
-
 	temppath := tempfileName("ServerTest", "")
 	defer deleteFile(temppath)
 	url := fmt.Sprintf("/file/%s", url.PathEscape(temppath))
@@ -192,7 +175,7 @@ func TestFileUploader(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	_, err = os.Stat(temppath)
 	assert.Nil(t, err)
-	//assertFileHasContents(t, temppath, string(content))
+	assertFileHasContents(t, temppath, string(content))
 }
 
 func createTarGzBuf(t *testing.T, rootdir string) []byte {
