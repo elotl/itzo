@@ -199,7 +199,7 @@ func TestFileUploader(t *testing.T) {
 	//assertFileHasContents(t, temppath, string(content))
 }
 
-func createTarGzBuf(t *testing.T) []byte {
+func createTarGzBuf(t *testing.T, rootdir string) []byte {
 	// Create a tar buffer in memory.
 	tarbuf := new(bytes.Buffer)
 	tw := tar.NewWriter(tarbuf)
@@ -214,7 +214,7 @@ func createTarGzBuf(t *testing.T) []byte {
 		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", ""},
 		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), ""},
 		{"ROOTFS/readme.link", tar.TypeSymlink, "", "readme.txt"},
-		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", installRootdir)},
+		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", rootdir)},
 	}
 	for _, entry := range entries {
 		hdr := &tar.Header{
@@ -249,8 +249,11 @@ func TestDeployPackage(t *testing.T) {
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
+	srv := New("/tmp/milpa-pkg-test")
+	srv.getHandlers()
+
 	// Create a .tar.gz file.
-	content := createTarGzBuf(t)
+	content := createTarGzBuf(t, srv.installRootdir)
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile(MULTIPART_PKG_NAME, tmpfile.Name())
@@ -264,7 +267,7 @@ func TestDeployPackage(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	s.ServeHTTP(rr, req)
+	srv.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 }
@@ -290,7 +293,9 @@ func TestDeployInvalidPackage(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	s.ServeHTTP(rr, req)
+	srv := New("/tmp/milpa-pkg-test")
+	srv.getHandlers()
+	srv.ServeHTTP(rr, req)
 
 	assert.NotEqual(t, http.StatusOK, rr.Code)
 }

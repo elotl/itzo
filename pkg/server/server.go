@@ -25,6 +25,8 @@ import (
 const (
 	MULTIPART_FILE_NAME = "file"
 	MULTIPART_PKG_NAME  = "pkg"
+	// A safe default value for testing package uploads and deploys.
+	DEFAULT_INSTALL_ROOTDIR = "/tmp/milpa-pkg"
 )
 
 type Server struct {
@@ -32,16 +34,19 @@ type Server struct {
 	httpServer *http.Server
 	mux        http.ServeMux
 	startTime  time.Time
+	// Packages will be installed under this directory (created if it does not
+	// exist).
+	installRootdir string
 }
 
-// A safe default value for testing package uploads and deploys. Packages will
-// be installed under this directory (created if it does not exist).
-var installRootdir string = "/tmp/milpa-pkg"
-
-func New() *Server {
+func New(rootdir string) *Server {
+	if rootdir == "" {
+		rootdir = DEFAULT_INSTALL_ROOTDIR
+	}
 	return &Server{
-		env:       StringMap{data: map[string]string{}},
-		startTime: time.Now().UTC(),
+		env:            StringMap{data: map[string]string{}},
+		startTime:      time.Now().UTC(),
+		installRootdir: rootdir,
 	}
 }
 
@@ -312,7 +317,7 @@ func saveFile(r io.Reader) (filename string, err error) {
 func extractAndInstall(rootdir string, filename string) (err error) {
 	err = os.MkdirAll(rootdir, 0700)
 	if err != nil {
-		log.Println("ERROR creating rootdir ", rootdir, ":", err)
+		log.Println("ERROR creating rootdir", rootdir, ":", err)
 		return err
 	}
 
@@ -402,8 +407,8 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 		}
 		defer os.Remove(pkgfile)
-		log.Println("Package saved as: ", pkgfile)
-		if err = extractAndInstall(installRootdir, pkgfile); err != nil {
+		log.Println("Package saved as:", pkgfile)
+		if err = extractAndInstall(s.installRootdir, pkgfile); err != nil {
 			log.Println("ERROR extracting and installing package", err)
 			serverError(w, err)
 		}
@@ -428,10 +433,7 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/milpa/deploy", s.deployHandler)
 }
 
-func (s *Server) ListenAndServe(addr string, rootdir string) {
-	if rootdir != "" {
-		installRootdir = rootdir
-	}
+func (s *Server) ListenAndServe(addr string) {
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: addr, Handler: s}
 	log.Fatal(s.httpServer.ListenAndServe())
