@@ -3,9 +3,11 @@
 package server
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io"
-	"log"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,23 +17,36 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/google/shlex"
 	"golang.org/x/sys/unix"
 )
 
-const MULTIPART_FILE_NAME = "file"
+const (
+	MULTIPART_FILE_NAME = "file"
+	MULTIPART_PKG_NAME  = "pkg"
+	// A safe default value for testing package uploads and deploys.
+	DEFAULT_INSTALL_ROOTDIR = "/tmp/milpa-pkg"
+)
 
 type Server struct {
 	env        StringMap
 	httpServer *http.Server
 	mux        http.ServeMux
 	startTime  time.Time
+	// Packages will be installed under this directory (created if it does not
+	// exist).
+	installRootdir string
 }
 
-func New() *Server {
+func New(rootdir string) *Server {
+	if rootdir == "" {
+		rootdir = DEFAULT_INSTALL_ROOTDIR
+	}
 	return &Server{
-		env:       StringMap{data: map[string]string{}},
-		startTime: time.Now().UTC(),
+		env:            StringMap{data: map[string]string{}},
+		startTime:      time.Now().UTC(),
+		installRootdir: rootdir,
 	}
 }
 
@@ -270,6 +285,127 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func saveFile(r io.Reader) (filename string, n int64, err error) {
+	tmpfile, err := ioutil.TempFile("", "milpa-pkg-")
+	if err != nil {
+		return "", 0, err
+	}
+
+	defer tmpfile.Close()
+	filename = tmpfile.Name()
+
+	written, err := io.Copy(tmpfile, r)
+	if err != nil {
+		os.Remove(filename)
+		filename = ""
+	}
+
+	return filename, written, err
+}
+
+func extractAndInstall(rootdir string, filename string) (err error) {
+	err = os.MkdirAll(rootdir, 0700)
+	if err != nil {
+		glog.Errorln("creating rootdir", rootdir, ":", err)
+		return err
+	}
+
+	f, err := os.Open(filename)
+	if err != nil {
+		glog.Errorln("opening package file:", err)
+		return err
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		glog.Errorln("uncompressing package:", err)
+		return err
+	}
+
+	tr := tar.NewReader(gzr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			glog.Errorln("extracting package:", err)
+			return err
+		}
+
+		name := header.Name
+		if name == "ROOTFS" {
+			continue
+		}
+		if name[:7] != "ROOTFS/" {
+			glog.Warningln("file outside of ROOTFS in package:", name)
+		}
+		name = rootdir + "/" + name[7:]
+
+		switch header.Typeflag {
+		case tar.TypeDir: // directory
+			glog.Infoln("d", name)
+			os.Mkdir(name, os.FileMode(header.Mode))
+		case tar.TypeReg: // regular file
+			glog.Infoln("f", name)
+			data := make([]byte, header.Size)
+			_, err := tr.Read(data)
+			if err != nil && err != io.EOF {
+				glog.Errorln("extracting", name, ":", err)
+				return err
+			}
+			ioutil.WriteFile(name, data, os.FileMode(header.Mode))
+		case tar.TypeLink: // hard link
+			glog.Infoln("h", name)
+			os.Remove(name) // Remove hardlink in case it exists.
+			err = os.Link(header.Linkname, name)
+			if err != nil {
+				glog.Errorln("creating hardlink", name, "->", header.Linkname, ":", err)
+				return err
+			}
+		case tar.TypeSymlink: // symlink
+			glog.Infoln("s", name)
+			os.Remove(name) // Remove symlink in case it exists.
+			err = os.Symlink(header.Linkname, name)
+			if err != nil {
+				glog.Errorln("creating symlink", name, "->", header.Linkname, ":", err)
+				return err
+			}
+		default:
+			glog.Warningln("unknown type while extracting:", header.Typeflag)
+		}
+	}
+
+	return nil
+}
+
+func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		formFile, _, err := r.FormFile(MULTIPART_PKG_NAME)
+		if err != nil {
+			glog.Errorln("parsing form for package deploy:", err)
+			serverError(w, err)
+			return
+		}
+		defer formFile.Close()
+		pkgfile, n, err := saveFile(formFile)
+		if err != nil {
+			glog.Errorln("saving file for package deploy:", err)
+			serverError(w, err)
+		}
+		defer os.Remove(pkgfile)
+		glog.Infoln("package saved as:", pkgfile, n, "bytes")
+		if err = extractAndInstall(s.installRootdir, pkgfile); err != nil {
+			glog.Errorln("extracting and installing package:", err)
+			serverError(w, err)
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) getHandlers() {
 	// The /file/<path> endpoint is a real pain point
 	// by default, go's handlers will strip out double slashes //
@@ -283,10 +419,11 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/os/uptime", s.uptimeHandler)
 	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
 	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
+	s.mux.HandleFunc("/milpa/deploy", s.deployHandler)
 }
 
 func (s *Server) ListenAndServe(addr string) {
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: addr, Handler: s}
-	log.Fatal(s.httpServer.ListenAndServe())
+	glog.Fatalln(s.httpServer.ListenAndServe())
 }
