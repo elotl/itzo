@@ -107,6 +107,7 @@ func StartUnit(rootfs string, command []string) error {
 	}
 
 	cmd := exec.Command(command[0], command[1:]...)
+	cmd.Env = os.Environ() // Inherit all environment variables.
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
