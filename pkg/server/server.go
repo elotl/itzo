@@ -109,6 +109,69 @@ func ensureExecutable(path string) error {
 	return nil
 }
 
+func isEmptyDir(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil && !os.IsExist(err) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	_, err = f.Readdirnames(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
+}
+
+// This is a bit tricky in Go, since we are not supposed to use fork().
+// Instead, call the daemon with command line flags indicating that it is only
+// used as a helper to start a new unit in a new filesystem namespace.
+func (s *Server) startUnit(rootfs string, args []string) (appid int, err error) {
+	// Check if our rootfs is empty. If not, a package has been deployed there
+	// with a complete root filesystem, and we need to run our command after
+	// chrooting into that rootfs.
+	isRootfsEmpty, err := isEmptyDir(rootfs)
+	if err != nil {
+		glog.Errorf("Error checking if rootfs %s is an empty directory: %v", rootfs, err)
+	}
+	cmdline := []string{
+		"--exec",
+		strings.Join(args, " "),
+	}
+	if !isRootfsEmpty {
+		cmdline = append(cmdline, "--rootfs", rootfs)
+	}
+	cmd := exec.Command("/proc/self/exe", cmdline...)
+	if !isRootfsEmpty {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
+		}
+	}
+	// XXX: pipe stdout and stderr so logs can be fetched via REST.
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = s.makeAppEnv()
+	if err = cmd.Start(); err != nil {
+		return 0, err
+	}
+	pid := cmd.Process.Pid
+	// XXX: are we supposed to be able to run multiple units at the same time?
+	// If yes, we should create the rootfs (when a package is deployed) in a
+	// unique directory under installrootdir. We should also save the pid in
+	// any case.
+	go func() {
+		err = cmd.Wait()
+		if err == nil {
+			glog.Infof("Unit %v (helper pid %d) exited", args, pid)
+		} else {
+			glog.Errorf("Unit %v (helper pid %d) exited with error %v", args, pid, err)
+		}
+	}()
+	return pid, nil
+}
+
 func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 	// query parameters
 	// command
@@ -128,17 +191,12 @@ func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		cmd := exec.Command(commandParts[0], commandParts[1:]...)
-		cmd.Env = s.makeAppEnv()
-		err = cmd.Start()
+		appid, err := s.startUnit(s.installRootdir, commandParts)
 		if err != nil {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
 			serverError(w, err)
 			return
 		}
-		fmt.Fprintf(w, "%d", cmd.Process.Pid)
+		fmt.Fprintf(w, "%d", appid)
 		// todo: capture stdout logs
 	default:
 		http.NotFound(w, r)

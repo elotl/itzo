@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -28,6 +29,12 @@ var s Server
 
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
+	var appcmdline = flag.String("exec", "", "Command for starting a unit")
+	flag.Parse()
+	if *appcmdline != "" {
+		StartUnit("", strings.Split(*appcmdline, " "))
+		os.Exit(0)
+	}
 	s = Server{env: StringMap{data: map[string]string{}}}
 	s.getHandlers()
 	os.Exit(m.Run())
