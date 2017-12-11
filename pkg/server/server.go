@@ -323,6 +323,7 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		glog.Errorln("uncompressing package:", err)
 		return err
 	}
+	defer gzr.Close()
 
 	tr := tar.NewReader(gzr)
 	for {
