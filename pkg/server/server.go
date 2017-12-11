@@ -304,6 +304,15 @@ func saveFile(r io.Reader) (filename string, n int64, err error) {
 	return filename, written, err
 }
 
+type Link struct {
+	dst      string
+	src      string
+	linktype byte
+	mode     os.FileMode
+	uid      int
+	gid      int
+}
+
 func extractAndInstall(rootdir string, filename string) (err error) {
 	err = os.MkdirAll(rootdir, 0700)
 	if err != nil {
@@ -324,6 +333,8 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		return err
 	}
 	defer gzr.Close()
+
+	var links []Link
 
 	tr := tar.NewReader(gzr)
 	for {
@@ -353,30 +364,70 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		case tar.TypeReg: // regular file
 			glog.Infoln("f", name)
 			data := make([]byte, header.Size)
-			_, err := tr.Read(data)
-			if err != nil && err != io.EOF {
-				glog.Errorln("extracting", name, ":", err)
-				return err
+			read_so_far := int64(0)
+			for read_so_far < header.Size {
+				n, err := tr.Read(data[read_so_far:])
+				if err != nil && err != io.EOF {
+					glog.Errorln("extracting", name, ":", err)
+					return err
+				}
+				read_so_far += int64(n)
+			}
+			if read_so_far != header.Size {
+				glog.Errorf("f %s error: read %d bytes, but size is %d bytes", name, read_so_far, header.Size)
 			}
 			ioutil.WriteFile(name, data, os.FileMode(header.Mode))
-		case tar.TypeLink: // hard link
-			glog.Infoln("h", name)
-			os.Remove(name) // Remove hardlink in case it exists.
-			err = os.Link(header.Linkname, name)
+		case tar.TypeLink, tar.TypeSymlink:
+			linkname := header.Linkname
+			if len(linkname) >= 7 && linkname[:7] == "ROOTFS/" {
+				linkname = filepath.Join(rootdir, linkname[7:])
+			}
+			// Links might point to files or directories that have not been
+			// extracted from the tarball yet. Create them after going through
+			// all entries in the tarball.
+			links = append(links, Link{linkname, name, header.Typeflag, os.FileMode(header.Mode), header.Uid, header.Gid})
+			continue
 		default:
 			glog.Warningf("unknown type while untaring: %d", header.Typeflag)
 			continue
 		}
+		err = os.Chown(name, header.Uid, header.Gid)
+		if err != nil {
+			glog.Errorf("chown %s type %d uid %d gid %d: %v", name, header.Typeflag, header.Uid, header.Gid, err)
+			return err
+		}
+	}
+
+	for _, link := range links {
+		os.Remove(link.src) // Remove link in case it exists.
+		if link.linktype == tar.TypeSymlink {
+			glog.Infoln("s", link.src)
+			err = os.Symlink(link.dst, link.src)
 			if err != nil {
-				glog.Errorln("creating hardlink", name, "->", header.Linkname, ":", err)
+				glog.Errorf("creating symlink %s -> %s: %v", link.src, link.dst, err)
 				return err
 			}
-		case tar.TypeSymlink: // symlink
-			glog.Infoln("s", name)
-			os.Remove(name) // Remove symlink in case it exists.
-			err = os.Symlink(header.Linkname, name)
+			err = os.Lchown(link.src, link.uid, link.gid)
 			if err != nil {
-				glog.Errorln("creating symlink", name, "->", header.Linkname, ":", err)
+				glog.Errorf("chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
+				return err
+			}
+		}
+		if link.linktype == tar.TypeLink {
+			glog.Infoln("h", link.src)
+			err = os.Link(link.dst, link.src)
+			if err != nil {
+				glog.Errorf("creating hardlink %s -> %s: %v", link.src, link.dst, err)
+				return err
+			}
+			err = os.Chmod(link.src, link.mode)
+			if err != nil {
+				glog.Errorf("chmod hardlink %s %d: %v", link.src, link.mode, err)
+				return err
+			}
+			err = os.Chown(link.src, link.uid, link.gid)
+			if err != nil {
+				glog.Errorf("chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
 				return err
 			}
 		}
