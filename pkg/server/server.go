@@ -109,6 +109,69 @@ func ensureExecutable(path string) error {
 	return nil
 }
 
+func isEmptyDir(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil && !os.IsExist(err) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	_, err = f.Readdirnames(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
+}
+
+// This is a bit tricky in Go, since we are not supposed to use fork().
+// Instead, call the daemon with command line flags indicating that it is only
+// used as a helper to start a new unit in a new filesystem namespace.
+func (s *Server) startUnit(rootfs string, args []string) (appid int, err error) {
+	// Check if our rootfs is empty. If not, a package has been deployed there
+	// with a complete root filesystem, and we need to run our command after
+	// chrooting into that rootfs.
+	isRootfsEmpty, err := isEmptyDir(rootfs)
+	if err != nil {
+		glog.Errorf("Error checking if rootfs %s is an empty directory: %v", rootfs, err)
+	}
+	cmdline := []string{
+		"--exec",
+		strings.Join(args, " "),
+	}
+	if !isRootfsEmpty {
+		cmdline = append(cmdline, "--rootfs", rootfs)
+	}
+	cmd := exec.Command("/proc/self/exe", cmdline...)
+	if !isRootfsEmpty {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
+		}
+	}
+	// XXX: pipe stdout and stderr so logs can be fetched via REST.
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = s.makeAppEnv()
+	if err = cmd.Start(); err != nil {
+		return 0, err
+	}
+	pid := cmd.Process.Pid
+	// XXX: are we supposed to be able to run multiple units at the same time?
+	// If yes, we should create the rootfs (when a package is deployed) in a
+	// unique directory under installrootdir. We should also save the pid in
+	// any case.
+	go func() {
+		err = cmd.Wait()
+		if err == nil {
+			glog.Infof("Unit %v (helper pid %d) exited", args, pid)
+		} else {
+			glog.Errorf("Unit %v (helper pid %d) exited with error %v", args, pid, err)
+		}
+	}()
+	return pid, nil
+}
+
 func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 	// query parameters
 	// command
@@ -128,17 +191,12 @@ func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		cmd := exec.Command(commandParts[0], commandParts[1:]...)
-		cmd.Env = s.makeAppEnv()
-		err = cmd.Start()
+		appid, err := s.startUnit(s.installRootdir, commandParts)
 		if err != nil {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
 			serverError(w, err)
 			return
 		}
-		fmt.Fprintf(w, "%d", cmd.Process.Pid)
+		fmt.Fprintf(w, "%d", appid)
 		// todo: capture stdout logs
 	default:
 		http.NotFound(w, r)
@@ -304,6 +362,15 @@ func saveFile(r io.Reader) (filename string, n int64, err error) {
 	return filename, written, err
 }
 
+type Link struct {
+	dst      string
+	src      string
+	linktype byte
+	mode     os.FileMode
+	uid      int
+	gid      int
+}
+
 func extractAndInstall(rootdir string, filename string) (err error) {
 	err = os.MkdirAll(rootdir, 0700)
 	if err != nil {
@@ -323,6 +390,9 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		glog.Errorln("uncompressing package:", err)
 		return err
 	}
+	defer gzr.Close()
+
+	var links []Link
 
 	tr := tar.NewReader(gzr)
 	for {
@@ -339,8 +409,9 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		if name == "ROOTFS" {
 			continue
 		}
-		if name[:7] != "ROOTFS/" {
+		if len(name) < 7 || name[:7] != "ROOTFS/" {
 			glog.Warningln("file outside of ROOTFS in package:", name)
+			continue
 		}
 		name = rootdir + "/" + name[7:]
 
@@ -351,30 +422,72 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		case tar.TypeReg: // regular file
 			glog.Infoln("f", name)
 			data := make([]byte, header.Size)
-			_, err := tr.Read(data)
-			if err != nil && err != io.EOF {
-				glog.Errorln("extracting", name, ":", err)
-				return err
+			read_so_far := int64(0)
+			for read_so_far < header.Size {
+				n, err := tr.Read(data[read_so_far:])
+				if err != nil && err != io.EOF {
+					glog.Errorln("extracting", name, ":", err)
+					return err
+				}
+				read_so_far += int64(n)
+			}
+			if read_so_far != header.Size {
+				glog.Errorf("f %s error: read %d bytes, but size is %d bytes", name, read_so_far, header.Size)
 			}
 			ioutil.WriteFile(name, data, os.FileMode(header.Mode))
-		case tar.TypeLink: // hard link
-			glog.Infoln("h", name)
-			os.Remove(name) // Remove hardlink in case it exists.
-			err = os.Link(header.Linkname, name)
-			if err != nil {
-				glog.Errorln("creating hardlink", name, "->", header.Linkname, ":", err)
-				return err
+		case tar.TypeLink, tar.TypeSymlink:
+			linkname := header.Linkname
+			if len(linkname) >= 7 && linkname[:7] == "ROOTFS/" {
+				linkname = filepath.Join(rootdir, linkname[7:])
 			}
-		case tar.TypeSymlink: // symlink
-			glog.Infoln("s", name)
-			os.Remove(name) // Remove symlink in case it exists.
-			err = os.Symlink(header.Linkname, name)
-			if err != nil {
-				glog.Errorln("creating symlink", name, "->", header.Linkname, ":", err)
-				return err
-			}
+			// Links might point to files or directories that have not been
+			// extracted from the tarball yet. Create them after going through
+			// all entries in the tarball.
+			links = append(links, Link{linkname, name, header.Typeflag, os.FileMode(header.Mode), header.Uid, header.Gid})
+			continue
 		default:
-			glog.Warningln("unknown type while extracting:", header.Typeflag)
+			glog.Warningf("unknown type while untaring: %d", header.Typeflag)
+			continue
+		}
+		err = os.Chown(name, header.Uid, header.Gid)
+		if err != nil {
+			glog.Errorf("chown %s type %d uid %d gid %d: %v", name, header.Typeflag, header.Uid, header.Gid, err)
+			return err
+		}
+	}
+
+	for _, link := range links {
+		os.Remove(link.src) // Remove link in case it exists.
+		if link.linktype == tar.TypeSymlink {
+			glog.Infoln("s", link.src)
+			err = os.Symlink(link.dst, link.src)
+			if err != nil {
+				glog.Errorf("creating symlink %s -> %s: %v", link.src, link.dst, err)
+				return err
+			}
+			err = os.Lchown(link.src, link.uid, link.gid)
+			if err != nil {
+				glog.Errorf("chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
+				return err
+			}
+		}
+		if link.linktype == tar.TypeLink {
+			glog.Infoln("h", link.src)
+			err = os.Link(link.dst, link.src)
+			if err != nil {
+				glog.Errorf("creating hardlink %s -> %s: %v", link.src, link.dst, err)
+				return err
+			}
+			err = os.Chmod(link.src, link.mode)
+			if err != nil {
+				glog.Errorf("chmod hardlink %s %d: %v", link.src, link.mode, err)
+				return err
+			}
+			err = os.Chown(link.src, link.uid, link.gid)
+			if err != nil {
+				glog.Errorf("chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
+				return err
+			}
 		}
 	}
 

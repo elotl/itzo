@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -27,6 +29,12 @@ var s Server
 
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
+	var appcmdline = flag.String("exec", "", "Command for starting a unit")
+	flag.Parse()
+	if *appcmdline != "" {
+		StartUnit("", strings.Split(*appcmdline, " "))
+		os.Exit(0)
+	}
 	s = Server{env: StringMap{data: map[string]string{}}}
 	s.getHandlers()
 	os.Exit(m.Run())
@@ -179,29 +187,37 @@ func TestFileUploader(t *testing.T) {
 }
 
 func createTarGzBuf(t *testing.T, rootdir string) []byte {
-	// Create a tar buffer in memory.
-	tarbuf := new(bytes.Buffer)
-	tw := tar.NewWriter(tarbuf)
+	var uid int = os.Geteuid()
+	var gid int = os.Getegid()
 	var entries = []struct {
 		Name       string
 		Type       byte
 		Body       string
 		LinkTarget string
+		Mode       int64
+		Uid        int
+		Gid        int
 	}{
-		{"ROOTFS/", tar.TypeDir, "", ""},
-		{"ROOTFS/bin", tar.TypeDir, "", ""},
-		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", ""},
-		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), ""},
-		{"ROOTFS/readme.link", tar.TypeSymlink, "", "readme.txt"},
-		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", rootdir)},
+		{"ROOTFS/", tar.TypeDir, "", "", 0755, uid, gid},
+		{"ROOTFS/bin", tar.TypeDir, "", "", 0700, uid, gid},
+		{"ROOTFS/readme.link", tar.TypeSymlink, "", "./readme.txt", 0000, uid, gid},
+		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", rootdir), 0660, uid, gid},
+		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", "", 0640, uid, gid},
+		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), "", 0600, uid, gid},
 	}
+
+	// Create a tar buffer in memory.
+	tarbuf := new(bytes.Buffer)
+	tw := tar.NewWriter(tarbuf)
 	for _, entry := range entries {
 		hdr := &tar.Header{
 			Name:     entry.Name,
-			Mode:     0700, // Just a default that works for both dirs and files.
+			Mode:     entry.Mode,
 			Size:     int64(len(entry.Body)),
 			Typeflag: entry.Type,
 			Linkname: entry.LinkTarget,
+			Uid:      entry.Uid,
+			Gid:      entry.Gid,
 		}
 		err := tw.WriteHeader(hdr)
 		assert.Nil(t, err)
@@ -228,7 +244,10 @@ func TestDeployPackage(t *testing.T) {
 	defer tmpfile.Close()
 	defer os.Remove(tmpfile.Name())
 
-	srv := New("/tmp/milpa-pkg-test")
+	rootdir, err := ioutil.TempDir("", "milpa-pkg-test")
+	assert.Nil(t, err)
+
+	srv := New(rootdir)
 	srv.getHandlers()
 
 	// Create a .tar.gz file.
@@ -249,6 +268,13 @@ func TestDeployPackage(t *testing.T) {
 	srv.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
+
+	err = filepath.Walk(rootdir, func(path string, info os.FileInfo, e error) error {
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Uid, uint32(os.Geteuid()))
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Gid, uint32(os.Getegid()))
+		return nil
+	})
+	assert.Equal(t, err, nil)
 }
 
 func TestDeployInvalidPackage(t *testing.T) {
