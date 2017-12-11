@@ -340,8 +340,9 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		if name == "ROOTFS" {
 			continue
 		}
-		if name[:7] != "ROOTFS/" {
+		if len(name) < 7 || name[:7] != "ROOTFS/" {
 			glog.Warningln("file outside of ROOTFS in package:", name)
+			continue
 		}
 		name = rootdir + "/" + name[7:]
 
