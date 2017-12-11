@@ -363,6 +363,10 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 			glog.Infoln("h", name)
 			os.Remove(name) // Remove hardlink in case it exists.
 			err = os.Link(header.Linkname, name)
+		default:
+			glog.Warningf("unknown type while untaring: %d", header.Typeflag)
+			continue
+		}
 			if err != nil {
 				glog.Errorln("creating hardlink", name, "->", header.Linkname, ":", err)
 				return err
@@ -375,8 +379,6 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 				glog.Errorln("creating symlink", name, "->", header.Linkname, ":", err)
 				return err
 			}
-		default:
-			glog.Warningln("unknown type while extracting:", header.Typeflag)
 		}
 	}
 
