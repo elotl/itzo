@@ -451,8 +451,7 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		}
 		err = os.Chown(name, header.Uid, header.Gid)
 		if err != nil {
-			glog.Errorf("chown %s type %d uid %d gid %d: %v", name, header.Typeflag, header.Uid, header.Gid, err)
-			return err
+			glog.Warningf("warning: chown %s type %d uid %d gid %d: %v", name, header.Typeflag, header.Uid, header.Gid, err)
 		}
 	}
 
@@ -467,8 +466,7 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 			}
 			err = os.Lchown(link.src, link.uid, link.gid)
 			if err != nil {
-				glog.Errorf("chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
-				return err
+				glog.Warningf("warning: chown symlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
 			}
 		}
 		if link.linktype == tar.TypeLink {
@@ -485,8 +483,7 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 			}
 			err = os.Chown(link.src, link.uid, link.gid)
 			if err != nil {
-				glog.Errorf("chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
-				return err
+				glog.Warningf("warning: chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
 			}
 		}
 	}
