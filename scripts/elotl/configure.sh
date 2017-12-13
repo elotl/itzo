@@ -22,6 +22,7 @@ step 'Adjust rc.conf'
 sed -Ei \
 	-e 's/^[# ](rc_depend_strict)=.*/\1=NO/' \
 	-e 's/^[# ](rc_logger)=.*/\1=YES/' \
+	-e 's/^[# ](rc_verbose)=.*/\1=YES/' \
 	-e 's/^[# ](unicode)=.*/\1=YES/' \
 	/etc/rc.conf
 
