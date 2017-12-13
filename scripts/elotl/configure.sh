@@ -84,10 +84,13 @@ cat > /usr/local/bin/itzo_download.sh <<-EOF
 s3_path="http://itzo-download.s3.amazonaws.com/itzo"
 itzo_dir=/usr/local/bin
 itzo_path=\${itzo_dir}/itzo
-rm \$itzo_path
-wget --timeout=3 --tries=100 \$s3_path -P \$itzo_dir
+rm -f \$itzo_path
+while true; do
+	echo "$(date) downloading itzo from S3" >> /var/log/itzo/itzo_download.log 2>&1
+	wget --timeout=3 \$s3_path -P \$itzo_dir && break >> /var/log/itzo/itzo_download.log 2>&1
+done
 chmod 755 \$itzo_path
-\$itzo_path
+\$itzo_path >> /var/log/itzo/itzo.log 2>&1
 EOF
 chmod 755 /usr/local/bin/itzo_download.sh
 cat /usr/local/bin/itzo_download.sh
