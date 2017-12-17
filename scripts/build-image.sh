@@ -62,9 +62,11 @@ for pkg in $REQUIRED_PACKAGES; do
     fi
 done
 
-if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
-    echo "Error: please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
-    exit 1
+if [ "$NO_AMI" = false ]; then
+    if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
+        echo "Error: please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+        exit 1
+    fi
 fi
 
 if [[ $EUID -ne 0 ]]; then
