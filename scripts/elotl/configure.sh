@@ -95,6 +95,28 @@ EOF
 chmod 755 /usr/local/bin/itzo_download.sh
 cat /usr/local/bin/itzo_download.sh
 
+#
+# Note: the driver and libcuda client libraries need to be in sync, e.g. both
+# using the 387.26 interface.
+#
+step 'Add NVidia driver'
+wget http://itzo-packages.s3.amazonaws.com/nvidia.tar.gz
+tar xvzf nvidia.tar.gz
+for kernel in /lib/modules/*; do
+    mkdir -p "${kernel}/misc"
+    cp nvidia*.ko "${kernel}/misc/"
+done
+rm nvidia.tar.gz
+
+cat > /etc/modprobe.d/nvidia.conf <<-EOF
+blacklist amd76x_edac
+blacklist vga16fb
+blacklist nouveau
+blacklist rivafb
+blacklist nvidiafb
+blacklist rivatv
+EOF
+
 step 'Enable services'
 rc-update add acpid default
 rc-update add chronyd default
