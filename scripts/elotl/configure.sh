@@ -118,6 +118,52 @@ blacklist nvidiafb
 blacklist rivatv
 EOF
 
+cat > /etc/init.d/nvidia <<-EOF
+#!/sbin/openrc-run
+
+name=\$RC_SVCNAME
+
+depend() {
+        after bootmisc
+        need localmount
+}
+
+start() {
+  #
+  # This is the recommended script from:
+  #
+  #   http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
+  #
+  /sbin/modprobe nvidia
+  if [ "$?" -eq 0 ]; then
+    # Count the number of NVIDIA controllers found.
+    NVDEVS=`lspci | grep -i NVIDIA`
+    N3D=`echo "$NVDEVS" | grep "3D controller" | wc -l`
+    NVGA=`echo "$NVDEVS" | grep "VGA compatible controller" | wc -l`
+    N=`expr $N3D + $NVGA - 1`
+    for i in `seq 0 $N`; do
+      mknod -m 666 /dev/nvidia$i c 195 $i
+    done
+    mknod -m 666 /dev/nvidiactl c 195 255
+  fi
+
+  /sbin/modprobe nvidia-uvm
+  if [ "$?" -eq 0 ]; then
+    # Find out the major device number used by the nvidia-uvm driver
+    D=`grep nvidia-uvm /proc/devices | awk '{print $1}'`
+
+    mknod -m 666 /dev/nvidia-uvm c $D 0
+  fi
+}
+
+stop() {
+  for ko in nvidia-uvm nvidia-modeset nvidia-drm nvidia; do
+    /bin/lsmod | grep "\<$ko\>" && /sbin/rmmod $ko
+  done
+}
+EOF
+chmod 755 /etc/init.d/nvidia
+
 step 'Enable services'
 rc-update add acpid default
 rc-update add chronyd default
@@ -125,5 +171,6 @@ rc-update add crond default
 rc-update add net.eth0 default
 rc-update add sshd default
 rc-update add itzo default
+rc-update add nvidia default
 rc-update add net.lo boot
 rc-update add termencoding boot
