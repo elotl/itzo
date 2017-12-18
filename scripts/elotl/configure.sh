@@ -171,6 +171,7 @@ stop() {
 }
 EOF
 chmod 755 /etc/init.d/nvidia
+cat /etc/init.d/nvidia
 
 step 'Enable services'
 rc-update add acpid default
