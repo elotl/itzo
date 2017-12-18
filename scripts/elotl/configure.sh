@@ -105,6 +105,7 @@ tar xvzf nvidia.tar.gz
 for kernel in /lib/modules/*; do
     mkdir -p "${kernel}/misc"
     cp nvidia*.ko "${kernel}/misc/"
+    depmod -a "$(basename ${kernel})"
 done
 rm nvidia.tar.gz
 
