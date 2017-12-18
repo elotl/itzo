@@ -86,7 +86,7 @@ itzo_dir=/usr/local/bin
 itzo_path=\${itzo_dir}/itzo
 rm -f \$itzo_path
 while true; do
-	echo "$(date) downloading itzo from S3" >> /var/log/itzo/itzo_download.log 2>&1
+	echo "\$(date) downloading itzo from S3" >> /var/log/itzo/itzo_download.log 2>&1
 	wget --timeout=3 \$s3_path -P \$itzo_dir && break >> /var/log/itzo/itzo_download.log 2>&1
 done
 chmod 755 \$itzo_path
