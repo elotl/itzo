@@ -2,8 +2,10 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path"
 	"syscall"
 
 	"github.com/golang/glog"
@@ -74,10 +76,34 @@ func mountSpecial() error {
 	return nil
 }
 
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+	return out.Close()
+}
+
 // Helper function to start a unit in a chroot.
 func StartUnit(rootfs string, command []string) error {
 	glog.Infof("Starting new unit %v under rootfs '%s'", command, rootfs)
 	if rootfs != "" {
+		if err := copyFile("/etc/resolv.conf", path.Join(rootfs, "/etc/resolv.conf")); err != nil {
+			glog.Errorf("copyFile() resolv.conf to %s: %v", rootfs, err)
+			return err
+		}
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 		if err := syscall.Mount(rootfs, rootfs, "", syscall.MS_BIND, ""); err != nil {
 			glog.Errorf("Mount() %s: %v", rootfs, err)
