@@ -517,6 +517,18 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		if err := resizeVolume(); err != nil {
+			glog.Errorln("resizing volume:", err)
+			serverError(w, err)
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) getHandlers() {
 	// The /file/<path> endpoint is a real pain point
 	// by default, go's handlers will strip out double slashes //
@@ -531,6 +543,7 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
 	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
 	s.mux.HandleFunc("/milpa/deploy", s.deployHandler)
+	s.mux.HandleFunc("/milpa/resizevolume", s.resizevolumeHandler)
 }
 
 func (s *Server) ListenAndServe(addr string) {

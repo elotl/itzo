@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 	"syscall"
 
 	"github.com/golang/glog"
@@ -149,4 +151,44 @@ func StartUnit(rootfs string, command []string) error {
 		unmountSpecial()
 	}
 	return err
+}
+
+func resizeVolume() error {
+	mounts, err := os.Open("/proc/mounts")
+	if err != nil {
+		glog.Errorf("opening /proc/mounts: %v", err)
+		return err
+	}
+	defer mounts.Close()
+	rootdev := ""
+	scanner := bufio.NewScanner(mounts)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, " ")
+		if len(parts) < 2 || parts[1] != "/" {
+			continue
+		} else {
+			rootdev = parts[0]
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		glog.Errorf("reading /proc/mounts: %v", err)
+		return err
+	}
+	if rootdev == "" {
+		err = fmt.Errorf("can't find device the root filesystem is mounted on")
+		glog.Error(err)
+		return err
+	}
+	cmd := exec.Command("resize2fs", rootdev)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	glog.Infof("resizing %s", rootdev)
+	if err := cmd.Start(); err != nil {
+		glog.Errorf("resize2fs %s: %v", rootdev, err)
+		return err
+	}
+	return cmd.Wait()
 }
