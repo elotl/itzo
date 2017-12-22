@@ -4,3 +4,4 @@ logrotate
 openssh
 ssmtp
 sudo
+e2fsprogs-extra
