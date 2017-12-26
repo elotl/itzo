@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/golang/glog"
 )
@@ -181,14 +183,33 @@ func resizeVolume() error {
 		glog.Error(err)
 		return err
 	}
-	cmd := exec.Command("resize2fs", rootdev)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	glog.Infof("resizing %s", rootdev)
-	if err := cmd.Start(); err != nil {
-		glog.Errorf("resize2fs %s: %v", rootdev, err)
-		return err
+	for count := 0; count < 10; count++ {
+		// It might take a bit of time for Xen and/or the kernel to detect
+		// capacity changes on block devices. The output of resize2fs will
+		// contain if it did not need to do anything ("Nothing to do!") vs when
+		// it resized the device ("resizing required").
+		cmd := exec.Command("resize2fs", rootdev)
+		var outbuf bytes.Buffer
+		var errbuf bytes.Buffer
+		cmd.Stdout = io.MultiWriter(os.Stdout, &outbuf)
+		cmd.Stderr = io.MultiWriter(os.Stderr, &errbuf)
+		glog.Infof("trying to resize %s", rootdev)
+		if err := cmd.Start(); err != nil {
+			glog.Errorf("resize2fs %s: %v", rootdev, err)
+			return err
+		}
+		if err := cmd.Wait(); err != nil {
+			glog.Errorf("resize2fs %s: %v", rootdev, err)
+			return err
+		}
+		if strings.Contains(outbuf.String(), "resizing required") ||
+			strings.Contains(errbuf.String(), "resizing required") {
+			glog.Infof("%s has been successfully resized", rootdev)
+			return nil
+		}
+		time.Sleep(1 * time.Second)
 	}
-	return cmd.Wait()
+	glog.Errorf("resizing %s failed", rootdev)
+	return fmt.Errorf("no resizing performed; does %s have new capacity?",
+		rootdev)
 }
