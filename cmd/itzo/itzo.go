@@ -12,7 +12,7 @@ import (
 
 func main() {
 	var port = flag.Int("port", 8000, "Port to listen on")
-	var rootdir = flag.String("installrootdir", server.DEFAULT_INSTALL_ROOTDIR, "Directory to install packages in")
+	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
 	var approotfs = flag.String("rootfs", "", "Directory to chroot into when starting a unit")
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	// todo, ability to log to a file instead of stdout
