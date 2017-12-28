@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	stdlibpath "path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -186,7 +187,7 @@ func TestFileUploader(t *testing.T) {
 	assertFileHasContents(t, temppath, string(content))
 }
 
-func createTarGzBuf(t *testing.T, rootdir string) []byte {
+func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
 	var uid int = os.Geteuid()
 	var gid int = os.Getegid()
 	var entries = []struct {
@@ -201,7 +202,7 @@ func createTarGzBuf(t *testing.T, rootdir string) []byte {
 		{"ROOTFS/", tar.TypeDir, "", "", 0755, uid, gid},
 		{"ROOTFS/bin", tar.TypeDir, "", "", 0700, uid, gid},
 		{"ROOTFS/readme.link", tar.TypeSymlink, "", "./readme.txt", 0000, uid, gid},
-		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", rootdir), 0660, uid, gid},
+		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", getRootfs(rootdir, unit)), 0660, uid, gid},
 		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", "", 0640, uid, gid},
 		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), "", 0600, uid, gid},
 	}
@@ -238,7 +239,7 @@ func createTarGzBuf(t *testing.T, rootdir string) []byte {
 	return gzbuf.Bytes()
 }
 
-func TestDeployPackage(t *testing.T) {
+func deployPackage(t *testing.T, unit string) {
 	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
@@ -251,7 +252,7 @@ func TestDeployPackage(t *testing.T) {
 	srv.getHandlers()
 
 	// Create a .tar.gz file.
-	content := createTarGzBuf(t, srv.installRootdir)
+	content := createTarGzBuf(t, srv.installRootdir, unit)
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile(MULTIPART_PKG_NAME, tmpfile.Name())
@@ -261,7 +262,11 @@ func TestDeployPackage(t *testing.T) {
 	err = writer.Close()
 	assert.Nil(t, err)
 
-	req, err := http.NewRequest("POST", "/milpa/deploy", body)
+	path := "/milpa/deploy"
+	if unit != "" {
+		path = stdlibpath.Join(path, unit)
+	}
+	req, err := http.NewRequest("POST", path, body)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
@@ -275,6 +280,14 @@ func TestDeployPackage(t *testing.T) {
 		return nil
 	})
 	assert.Equal(t, err, nil)
+}
+
+func TestDeployPackage(t *testing.T) {
+	deployPackage(t, "")
+}
+
+func TestDeployPackageWithUnit(t *testing.T) {
+	deployPackage(t, "foobar")
 }
 
 func TestDeployInvalidPackage(t *testing.T) {
@@ -303,4 +316,18 @@ func TestDeployInvalidPackage(t *testing.T) {
 	srv.ServeHTTP(rr, req)
 
 	assert.NotEqual(t, http.StatusOK, rr.Code)
+}
+
+func TestStart(t *testing.T) {
+	exe := "/bin/echo"
+	command := fmt.Sprintf("%s %s", exe, "foobar")
+	path := "/milpa/start/foobar"
+	data := url.Values{}
+	data.Set("command", command)
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
 }

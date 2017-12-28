@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -25,8 +26,7 @@ import (
 const (
 	MULTIPART_FILE_NAME = "file"
 	MULTIPART_PKG_NAME  = "pkg"
-	// A safe default value for testing package uploads and deploys.
-	DEFAULT_INSTALL_ROOTDIR = "/tmp/milpa-pkg"
+	DEFAULT_ROOTDIR     = "/tmp/milpa/units"
 )
 
 type Server struct {
@@ -41,7 +41,7 @@ type Server struct {
 
 func New(rootdir string) *Server {
 	if rootdir == "" {
-		rootdir = DEFAULT_INSTALL_ROOTDIR
+		rootdir = DEFAULT_ROOTDIR
 	}
 	return &Server{
 		env:            StringMap{data: map[string]string{}},
@@ -127,23 +127,27 @@ func isEmptyDir(name string) (bool, error) {
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func (s *Server) startUnit(rootfs string, args []string) (appid int, err error) {
-	// Check if our rootfs is empty. If not, a package has been deployed there
+func (s *Server) startUnit(rootdir, unit string, args []string) (appid int, err error) {
+	// Check if our rootdir is empty. If not, a package has been deployed there
 	// with a complete root filesystem, and we need to run our command after
-	// chrooting into that rootfs.
-	isRootfsEmpty, err := isEmptyDir(rootfs)
+	// chrooting into the rootfs.
+	isRootdirEmpty, err := isEmptyDir(rootdir)
 	if err != nil {
-		glog.Errorf("Error checking if rootfs %s is an empty directory: %v", rootfs, err)
+		glog.Errorf("Error checking if rootdir %s is an empty directory: %v",
+			rootdir, err)
 	}
 	cmdline := []string{
 		"--exec",
 		strings.Join(args, " "),
 	}
-	if !isRootfsEmpty {
+	if !isRootdirEmpty {
+		// This will be something like "/tmp/milpa/units/foobar/ROOTFS". It is
+		// a complete root filesystem we are supposed to chroot into.
+		rootfs := getRootfs(rootdir, unit)
 		cmdline = append(cmdline, "--rootfs", rootfs)
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
-	if !isRootfsEmpty {
+	if !isRootdirEmpty {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
 		}
@@ -157,10 +161,6 @@ func (s *Server) startUnit(rootfs string, args []string) (appid int, err error) 
 		return 0, err
 	}
 	pid := cmd.Process.Pid
-	// XXX: are we supposed to be able to run multiple units at the same time?
-	// If yes, we should create the rootfs (when a package is deployed) in a
-	// unique directory under installrootdir. We should also save the pid in
-	// any case.
 	go func() {
 		err = cmd.Wait()
 		if err == nil {
@@ -191,13 +191,47 @@ func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		appid, err := s.startUnit(s.installRootdir, commandParts)
+		appid, err := s.startUnit(s.installRootdir, "", commandParts)
 		if err != nil {
 			serverError(w, err)
 			return
 		}
 		fmt.Fprintf(w, "%d", appid)
 		// todo: capture stdout logs
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "PUT":
+		if err := r.ParseForm(); err != nil {
+			fmt.Fprintf(w, "appHandler ParseForm() err: %v", err)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		unit := ""
+		if len(parts) > 2 {
+			unit = strings.Join(parts[2:], "/")
+		}
+		command := r.FormValue("command")
+		if command == "" {
+			badRequest(w, "No command specified")
+			return
+		}
+		commandParts, err := shlex.Split(command)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		appid, err := s.startUnit(s.installRootdir, unit, commandParts)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		fmt.Fprintf(w, "%d", appid)
 	default:
 		http.NotFound(w, r)
 	}
@@ -371,10 +405,11 @@ type Link struct {
 	gid      int
 }
 
-func extractAndInstall(rootdir string, filename string) (err error) {
-	err = os.MkdirAll(rootdir, 0700)
+func extractAndInstall(rootdir, unit, filename string) (err error) {
+	rootfs := getRootfs(rootdir, unit)
+	err = os.MkdirAll(rootfs, 0700)
 	if err != nil {
-		glog.Errorln("creating rootdir", rootdir, ":", err)
+		glog.Errorln("creating rootfs", rootfs, ":", err)
 		return err
 	}
 
@@ -413,7 +448,7 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 			glog.Warningln("file outside of ROOTFS in package:", name)
 			continue
 		}
-		name = rootdir + "/" + name[7:]
+		name = path.Join(rootfs, name[7:])
 
 		switch header.Typeflag {
 		case tar.TypeDir: // directory
@@ -438,7 +473,7 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 		case tar.TypeLink, tar.TypeSymlink:
 			linkname := header.Linkname
 			if len(linkname) >= 7 && linkname[:7] == "ROOTFS/" {
-				linkname = filepath.Join(rootdir, linkname[7:])
+				linkname = filepath.Join(rootfs, linkname[7:])
 			}
 			// Links might point to files or directories that have not been
 			// extracted from the tarball yet. Create them after going through
@@ -494,6 +529,12 @@ func extractAndInstall(rootdir string, filename string) (err error) {
 func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		unit := ""
+		if len(parts) > 2 {
+			unit = strings.Join(parts[2:], "/")
+		}
 		formFile, _, err := r.FormFile(MULTIPART_PKG_NAME)
 		if err != nil {
 			glog.Errorln("parsing form for package deploy:", err)
@@ -505,12 +546,15 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			glog.Errorln("saving file for package deploy:", err)
 			serverError(w, err)
+			return
 		}
 		defer os.Remove(pkgfile)
-		glog.Infoln("package saved as:", pkgfile, n, "bytes")
-		if err = extractAndInstall(s.installRootdir, pkgfile); err != nil {
+		glog.Infof("package for unit \"%s\" saved as: %s (%d bytes)",
+			unit, pkgfile, n)
+		if err = extractAndInstall(s.installRootdir, unit, pkgfile); err != nil {
 			glog.Errorln("extracting and installing package:", err)
 			serverError(w, err)
+			return
 		}
 	default:
 		http.NotFound(w, r)
@@ -523,6 +567,7 @@ func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
 		if err := resizeVolume(); err != nil {
 			glog.Errorln("resizing volume:", err)
 			serverError(w, err)
+			return
 		}
 	default:
 		http.NotFound(w, r)
@@ -542,7 +587,10 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/os/uptime", s.uptimeHandler)
 	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
 	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
+	s.mux.HandleFunc("/milpa/deploy/", s.deployHandler)
+	// Remove the next one once milpa always specifies unit for deploy.
 	s.mux.HandleFunc("/milpa/deploy", s.deployHandler)
+	s.mux.HandleFunc("/milpa/start/", s.startHandler)
 	s.mux.HandleFunc("/milpa/resizevolume", s.resizevolumeHandler)
 }
 

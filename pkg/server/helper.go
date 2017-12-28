@@ -213,3 +213,7 @@ func resizeVolume() error {
 	return fmt.Errorf("no resizing performed; does %s have new capacity?",
 		rootdev)
 }
+
+func getRootfs(rootdir, unit string) string {
+	return path.Join(rootdir, unit, "ROOTFS")
+}
