@@ -317,3 +317,17 @@ func TestDeployInvalidPackage(t *testing.T) {
 
 	assert.NotEqual(t, http.StatusOK, rr.Code)
 }
+
+func TestStart(t *testing.T) {
+	exe := "/bin/echo"
+	command := fmt.Sprintf("%s %s", exe, "foobar")
+	path := "/milpa/start/foobar"
+	data := url.Values{}
+	data.Set("command", command)
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+}
