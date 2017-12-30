@@ -4,6 +4,7 @@ package server
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -297,7 +298,6 @@ func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// example usage: curl -X POST http://localhost:8000/file/dest.txt -Ffile=@testfile.txt
 	switch r.Method {
 	case "POST":
-		//fmt.Println("url:", r.URL.RawPath)
 		key, err := getURLPart(2, r.URL.RawPath)
 		if err != nil {
 			badRequest(w, "Incorrect url format")
@@ -394,6 +394,21 @@ func saveFile(r io.Reader) (filename string, n int64, err error) {
 	}
 
 	return filename, written, err
+}
+
+func downloadFile(url string) (filename string, n int64, err error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		err = fmt.Errorf("Error downloading file: %s", err)
+		return
+	}
+	if resp.StatusCode != 200 {
+		err = fmt.Errorf("Download error, server responded with status code %d", resp.StatusCode)
+		return
+	}
+	reader := bufio.NewReader(resp.Body)
+	defer resp.Body.Close()
+	return saveFile(reader)
 }
 
 type Link struct {
@@ -526,7 +541,7 @@ func extractAndInstall(rootdir, unit, filename string) (err error) {
 	return nil
 }
 
-func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deployFileHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		path := strings.TrimPrefix(r.URL.Path, "/")
@@ -561,6 +576,44 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) deployURLHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		if err := r.ParseForm(); err != nil {
+			fmt.Fprintf(w, "appHandler ParseForm() err: %v", err)
+			return
+		}
+		url := r.FormValue("url")
+		if url == "" {
+			badRequest(w, "No url specified")
+			return
+		}
+		unit := r.FormValue("unit")
+		if unit == "" {
+			badRequest(w, "No unit name specified")
+			return
+		}
+
+		pkgfile, _, err := downloadFile(url)
+		if err != nil {
+			err := fmt.Errorf("Error downloading package from %s to node: %s", url, err)
+			glog.Errorln(err)
+			serverError(w, err)
+			return
+		}
+
+		defer os.Remove(pkgfile)
+		if err = extractAndInstall(s.installRootdir, unit, pkgfile); err != nil {
+			glog.Errorln("extracting and installing package:", err)
+			serverError(w, err)
+			return
+		}
+
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -587,9 +640,15 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/os/uptime", s.uptimeHandler)
 	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
 	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
-	s.mux.HandleFunc("/milpa/deploy/", s.deployHandler)
-	// Remove the next one once milpa always specifies unit for deploy.
-	s.mux.HandleFunc("/milpa/deploy", s.deployHandler)
+	s.mux.HandleFunc("/milpa/deployfile/", s.deployFileHandler)
+	// Remove the next two once milpa always specifies unit for deploy.
+	s.mux.HandleFunc("/milpa/deployfile", s.deployFileHandler)
+	// remove deploy endpoint when we are all upgraded to use deployfile
+	s.mux.HandleFunc("/milpa/deploy/", s.deployFileHandler)
+	s.mux.HandleFunc("/milpa/deploy", s.deployFileHandler)
+
+	s.mux.HandleFunc("/milpa/deployurl/", s.deployURLHandler)
+
 	s.mux.HandleFunc("/milpa/start/", s.startHandler)
 	s.mux.HandleFunc("/milpa/resizevolume", s.resizevolumeHandler)
 }

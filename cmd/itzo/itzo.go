@@ -10,7 +10,11 @@ import (
 	"github.com/golang/glog"
 )
 
+var buildDate string
+
 func main() {
+	//  go build -ldflags "-X main.buildDate=`date -u +.%Y%m%d.%H%M%S`"
+	var printBuild = flag.Bool("build", false, "display build date")
 	var port = flag.Int("port", 8000, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
 	var approotfs = flag.String("rootfs", "", "Directory to chroot into when starting a unit")
@@ -27,6 +31,11 @@ func main() {
 		} else {
 			os.Exit(0)
 		}
+	}
+
+	if *printBuild {
+		fmt.Println("Built On:", buildDate)
+		os.Exit(0)
 	}
 
 	glog.Info("Starting up agent")

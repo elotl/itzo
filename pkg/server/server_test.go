@@ -26,6 +26,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// UUgh, not sure why I made this a global var possibly because
+// we used to use gorilla mux??? Either way, it should go away   :/
 var s Server
 
 func TestMain(m *testing.M) {
@@ -262,7 +264,7 @@ func deployPackage(t *testing.T, unit string) {
 	err = writer.Close()
 	assert.Nil(t, err)
 
-	path := "/milpa/deploy"
+	path := "/milpa/deployfile"
 	if unit != "" {
 		path = stdlibpath.Join(path, unit)
 	}
@@ -307,7 +309,7 @@ func TestDeployInvalidPackage(t *testing.T) {
 	err = writer.Close()
 	assert.Nil(t, err)
 
-	req, err := http.NewRequest("POST", "/milpa/deploy", body)
+	req, err := http.NewRequest("POST", "/milpa/deployfile", body)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
@@ -318,6 +320,44 @@ func TestDeployInvalidPackage(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, rr.Code)
 }
 
+func TestDeployUrl(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
+	assert.Nil(t, err)
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+
+	rootdir, err := ioutil.TempDir("", "milpa-pkg-test")
+	assert.Nil(t, err)
+	unit := "foounit"
+	srv := New(rootdir)
+	srv.getHandlers()
+	content := createTarGzBuf(t, srv.installRootdir, unit)
+	downloadServer := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Write(content)
+		}))
+
+	data := url.Values{}
+	data.Set("url", downloadServer.URL)
+	data.Set("unit", unit)
+	body := strings.NewReader(data.Encode())
+	req, err := http.NewRequest("POST", "/milpa/deployurl/", body)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.getHandlers()
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	err = filepath.Walk(rootdir, func(path string, info os.FileInfo, e error) error {
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Uid, uint32(os.Geteuid()))
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Gid, uint32(os.Getegid()))
+		return nil
+	})
+	assert.Equal(t, err, nil)
+
+}
 func TestStart(t *testing.T) {
 	exe := "/bin/echo"
 	command := fmt.Sprintf("%s %s", exe, "foobar")

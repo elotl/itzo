@@ -104,6 +104,14 @@ func copyFile(src, dst string) error {
 func StartUnit(rootfs string, command []string) error {
 	glog.Infof("Starting new unit %v under rootfs '%s'", command, rootfs)
 	if rootfs != "" {
+		rootfsEtcDir := path.Join(rootfs, "/etc")
+		if _, err := os.Stat(rootfsEtcDir); os.IsNotExist(err) {
+			if err := os.Mkdir(rootfsEtcDir, 0755); err != nil {
+				glog.Errorf("Could not make new rootfs/etc directory: %s", err)
+				return err
+			}
+		}
+
 		if err := copyFile("/etc/resolv.conf", path.Join(rootfs, "/etc/resolv.conf")); err != nil {
 			glog.Errorf("copyFile() resolv.conf to %s: %v", rootfs, err)
 			return err
