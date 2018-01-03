@@ -12,8 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
-	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -110,69 +108,6 @@ func ensureExecutable(path string) error {
 	return nil
 }
 
-func isEmptyDir(name string) (bool, error) {
-	f, err := os.Open(name)
-	if err != nil && !os.IsExist(err) {
-		return true, nil
-	} else if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	_, err = f.Readdirnames(1)
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err
-}
-
-// This is a bit tricky in Go, since we are not supposed to use fork().
-// Instead, call the daemon with command line flags indicating that it is only
-// used as a helper to start a new unit in a new filesystem namespace.
-func (s *Server) startUnit(rootdir, unit string, args []string) (appid int, err error) {
-	// Check if our rootdir is empty. If not, a package has been deployed there
-	// with a complete root filesystem, and we need to run our command after
-	// chrooting into the rootfs.
-	isRootdirEmpty, err := isEmptyDir(rootdir)
-	if err != nil {
-		glog.Errorf("Error checking if rootdir %s is an empty directory: %v",
-			rootdir, err)
-	}
-	cmdline := []string{
-		"--exec",
-		strings.Join(args, " "),
-	}
-	if !isRootdirEmpty {
-		// This will be something like "/tmp/milpa/units/foobar/ROOTFS". It is
-		// a complete root filesystem we are supposed to chroot into.
-		rootfs := getRootfs(rootdir, unit)
-		cmdline = append(cmdline, "--rootfs", rootfs)
-	}
-	cmd := exec.Command("/proc/self/exe", cmdline...)
-	if !isRootdirEmpty {
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
-		}
-	}
-	// XXX: pipe stdout and stderr so logs can be fetched via REST.
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = s.makeAppEnv()
-	if err = cmd.Start(); err != nil {
-		return 0, err
-	}
-	pid := cmd.Process.Pid
-	go func() {
-		err = cmd.Wait()
-		if err == nil {
-			glog.Infof("Unit %v (helper pid %d) exited", args, pid)
-		} else {
-			glog.Errorf("Unit %v (helper pid %d) exited with error %v", args, pid, err)
-		}
-	}()
-	return pid, nil
-}
-
 func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 	// query parameters
 	// command
@@ -192,7 +127,7 @@ func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		appid, err := s.startUnit(s.installRootdir, "", commandParts)
+		appid, err := startUnitHelper(s.installRootdir, "", commandParts, s.makeAppEnv())
 		if err != nil {
 			serverError(w, err)
 			return
@@ -227,7 +162,7 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		appid, err := s.startUnit(s.installRootdir, unit, commandParts)
+		appid, err := startUnitHelper(s.installRootdir, unit, commandParts, s.makeAppEnv())
 		if err != nil {
 			serverError(w, err)
 			return
@@ -421,7 +356,7 @@ type Link struct {
 }
 
 func extractAndInstall(rootdir, unit, filename string) (err error) {
-	rootfs := getRootfs(rootdir, unit)
+	rootfs := getUnitRootfs(rootdir, unit)
 	err = os.MkdirAll(rootfs, 0700)
 	if err != nil {
 		glog.Errorln("creating rootfs", rootfs, ":", err)
@@ -463,7 +398,7 @@ func extractAndInstall(rootdir, unit, filename string) (err error) {
 			glog.Warningln("file outside of ROOTFS in package:", name)
 			continue
 		}
-		name = path.Join(rootfs, name[7:])
+		name = filepath.Join(rootfs, name[7:])
 
 		switch header.Typeflag {
 		case tar.TypeDir: // directory

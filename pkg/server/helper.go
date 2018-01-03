@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -15,70 +15,9 @@ import (
 	"github.com/golang/glog"
 )
 
-type Mount struct {
-	Source string
-	Target string
-	Fs     string
-	Flags  int
-	Data   string
-}
-
-var Mounts = []Mount{
-	{
-		Source: "proc",
-		Target: "/proc",
-		Fs:     "proc",
-		Flags:  syscall.MS_NOSUID | syscall.MS_NODEV | syscall.MS_NOEXEC | syscall.MS_RELATIME,
-	},
-	{
-		Source: "devtmpfs",
-		Target: "/dev",
-		Fs:     "devtmpfs",
-		Flags:  syscall.MS_NOSUID | syscall.MS_RELATIME,
-		Data:   "mode=755",
-	},
-	{
-		Source: "devpts",
-		Target: "/dev/pts",
-		Fs:     "devpts",
-		Flags:  syscall.MS_NOSUID | syscall.MS_NOEXEC | syscall.MS_RELATIME,
-		// This data is from Alpine, might differ on other distributions.
-		Data: "mode=620,ptmxmode=000",
-	},
-	{
-		Source: "sysfs",
-		Target: "/sys",
-		Fs:     "sysfs",
-		Flags:  syscall.MS_NOSUID | syscall.MS_NODEV | syscall.MS_NOEXEC | syscall.MS_RELATIME,
-	},
-}
-
-func unmountSpecial() {
-	// Unmount in reverse order, since /dev/pts is inside /dev.
-	for i := len(Mounts) - 1; i >= 0; i-- {
-		m := Mounts[i]
-		glog.Infof("Trying to Unmount() %s; this might fail", m.Target)
-		if err := syscall.Unmount(m.Target, syscall.MNT_DETACH); err != nil {
-			glog.Warningf("Unmount() %s: %v", m.Target, err)
-		}
-	}
-}
-
-func mountSpecial() error {
-	for _, m := range Mounts {
-		if err := os.MkdirAll(m.Target, 0700); err != nil {
-			glog.Errorf("MkdirAll() %s: %v", m.Target, err)
-			return err
-		}
-		glog.Infof("Mounting %s -> %s", m.Source, m.Target)
-		if err := syscall.Mount(m.Source, m.Target, m.Fs, uintptr(m.Flags), m.Data); err != nil {
-			glog.Errorf("Mount() %s -> %s: %v", m.Source, m.Target, err)
-			unmountSpecial()
-			return err
-		}
-	}
-	return nil
-}
+const (
+	ITZO_UNITDIR = "ITZO_UNITDIR"
+)
 
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
@@ -103,16 +42,46 @@ func copyFile(src, dst string) error {
 // Helper function to start a unit in a chroot.
 func StartUnit(rootfs string, command []string) error {
 	glog.Infof("Starting new unit %v under rootfs '%s'", command, rootfs)
+
+	unitdir := os.Getenv(ITZO_UNITDIR)
+	if unitdir == "" {
+		return fmt.Errorf("Missing environment variable ITZO_UNITDIR")
+	}
+
+	// Open log pipes _before_ chrooting, since the named pipes are outside of
+	// the rootfs.
+	lp, err := NewLogPipe(unitdir)
+	if err != nil {
+		return err
+	}
+	helperout, err := lp.OpenWriter(PIPE_HELPER_OUT, true)
+	if err != nil {
+		lp.Remove()
+		return err
+	}
+	defer helperout.Close()
+	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT, false)
+	if err != nil {
+		lp.Remove()
+		return err
+	}
+	defer unitout.Close()
+	uniterr, err := lp.OpenWriter(PIPE_UNIT_STDERR, false)
+	if err != nil {
+		lp.Remove()
+		return err
+	}
+	defer uniterr.Close()
+
 	if rootfs != "" {
-		rootfsEtcDir := path.Join(rootfs, "/etc")
+		rootfsEtcDir := filepath.Join(rootfs, "/etc")
 		if _, err := os.Stat(rootfsEtcDir); os.IsNotExist(err) {
 			if err := os.Mkdir(rootfsEtcDir, 0755); err != nil {
 				glog.Errorf("Could not make new rootfs/etc directory: %s", err)
 				return err
 			}
 		}
-
-		if err := copyFile("/etc/resolv.conf", path.Join(rootfs, "/etc/resolv.conf")); err != nil {
+		if err := copyFile("/etc/resolv.conf", filepath.Join(rootfs, "/etc/resolv.conf")); err != nil {
 			glog.Errorf("copyFile() resolv.conf to %s: %v", rootfs, err)
 			return err
 		}
@@ -146,9 +115,8 @@ func StartUnit(rootfs string, command []string) error {
 
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Env = os.Environ() // Inherit all environment variables.
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = unitout
+	cmd.Stderr = uniterr
 
 	if err := cmd.Start(); err != nil {
 		glog.Errorf("Start() %v: %v", command, err)
@@ -156,7 +124,7 @@ func StartUnit(rootfs string, command []string) error {
 	}
 	glog.Infof("Unit %v under rootfs '%s' running as pid %d", command, rootfs, cmd.Process.Pid)
 
-	err := cmd.Wait()
+	err = cmd.Wait()
 	if rootfs != "" {
 		unmountSpecial()
 	}
@@ -222,6 +190,88 @@ func resizeVolume() error {
 		rootdev)
 }
 
-func getRootfs(rootdir, unit string) string {
-	return path.Join(rootdir, unit, "ROOTFS")
+func getUnitDir(rootdir, unit string) string {
+	return filepath.Join(rootdir, unit)
+}
+
+func getUnitRootfs(rootdir, unit string) string {
+	return filepath.Join(getUnitDir(rootdir, unit), "ROOTFS")
+}
+
+func isEmptyDir(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil && !os.IsExist(err) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	_, err = f.Readdirnames(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
+}
+
+// This is a bit tricky in Go, since we are not supposed to use fork().
+// Instead, call the daemon with command line flags indicating that it is only
+// used as a helper to start a new unit in a new filesystem namespace.
+func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, err error) {
+	unitdir := getUnitDir(rootdir, unit)
+	if err = os.MkdirAll(unitdir, 0700); err != nil {
+		glog.Errorf("Error creating unit directory %s: %v", unitdir, err)
+		return 0, err
+	}
+	unitrootfs := getUnitRootfs(rootdir, unit)
+	// Check if a chroot exists for the unit. If it does, a package has been
+	// deployed there with a complete root filesystem, and we need to run our
+	// command after chrooting into that rootfs.
+	isUnitRootfsMissing, err := isEmptyDir(unitrootfs)
+	if err != nil {
+		glog.Errorf("Error checking if rootdir %s is an empty directory: %v",
+			rootdir, err)
+	}
+	cmdline := []string{
+		"--exec",
+		strings.Join(args, " "),
+	}
+	if !isUnitRootfsMissing {
+		// The rootfs of the unit is something like
+		// "/tmp/milpa/units/foobar/ROOTFS". It is a complete root filesystem
+		// we are supposed to chroot into.
+		cmdline = append(cmdline, "--rootfs", unitrootfs)
+	}
+	cmd := exec.Command("/proc/self/exe", cmdline...)
+	if !isUnitRootfsMissing {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
+		}
+	}
+	lp, err := NewLogPipe(unitdir)
+	if err != nil {
+		glog.Errorf("Error creating log pipes for %s: %v", unit, err)
+		return 0, err
+	}
+	lp.StartAllReaders(func(line string) {
+		prefix := fmt.Sprintf("[%s]", unit)
+		glog.Infof("%s %s", prefix, line)
+	})
+
+	// Provide the location of the unit directory via an environment variable.
+	cmd.Env = append(appenv, fmt.Sprintf("%s=%s", ITZO_UNITDIR, unitdir))
+	if err = cmd.Start(); err != nil {
+		lp.Remove()
+		return 0, err
+	}
+	pid := cmd.Process.Pid
+	go func() {
+		err = cmd.Wait()
+		if err == nil {
+			glog.Infof("Unit %v (helper pid %d) exited", args, pid)
+		} else {
+			glog.Errorf("Unit %v (helper pid %d) exited with error %v", args, pid, err)
+		}
+		lp.Remove()
+	}()
+	return pid, nil
 }
