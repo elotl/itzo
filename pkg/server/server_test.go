@@ -38,7 +38,14 @@ func TestMain(m *testing.M) {
 		StartUnit("", strings.Split(*appcmdline, " "))
 		os.Exit(0)
 	}
-	s = Server{env: StringMap{data: map[string]string{}}}
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	if err != nil {
+		panic("Error creating temporary directory")
+	}
+	s = Server{
+		env:            StringMap{data: map[string]string{}},
+		installRootdir: tmpdir,
+	}
 	s.getHandlers()
 	os.Exit(m.Run())
 }
@@ -204,7 +211,7 @@ func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
 		{"ROOTFS/", tar.TypeDir, "", "", 0755, uid, gid},
 		{"ROOTFS/bin", tar.TypeDir, "", "", 0700, uid, gid},
 		{"ROOTFS/readme.link", tar.TypeSymlink, "", "./readme.txt", 0000, uid, gid},
-		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", getRootfs(rootdir, unit)), 0660, uid, gid},
+		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", getUnitRootfs(rootdir, unit)), 0660, uid, gid},
 		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", "", 0640, uid, gid},
 		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), "", 0600, uid, gid},
 	}
