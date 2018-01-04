@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -282,7 +284,28 @@ func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	// additional params: need PID of process
 	switch r.Method {
-	case "POST":
+	case "GET":
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		unit := ""
+		if len(parts) > 2 {
+			unit = strings.Join(parts[2:], "/")
+		}
+		n := 0
+		lines := r.FormValue("lines")
+		if lines != "" {
+			if i, err := strconv.Atoi(lines); err == nil {
+				n = i
+			}
+		}
+		logs := getLogBuffer(unit, n)
+		json, err := json.Marshal(logs)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, "%s", json)
 	default:
 		http.NotFound(w, r)
 	}
