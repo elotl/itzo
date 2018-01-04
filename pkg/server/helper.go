@@ -19,6 +19,8 @@ const (
 	ITZO_UNITDIR = "ITZO_UNITDIR"
 )
 
+var logbuf = make(map[string]*LogBuffer)
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -252,9 +254,16 @@ func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, er
 		glog.Errorf("Error creating log pipes for %s: %v", unit, err)
 		return 0, err
 	}
-	lp.StartAllReaders(func(line string) {
-		prefix := fmt.Sprintf("[%s]", unit)
-		glog.Infof("%s %s", prefix, line)
+	// XXX: Make number of log lines retained configurable.
+	logbuf[unit] = NewLogBuffer(1000)
+	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
+		logbuf[unit].Write(fmt.Sprintf("[%s stdout]", unit), line)
+	})
+	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
+		logbuf[unit].Write(fmt.Sprintf("[%s stderr]", unit), line)
+	})
+	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
+		logbuf[unit].Write(fmt.Sprintf("[%s helper]", unit), line)
 	})
 
 	// Provide the location of the unit directory via an environment variable.
@@ -274,4 +283,20 @@ func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, er
 		lp.Remove()
 	}()
 	return pid, nil
+}
+
+func getLogBuffer(unit string, n int) []LogEntry {
+	if unit == "" {
+		// Logs from the first unit in the map, if there's any.
+		for _, v := range logbuf {
+			return v.Read(n)
+		}
+		// No units.
+		return nil
+	}
+	lb := logbuf[unit]
+	if lb != nil {
+		return lb.Read(n)
+	}
+	return nil
 }

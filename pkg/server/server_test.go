@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -365,6 +366,66 @@ func TestDeployUrl(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 }
+
+func TestGetLogs(t *testing.T) {
+	command := "echo foobar"
+	path := "/milpa/start/echo"
+	data := url.Values{}
+	data.Set("command", command)
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	var entries []LogEntry
+	timeout := time.Now().Add(3 * time.Second)
+	for time.Now().Before(timeout) {
+		path = "/milpa/logs/echo"
+		rr = sendRequest(t, "GET", path, nil)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		err := json.Unmarshal(rr.Body.Bytes(), &entries)
+		assert.Nil(t, err)
+		if len(entries) >= 1 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.True(t, 1 <= len(entries))
+	found := false
+	for _, e := range entries {
+		if strings.Contains(e.Line, "foobar") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found)
+}
+
+func TestGetLogsLines(t *testing.T) {
+	command := "sh -c \"yes|head -n10\""
+	path := "/milpa/start/yes"
+	data := url.Values{}
+	data.Set("command", command)
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	var entries []LogEntry
+	timeout := time.Now().Add(3 * time.Second)
+	for time.Now().Before(timeout) {
+		path = "/milpa/logs/yes?lines=3"
+		rr = sendRequest(t, "GET", path, nil)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		err := json.Unmarshal(rr.Body.Bytes(), &entries)
+		assert.Nil(t, err)
+		if len(entries) >= 3 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.True(t, 3 <= len(entries))
+	for _, e := range entries {
+		assert.Equal(t, e.Line, "y\n")
+	}
+}
+
 func TestStart(t *testing.T) {
 	exe := "/bin/echo"
 	command := fmt.Sprintf("%s %s", exe, "foobar")
