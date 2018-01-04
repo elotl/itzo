@@ -48,7 +48,7 @@ func (l *LogBuffer) Length() int {
 func (l *LogBuffer) Read(n int) []LogEntry {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
-	blen := l.Length()
+	blen := len(l.buf)
 	if n < 0 {
 		return nil
 	}
