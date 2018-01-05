@@ -5,8 +5,8 @@ package server
 import (
 	"archive/tar"
 	"bufio"
+	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -299,13 +299,12 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		logs := getLogBuffer(unit, n)
-		json, err := json.Marshal(logs)
-		if err != nil {
-			serverError(w, err)
-			return
+		var buffer bytes.Buffer
+		for _, entry := range logs {
+			buffer.WriteString(entry.Line)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, "%s", json)
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "%s", buffer.String())
 	default:
 		http.NotFound(w, r)
 	}
