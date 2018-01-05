@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -375,23 +374,22 @@ func TestGetLogs(t *testing.T) {
 	body := strings.NewReader(data.Encode())
 	rr := sendRequest(t, "PUT", path, body)
 	assert.Equal(t, rr.Code, http.StatusOK)
-	var entries []LogEntry
+	var lines []string
 	timeout := time.Now().Add(3 * time.Second)
 	for time.Now().Before(timeout) {
 		path = "/milpa/logs/echo"
 		rr = sendRequest(t, "GET", path, nil)
 		assert.Equal(t, rr.Code, http.StatusOK)
-		err := json.Unmarshal(rr.Body.Bytes(), &entries)
-		assert.Nil(t, err)
-		if len(entries) >= 1 {
+		lines = strings.Split(rr.Body.String(), "\n")
+		if len(lines) >= 2 {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	assert.True(t, 1 <= len(entries))
+	assert.True(t, 2 <= len(lines))
 	found := false
-	for _, e := range entries {
-		if strings.Contains(e.Line, "foobar") {
+	for _, line := range lines {
+		if strings.Contains(line, "foobar") {
 			found = true
 			break
 		}
@@ -407,22 +405,21 @@ func TestGetLogsLines(t *testing.T) {
 	body := strings.NewReader(data.Encode())
 	rr := sendRequest(t, "PUT", path, body)
 	assert.Equal(t, rr.Code, http.StatusOK)
-	var entries []LogEntry
+	var lines []string
 	timeout := time.Now().Add(3 * time.Second)
 	for time.Now().Before(timeout) {
 		path = "/milpa/logs/yes?lines=3"
 		rr = sendRequest(t, "GET", path, nil)
 		assert.Equal(t, rr.Code, http.StatusOK)
-		err := json.Unmarshal(rr.Body.Bytes(), &entries)
-		assert.Nil(t, err)
-		if len(entries) >= 3 {
+		lines = strings.Split(rr.Body.String(), "\n")
+		if len(lines) >= 4 {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	assert.True(t, 3 <= len(entries))
-	for _, e := range entries {
-		assert.Equal(t, e.Line, "y\n")
+	assert.True(t, 4 <= len(lines))
+	for _, line := range lines[:len(lines)-1] {
+		assert.Equal(t, line, "y")
 	}
 }
 
