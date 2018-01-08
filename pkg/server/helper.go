@@ -16,7 +16,17 @@ import (
 )
 
 const (
-	ITZO_UNITDIR = "ITZO_UNITDIR"
+	ITZO_UNITDIR        = "ITZO_UNITDIR"
+	ITZO_RESTART_POLICY = "ITZO_RESTART_POLICY"
+	MAX_BACKOFF_TIME    = 5 * time.Minute
+)
+
+type RestartPolicy int
+
+const (
+	RESTART_POLICY_ALWAYS    RestartPolicy = iota
+	RESTART_POLICY_NEVER     RestartPolicy = iota
+	RESTART_POLICY_ONFAILURE RestartPolicy = iota
 )
 
 var logbuf = make(map[string]*LogBuffer)
@@ -41,8 +51,99 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+func runUnit(command, env []string, unitout, uniterr *os.File, policy RestartPolicy) (err error) {
+	backoff := 1 * time.Second
+	for {
+		start := time.Now()
+		cmd := exec.Command(command[0], command[1:]...)
+		cmd.Env = env
+		cmd.Stdout = unitout
+		cmd.Stderr = uniterr
+
+		err = cmd.Start()
+		if err != nil {
+			// Start() failed, it is either an error looking up the executable,
+			// or a resource allocation problem.
+			glog.Errorf("Start() %v: %v", command, err)
+			return err
+		}
+		glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+
+		err = cmd.Wait()
+		d := time.Since(start)
+		if err != nil {
+			foundRc := false
+			if exiterr, ok := err.(*exec.ExitError); ok {
+				if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+					foundRc = true
+					glog.Infof("Command %v pid %d exited with %d after %.2fs",
+						command, cmd.Process.Pid, ws.ExitStatus(), d.Seconds())
+				}
+			}
+			if !foundRc {
+				glog.Infof("Command %v pid %d exited with %v after %.2fs",
+					command, cmd.Process.Pid, err, d.Seconds())
+			}
+		} else {
+			glog.Infof("Command %v pid %d exited with 0 after %.2fs",
+				command, cmd.Process.Pid, d.Seconds())
+		}
+
+		switch policy {
+		case RESTART_POLICY_NEVER:
+			return err
+		case RESTART_POLICY_ONFAILURE:
+			if err == nil {
+				return nil
+			}
+		case RESTART_POLICY_ALWAYS:
+			// Fallthrough.
+		}
+
+		if err != nil {
+			backoff *= 2
+			if backoff > MAX_BACKOFF_TIME {
+				backoff = MAX_BACKOFF_TIME
+			}
+		} else {
+			// Reset backoff.
+			backoff = 1 * time.Second
+		}
+		glog.Infof("Waiting for %v before starting %v again", backoff, command)
+		time.Sleep(backoff)
+	}
+}
+
+func GetRestartPolicy() RestartPolicy {
+	policy := RESTART_POLICY_ALWAYS // Default restart policy.
+	if rp := os.Getenv(ITZO_RESTART_POLICY); rp != "" {
+		switch rp {
+		case "RESTART_POLICY_ALWAYS":
+			policy = RESTART_POLICY_ALWAYS
+		case "RESTART_POLICY_NEVER":
+			policy = RESTART_POLICY_NEVER
+		case "RESTART_POLICY_ONFAILURE":
+			policy = RESTART_POLICY_ONFAILURE
+		default:
+			glog.Warningf("Unknown restart policy %s, using default", rp)
+		}
+	}
+	return policy
+}
+
+func SetRestartPolicy(policy RestartPolicy) {
+	switch policy {
+	case RESTART_POLICY_ALWAYS:
+		os.Setenv(ITZO_RESTART_POLICY, "RESTART_POLICY_ALWAYS")
+	case RESTART_POLICY_NEVER:
+		os.Setenv(ITZO_RESTART_POLICY, "RESTART_POLICY_NEVER")
+	case RESTART_POLICY_ONFAILURE:
+		os.Setenv(ITZO_RESTART_POLICY, "RESTART_POLICY_ONFAILURE")
+	}
+}
+
 // Helper function to start a unit in a chroot.
-func StartUnit(rootfs string, command []string) error {
+func StartUnit(rootfs string, command []string, policy RestartPolicy) error {
 	glog.Infof("Starting new unit %v under rootfs '%s'", command, rootfs)
 
 	unitdir := os.Getenv(ITZO_UNITDIR)
@@ -115,21 +216,12 @@ func StartUnit(rootfs string, command []string) error {
 		}
 	}
 
-	cmd := exec.Command(command[0], command[1:]...)
-	cmd.Env = os.Environ() // Inherit all environment variables.
-	cmd.Stdout = unitout
-	cmd.Stderr = uniterr
+	err = runUnit(command, os.Environ(), unitout, uniterr, policy)
 
-	if err := cmd.Start(); err != nil {
-		glog.Errorf("Start() %v: %v", command, err)
-		return err
-	}
-	glog.Infof("Unit %v under rootfs '%s' running as pid %d", command, rootfs, cmd.Process.Pid)
-
-	err = cmd.Wait()
 	if rootfs != "" {
 		unmountSpecial()
 	}
+
 	return err
 }
 

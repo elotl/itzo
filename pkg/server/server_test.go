@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	flag.Parse()
 	if *appcmdline != "" {
-		StartUnit("", strings.Split(*appcmdline, " "))
+		StartUnit("", strings.Split(*appcmdline, " "), RESTART_POLICY_NEVER)
 		os.Exit(0)
 	}
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
