@@ -129,7 +129,8 @@ func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		appid, err := startUnitHelper(s.installRootdir, "", commandParts, s.makeAppEnv())
+		appid, err := startUnitHelper(s.installRootdir, "", commandParts,
+			s.makeAppEnv(), RESTART_POLICY_ALWAYS)
 		if err != nil {
 			serverError(w, err)
 			return
@@ -164,7 +165,24 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		appid, err := startUnitHelper(s.installRootdir, unit, commandParts, s.makeAppEnv())
+		policy := RESTART_POLICY_ALWAYS
+		for k, v := range r.Form {
+			if strings.ToLower(k) != "restartpolicy" {
+				continue
+			}
+			for _, val := range v {
+				switch strings.ToLower(val) {
+				case "always":
+					policy = RESTART_POLICY_ALWAYS
+				case "never":
+					policy = RESTART_POLICY_NEVER
+				case "onfailure":
+					policy = RESTART_POLICY_ONFAILURE
+				}
+			}
+		}
+		appid, err := startUnitHelper(s.installRootdir, unit, commandParts,
+			s.makeAppEnv(), policy)
 		if err != nil {
 			serverError(w, err)
 			return

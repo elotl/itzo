@@ -25,7 +25,7 @@ func main() {
 	flag.Lookup("logtostderr").Value.Set("true")
 
 	if *appcmdline != "" {
-		policy := server.GetRestartPolicy()
+		policy := server.GetRestartPolicy(os.Environ())
 		err := server.StartUnit(*approotfs, strings.Split(*appcmdline, " "), policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s in chroot %s: %v", *appcmdline, *approotfs, err)

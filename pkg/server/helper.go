@@ -91,9 +91,17 @@ func runUnit(command, env []string, unitout, uniterr *os.File, policy RestartPol
 	}
 }
 
-func GetRestartPolicy() RestartPolicy {
+func GetRestartPolicy(env []string) RestartPolicy {
 	policy := RESTART_POLICY_ALWAYS // Default restart policy.
-	if rp := os.Getenv(ITZO_RESTART_POLICY); rp != "" {
+	for _, s := range env {
+		parts := strings.Split(s, "=")
+		if len(parts) != 2 {
+			glog.Fatalf("Invalid environment variable setting: %s", s)
+		}
+		if strings.ToUpper(parts[0]) != strings.ToUpper(ITZO_RESTART_POLICY) {
+			continue
+		}
+		rp := parts[1]
 		switch rp {
 		case "RESTART_POLICY_ALWAYS":
 			policy = RESTART_POLICY_ALWAYS
@@ -108,15 +116,30 @@ func GetRestartPolicy() RestartPolicy {
 	return policy
 }
 
-func SetRestartPolicy(policy RestartPolicy) {
+func SetRestartPolicy(env *[]string, policy RestartPolicy) {
+	out := []string{}
+	for _, s := range *env {
+		// Remove existing policy.
+		parts := strings.SplitN(s, "=", 2)
+		if len(parts) < 2 {
+			glog.Fatalf("Invalid environment variable setting: %s", s)
+		}
+		if strings.ToUpper(parts[0]) != strings.ToUpper(ITZO_RESTART_POLICY) {
+			out = append(out, s)
+		}
+	}
 	switch policy {
 	case RESTART_POLICY_ALWAYS:
-		os.Setenv(ITZO_RESTART_POLICY, "RESTART_POLICY_ALWAYS")
+		out = append(out,
+			fmt.Sprintf("%s=%s", ITZO_RESTART_POLICY, "RESTART_POLICY_ALWAYS"))
 	case RESTART_POLICY_NEVER:
-		os.Setenv(ITZO_RESTART_POLICY, "RESTART_POLICY_NEVER")
+		out = append(out,
+			fmt.Sprintf("%s=%s", ITZO_RESTART_POLICY, "RESTART_POLICY_NEVER"))
 	case RESTART_POLICY_ONFAILURE:
-		os.Setenv(ITZO_RESTART_POLICY, "RESTART_POLICY_ONFAILURE")
+		out = append(out,
+			fmt.Sprintf("%s=%s", ITZO_RESTART_POLICY, "RESTART_POLICY_ONFAILURE"))
 	}
+	*env = out
 }
 
 // Helper function to start a unit in a chroot.
@@ -205,7 +228,7 @@ func StartUnit(rootfs string, command []string, policy RestartPolicy) error {
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, err error) {
+func startUnitHelper(rootdir, unit string, args, appenv []string, policy RestartPolicy) (appid int, err error) {
 	unitdir := getUnitDir(rootdir, unit)
 	if err = os.MkdirAll(unitdir, 0700); err != nil {
 		glog.Errorf("Error creating unit directory %s: %v", unitdir, err)
@@ -253,6 +276,8 @@ func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, er
 		logbuf[unit].Write(fmt.Sprintf("[%s helper]", unit), line)
 	})
 
+	// Set restart policy.
+	SetRestartPolicy(&appenv, policy)
 	// Provide the location of the unit directory via an environment variable.
 	cmd.Env = append(appenv, fmt.Sprintf("%s=%s", ITZO_UNITDIR, unitdir))
 	if err = cmd.Start(); err != nil {
