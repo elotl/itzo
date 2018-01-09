@@ -120,13 +120,13 @@ func StringToRestartPolicy(pstr string) RestartPolicy {
 }
 
 // Helper function to start a unit in a chroot.
-func StartUnit(rootfs string, command []string, policy RestartPolicy) error {
-	glog.Infof("Starting new unit %v under rootfs '%s'", command, rootfs)
-
-	unitdir := os.Getenv(ITZO_UNITDIR)
-	if unitdir == "" {
-		return fmt.Errorf("Missing environment variable ITZO_UNITDIR")
+func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
+	rootfs := filepath.Join(unitdir, "ROOTFS")
+	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
+		// No chroot package has been deployed for the unit.
+		rootfs = ""
 	}
+	glog.Infof("Starting new unit %v in %s", command, unitdir)
 
 	// Open log pipes _before_ chrooting, since the named pipes are outside of
 	// the rootfs.
@@ -212,6 +212,18 @@ func startUnitHelper(rootdir, unit string, args, appenv []string, policy Restart
 		return 0, err
 	}
 	unitrootfs := getUnitRootfs(rootdir, unit)
+
+	cmdline := []string{
+		"--exec",
+		strings.Join(args, " "),
+		"--restartpolicy",
+		RestartPolicyToString(policy),
+		"--unitdir",
+		unitdir,
+	}
+	cmd := exec.Command("/proc/self/exe", cmdline...)
+	cmd.Env = appenv
+
 	// Check if a chroot exists for the unit. If it does, a package has been
 	// deployed there with a complete root filesystem, and we need to run our
 	// command after chrooting into that rootfs.
@@ -220,24 +232,12 @@ func startUnitHelper(rootdir, unit string, args, appenv []string, policy Restart
 		glog.Errorf("Error checking if rootdir %s is an empty directory: %v",
 			rootdir, err)
 	}
-	cmdline := []string{
-		"--exec",
-		strings.Join(args, " "),
-		"--restartpolicy",
-		RestartPolicyToString(policy),
-	}
-	if !isUnitRootfsMissing {
-		// The rootfs of the unit is something like
-		// "/tmp/milpa/units/foobar/ROOTFS". It is a complete root filesystem
-		// we are supposed to chroot into.
-		cmdline = append(cmdline, "--rootfs", unitrootfs)
-	}
-	cmd := exec.Command("/proc/self/exe", cmdline...)
 	if !isUnitRootfsMissing {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
 		}
 	}
+
 	lp, err := NewLogPipe(unitdir)
 	if err != nil {
 		glog.Errorf("Error creating log pipes for %s: %v", unit, err)
@@ -255,8 +255,6 @@ func startUnitHelper(rootdir, unit string, args, appenv []string, policy Restart
 		logbuf[unit].Write(fmt.Sprintf("[%s helper]", unit), line)
 	})
 
-	// Provide the location of the unit directory via an environment variable.
-	cmd.Env = append(appenv, fmt.Sprintf("%s=%s", ITZO_UNITDIR, unitdir))
 	if err = cmd.Start(); err != nil {
 		lp.Remove()
 		return 0, err
