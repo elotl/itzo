@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	ITZO_UNITDIR        = "ITZO_UNITDIR"
-	ITZO_RESTART_POLICY = "ITZO_RESTART_POLICY"
-	MAX_BACKOFF_TIME    = 5 * time.Minute
+	ITZO_UNITDIR     = "ITZO_UNITDIR"
+	MAX_BACKOFF_TIME = 5 * time.Minute
 )
 
 type RestartPolicy int
@@ -91,55 +90,33 @@ func runUnit(command, env []string, unitout, uniterr *os.File, policy RestartPol
 	}
 }
 
-func GetRestartPolicy(env []string) RestartPolicy {
-	policy := RESTART_POLICY_ALWAYS // Default restart policy.
-	for _, s := range env {
-		parts := strings.Split(s, "=")
-		if len(parts) != 2 {
-			glog.Fatalf("Invalid environment variable setting: %s", s)
-		}
-		if strings.ToUpper(parts[0]) != strings.ToUpper(ITZO_RESTART_POLICY) {
-			continue
-		}
-		rp := parts[1]
-		switch rp {
-		case "RESTART_POLICY_ALWAYS":
-			policy = RESTART_POLICY_ALWAYS
-		case "RESTART_POLICY_NEVER":
-			policy = RESTART_POLICY_NEVER
-		case "RESTART_POLICY_ONFAILURE":
-			policy = RESTART_POLICY_ONFAILURE
-		default:
-			glog.Warningf("Unknown restart policy %s, using default", rp)
-		}
-	}
-	return policy
-}
-
-func SetRestartPolicy(env *[]string, policy RestartPolicy) {
-	out := []string{}
-	for _, s := range *env {
-		// Remove existing policy.
-		parts := strings.SplitN(s, "=", 2)
-		if len(parts) < 2 {
-			glog.Fatalf("Invalid environment variable setting: %s", s)
-		}
-		if strings.ToUpper(parts[0]) != strings.ToUpper(ITZO_RESTART_POLICY) {
-			out = append(out, s)
-		}
-	}
+func RestartPolicyToString(policy RestartPolicy) string {
+	pstr := ""
 	switch policy {
 	case RESTART_POLICY_ALWAYS:
-		out = append(out,
-			fmt.Sprintf("%s=%s", ITZO_RESTART_POLICY, "RESTART_POLICY_ALWAYS"))
+		pstr = "always"
 	case RESTART_POLICY_NEVER:
-		out = append(out,
-			fmt.Sprintf("%s=%s", ITZO_RESTART_POLICY, "RESTART_POLICY_NEVER"))
+		pstr = "never"
 	case RESTART_POLICY_ONFAILURE:
-		out = append(out,
-			fmt.Sprintf("%s=%s", ITZO_RESTART_POLICY, "RESTART_POLICY_ONFAILURE"))
+		pstr = "onfailure"
 	}
-	*env = out
+	return pstr
+}
+
+func StringToRestartPolicy(pstr string) RestartPolicy {
+	policy := RESTART_POLICY_ALWAYS
+	switch strings.ToLower(pstr) {
+	case "always":
+		policy = RESTART_POLICY_ALWAYS
+	case "never":
+		policy = RESTART_POLICY_NEVER
+	case "onfailure":
+		policy = RESTART_POLICY_ONFAILURE
+	default:
+		glog.Warningf("Invalid restart policy %s; using default 'always'\n",
+			pstr)
+	}
+	return policy
 }
 
 // Helper function to start a unit in a chroot.
@@ -246,6 +223,8 @@ func startUnitHelper(rootdir, unit string, args, appenv []string, policy Restart
 	cmdline := []string{
 		"--exec",
 		strings.Join(args, " "),
+		"--restartpolicy",
+		RestartPolicyToString(policy),
 	}
 	if !isUnitRootfsMissing {
 		// The rootfs of the unit is something like
@@ -276,8 +255,6 @@ func startUnitHelper(rootdir, unit string, args, appenv []string, policy Restart
 		logbuf[unit].Write(fmt.Sprintf("[%s helper]", unit), line)
 	})
 
-	// Set restart policy.
-	SetRestartPolicy(&appenv, policy)
 	// Provide the location of the unit directory via an environment variable.
 	cmd.Env = append(appenv, fmt.Sprintf("%s=%s", ITZO_UNITDIR, unitdir))
 	if err = cmd.Start(); err != nil {

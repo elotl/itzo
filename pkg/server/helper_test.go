@@ -13,21 +13,22 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetSetRestartPolicyDefault(t *testing.T) {
-	env := []string{}
-	assert.Equal(t, RESTART_POLICY_ALWAYS, GetRestartPolicy(env))
+func TestStringToRestartPolicy(t *testing.T) {
+	policyStrs := []string{"always", "never", "onfailure"}
+	for _, pstr := range policyStrs {
+		assert.Equal(t, pstr, RestartPolicyToString(StringToRestartPolicy(pstr)))
+	}
+	assert.Equal(t, StringToRestartPolicy("foobar"), RESTART_POLICY_ALWAYS)
 }
 
-func TestGetSetRestartPolicy(t *testing.T) {
+func TestRestartPolicyToString(t *testing.T) {
 	policies := []RestartPolicy{
 		RESTART_POLICY_ALWAYS,
 		RESTART_POLICY_NEVER,
 		RESTART_POLICY_ONFAILURE,
 	}
 	for _, p := range policies {
-		env := []string{}
-		SetRestartPolicy(&env, p)
-		assert.Equal(t, p, GetRestartPolicy(env))
+		assert.Equal(t, p, StringToRestartPolicy(RestartPolicyToString(p)))
 	}
 }
 
