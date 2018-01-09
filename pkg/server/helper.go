@@ -1,10 +1,7 @@
 package server
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,39 +13,120 @@ import (
 )
 
 const (
-	ITZO_UNITDIR = "ITZO_UNITDIR"
+	ITZO_UNITDIR     = "ITZO_UNITDIR"
+	MAX_BACKOFF_TIME = 5 * time.Minute
+)
+
+type RestartPolicy int
+
+const (
+	RESTART_POLICY_ALWAYS    RestartPolicy = iota
+	RESTART_POLICY_NEVER     RestartPolicy = iota
+	RESTART_POLICY_ONFAILURE RestartPolicy = iota
 )
 
 var logbuf = make(map[string]*LogBuffer)
 
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
+func runUnit(command, env []string, unitout, uniterr *os.File, policy RestartPolicy) (err error) {
+	backoff := 1 * time.Second
+	for {
+		start := time.Now()
+		cmd := exec.Command(command[0], command[1:]...)
+		cmd.Env = env
+		cmd.Stdout = unitout
+		cmd.Stderr = uniterr
 
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
+		err = cmd.Start()
+		if err != nil {
+			// Start() failed, it is either an error looking up the executable,
+			// or a resource allocation problem.
+			glog.Errorf("Start() %v: %v", command, err)
+			return err
+		}
+		glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
 
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return err
+		err = cmd.Wait()
+		d := time.Since(start)
+		if err != nil {
+			foundRc := false
+			if exiterr, ok := err.(*exec.ExitError); ok {
+				if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+					foundRc = true
+					glog.Infof("Command %v pid %d exited with %d after %.2fs",
+						command, cmd.Process.Pid, ws.ExitStatus(), d.Seconds())
+				}
+			}
+			if !foundRc {
+				glog.Infof("Command %v pid %d exited with %v after %.2fs",
+					command, cmd.Process.Pid, err, d.Seconds())
+			}
+		} else {
+			glog.Infof("Command %v pid %d exited with 0 after %.2fs",
+				command, cmd.Process.Pid, d.Seconds())
+		}
+
+		switch policy {
+		case RESTART_POLICY_NEVER:
+			return err
+		case RESTART_POLICY_ONFAILURE:
+			if err == nil {
+				return nil
+			}
+		case RESTART_POLICY_ALWAYS:
+			// Fallthrough.
+		}
+
+		if err != nil {
+			backoff *= 2
+			if backoff > MAX_BACKOFF_TIME {
+				backoff = MAX_BACKOFF_TIME
+			}
+		} else {
+			// Reset backoff.
+			backoff = 1 * time.Second
+		}
+		glog.Infof("Waiting for %v before starting %v again", backoff, command)
+		time.Sleep(backoff)
 	}
-	return out.Close()
+}
+
+func RestartPolicyToString(policy RestartPolicy) string {
+	pstr := ""
+	switch policy {
+	case RESTART_POLICY_ALWAYS:
+		pstr = "always"
+	case RESTART_POLICY_NEVER:
+		pstr = "never"
+	case RESTART_POLICY_ONFAILURE:
+		pstr = "onfailure"
+	}
+	return pstr
+}
+
+func StringToRestartPolicy(pstr string) RestartPolicy {
+	policy := RESTART_POLICY_ALWAYS
+	switch strings.ToLower(pstr) {
+	case "always":
+		policy = RESTART_POLICY_ALWAYS
+	case "never":
+		policy = RESTART_POLICY_NEVER
+	case "onfailure":
+		policy = RESTART_POLICY_ONFAILURE
+	default:
+		glog.Warningf("Invalid restart policy %s; using default 'always'\n",
+			pstr)
+	}
+	return policy
 }
 
 // Helper function to start a unit in a chroot.
-func StartUnit(rootfs string, command []string) error {
-	glog.Infof("Starting new unit %v under rootfs '%s'", command, rootfs)
-
-	unitdir := os.Getenv(ITZO_UNITDIR)
-	if unitdir == "" {
-		return fmt.Errorf("Missing environment variable ITZO_UNITDIR")
+func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
+	rootfs := getUnitRootfs(unitdir)
+	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
+		// No chroot package has been deployed for the unit.
+		rootfs = ""
 	}
+	glog.Infof("Starting new unit %v in %s", command, unitdir)
 
 	// Open log pipes _before_ chrooting, since the named pipes are outside of
 	// the rootfs.
@@ -115,116 +193,37 @@ func StartUnit(rootfs string, command []string) error {
 		}
 	}
 
-	cmd := exec.Command(command[0], command[1:]...)
-	cmd.Env = os.Environ() // Inherit all environment variables.
-	cmd.Stdout = unitout
-	cmd.Stderr = uniterr
+	err = runUnit(command, os.Environ(), unitout, uniterr, policy)
 
-	if err := cmd.Start(); err != nil {
-		glog.Errorf("Start() %v: %v", command, err)
-		return err
-	}
-	glog.Infof("Unit %v under rootfs '%s' running as pid %d", command, rootfs, cmd.Process.Pid)
-
-	err = cmd.Wait()
 	if rootfs != "" {
 		unmountSpecial()
 	}
+
 	return err
-}
-
-func resizeVolume() error {
-	mounts, err := os.Open("/proc/mounts")
-	if err != nil {
-		glog.Errorf("opening /proc/mounts: %v", err)
-		return err
-	}
-	defer mounts.Close()
-	rootdev := ""
-	scanner := bufio.NewScanner(mounts)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, " ")
-		if len(parts) < 2 || parts[1] != "/" {
-			continue
-		} else {
-			rootdev = parts[0]
-			break
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		glog.Errorf("reading /proc/mounts: %v", err)
-		return err
-	}
-	if rootdev == "" {
-		err = fmt.Errorf("can't find device the root filesystem is mounted on")
-		glog.Error(err)
-		return err
-	}
-	for count := 0; count < 10; count++ {
-		// It might take a bit of time for Xen and/or the kernel to detect
-		// capacity changes on block devices. The output of resize2fs will
-		// contain if it did not need to do anything ("Nothing to do!") vs when
-		// it resized the device ("resizing required").
-		cmd := exec.Command("resize2fs", rootdev)
-		var outbuf bytes.Buffer
-		var errbuf bytes.Buffer
-		cmd.Stdout = io.MultiWriter(os.Stdout, &outbuf)
-		cmd.Stderr = io.MultiWriter(os.Stderr, &errbuf)
-		glog.Infof("trying to resize %s", rootdev)
-		if err := cmd.Start(); err != nil {
-			glog.Errorf("resize2fs %s: %v", rootdev, err)
-			return err
-		}
-		if err := cmd.Wait(); err != nil {
-			glog.Errorf("resize2fs %s: %v", rootdev, err)
-			return err
-		}
-		if strings.Contains(outbuf.String(), "resizing required") ||
-			strings.Contains(errbuf.String(), "resizing required") {
-			glog.Infof("%s has been successfully resized", rootdev)
-			return nil
-		}
-		time.Sleep(1 * time.Second)
-	}
-	glog.Errorf("resizing %s failed", rootdev)
-	return fmt.Errorf("no resizing performed; does %s have new capacity?",
-		rootdev)
-}
-
-func getUnitDir(rootdir, unit string) string {
-	return filepath.Join(rootdir, unit)
-}
-
-func getUnitRootfs(rootdir, unit string) string {
-	return filepath.Join(getUnitDir(rootdir, unit), "ROOTFS")
-}
-
-func isEmptyDir(name string) (bool, error) {
-	f, err := os.Open(name)
-	if err != nil && !os.IsExist(err) {
-		return true, nil
-	} else if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	_, err = f.Readdirnames(1)
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err
 }
 
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, err error) {
+func startUnitHelper(rootdir, unit string, args, appenv []string, policy RestartPolicy) (appid int, err error) {
 	unitdir := getUnitDir(rootdir, unit)
 	if err = os.MkdirAll(unitdir, 0700); err != nil {
 		glog.Errorf("Error creating unit directory %s: %v", unitdir, err)
 		return 0, err
 	}
-	unitrootfs := getUnitRootfs(rootdir, unit)
+	unitrootfs := getUnitRootfs(unitdir)
+
+	cmdline := []string{
+		"--exec",
+		strings.Join(args, " "),
+		"--restartpolicy",
+		RestartPolicyToString(policy),
+		"--unitdir",
+		unitdir,
+	}
+	cmd := exec.Command("/proc/self/exe", cmdline...)
+	cmd.Env = appenv
+
 	// Check if a chroot exists for the unit. If it does, a package has been
 	// deployed there with a complete root filesystem, and we need to run our
 	// command after chrooting into that rootfs.
@@ -233,22 +232,12 @@ func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, er
 		glog.Errorf("Error checking if rootdir %s is an empty directory: %v",
 			rootdir, err)
 	}
-	cmdline := []string{
-		"--exec",
-		strings.Join(args, " "),
-	}
-	if !isUnitRootfsMissing {
-		// The rootfs of the unit is something like
-		// "/tmp/milpa/units/foobar/ROOTFS". It is a complete root filesystem
-		// we are supposed to chroot into.
-		cmdline = append(cmdline, "--rootfs", unitrootfs)
-	}
-	cmd := exec.Command("/proc/self/exe", cmdline...)
 	if !isUnitRootfsMissing {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
 		}
 	}
+
 	lp, err := NewLogPipe(unitdir)
 	if err != nil {
 		glog.Errorf("Error creating log pipes for %s: %v", unit, err)
@@ -266,8 +255,6 @@ func startUnitHelper(rootdir, unit string, args, appenv []string) (appid int, er
 		logbuf[unit].Write(fmt.Sprintf("[%s helper]", unit), line)
 	})
 
-	// Provide the location of the unit directory via an environment variable.
-	cmd.Env = append(appenv, fmt.Sprintf("%s=%s", ITZO_UNITDIR, unitdir))
 	if err = cmd.Start(); err != nil {
 		lp.Remove()
 		return 0, err

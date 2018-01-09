@@ -33,9 +33,12 @@ var s Server
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
+	var unitdir = flag.String("unitdir", "/tmp", "Unit directory")
+	var rp = flag.String("restartpolicy", "always", "Restart policy")
 	flag.Parse()
 	if *appcmdline != "" {
-		StartUnit("", strings.Split(*appcmdline, " "))
+		policy := StringToRestartPolicy(*rp)
+		StartUnit(*unitdir, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
@@ -211,7 +214,7 @@ func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
 		{"ROOTFS/", tar.TypeDir, "", "", 0755, uid, gid},
 		{"ROOTFS/bin", tar.TypeDir, "", "", 0700, uid, gid},
 		{"ROOTFS/readme.link", tar.TypeSymlink, "", "./readme.txt", 0000, uid, gid},
-		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", getUnitRootfs(rootdir, unit)), 0660, uid, gid},
+		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", getUnitRootfs(getUnitDir(rootdir, unit))), 0660, uid, gid},
 		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", "", 0640, uid, gid},
 		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), "", 0600, uid, gid},
 	}
