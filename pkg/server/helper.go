@@ -121,7 +121,7 @@ func StringToRestartPolicy(pstr string) RestartPolicy {
 
 // Helper function to start a unit in a chroot.
 func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
-	rootfs := filepath.Join(unitdir, "ROOTFS")
+	rootfs := getUnitRootfs(unitdir)
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
 		// No chroot package has been deployed for the unit.
 		rootfs = ""
@@ -211,7 +211,7 @@ func startUnitHelper(rootdir, unit string, args, appenv []string, policy Restart
 		glog.Errorf("Error creating unit directory %s: %v", unitdir, err)
 		return 0, err
 	}
-	unitrootfs := getUnitRootfs(rootdir, unit)
+	unitrootfs := getUnitRootfs(unitdir)
 
 	cmdline := []string{
 		"--exec",

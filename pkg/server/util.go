@@ -97,8 +97,8 @@ func getUnitDir(rootdir, unit string) string {
 	return filepath.Join(rootdir, unit)
 }
 
-func getUnitRootfs(rootdir, unit string) string {
-	return filepath.Join(getUnitDir(rootdir, unit), "ROOTFS")
+func getUnitRootfs(unitdir string) string {
+	return filepath.Join(unitdir, "ROOTFS")
 }
 
 func isEmptyDir(name string) (bool, error) {

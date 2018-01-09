@@ -396,7 +396,8 @@ type Link struct {
 }
 
 func extractAndInstall(rootdir, unit, filename string) (err error) {
-	rootfs := getUnitRootfs(rootdir, unit)
+	unitdir := getUnitDir(rootdir, unit)
+	rootfs := getUnitRootfs(unitdir)
 	err = os.MkdirAll(rootfs, 0700)
 	if err != nil {
 		glog.Errorln("creating rootfs", rootfs, ":", err)
