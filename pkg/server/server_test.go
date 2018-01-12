@@ -30,6 +30,65 @@ import (
 // we used to use gorilla mux??? Either way, it should go away   :/
 var s Server
 
+// This will ensure all the helper processes and their children get terminated
+// before the main process exits.
+func killChildren() {
+	// Set of pids.
+	var pids map[int]interface{} = make(map[int]interface{})
+	pids[os.Getpid()] = nil
+
+	d, err := os.Open("/proc")
+	if err != nil {
+		return
+	}
+	defer d.Close()
+
+	for {
+		fis, err := d.Readdir(10)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return
+		}
+
+		for _, fi := range fis {
+			if !fi.IsDir() {
+				continue
+			}
+			name := fi.Name()
+			if name[0] < '0' || name[0] > '9' {
+				continue
+			}
+			pid64, err := strconv.ParseInt(name, 10, 0)
+			if err != nil {
+				continue
+			}
+			pid := int(pid64)
+			statPath := fmt.Sprintf("/proc/%s/stat", name)
+			dataBytes, err := ioutil.ReadFile(statPath)
+			if err != nil {
+				continue
+			}
+			data := string(dataBytes)
+			binStart := strings.IndexRune(data, '(') + 1
+			binEnd := strings.IndexRune(data[binStart:], ')')
+			data = data[binStart+binEnd+2:]
+			var state int
+			var ppid int
+			var pgrp int
+			var sid int
+			_, _ = fmt.Sscanf(data, "%c %d %d %d", &state, &ppid, &pgrp, &sid)
+			_, ok := pids[ppid]
+			if ok {
+				syscall.Kill(pid, syscall.SIGKILL)
+				// Kill any children of this process too.
+				pids[pid] = nil
+			}
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
@@ -51,7 +110,9 @@ func TestMain(m *testing.M) {
 		installRootdir: tmpdir,
 	}
 	s.getHandlers()
-	os.Exit(m.Run())
+	ret := m.Run()
+	killChildren()
+	os.Exit(ret)
 }
 
 func sendRequest(t *testing.T, method, url string, body io.Reader) *httptest.ResponseRecorder {
