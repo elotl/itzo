@@ -33,12 +33,13 @@ var s Server
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
-	var unitdir = flag.String("unitdir", "/tmp", "Unit directory")
+	var rootdir = flag.String("rootdir", DEFAULT_ROOTDIR, "Base dir for units")
+	var unit = flag.String("unit", "myunit", "Unit name")
 	var rp = flag.String("restartpolicy", "always", "Restart policy")
 	flag.Parse()
 	if *appcmdline != "" {
 		policy := StringToRestartPolicy(*rp)
-		StartUnit(*unitdir, strings.Split(*appcmdline, " "), policy)
+		StartUnit(*rootdir, *unit, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
 	tmpdir, err := ioutil.TempDir("", "itzo-test")

@@ -13,9 +13,9 @@ import (
 var logbuf = make(map[string]*LogBuffer)
 
 // Helper function to start a unit in a chroot.
-func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
-	glog.Infof("Starting new unit %v in %s", command, unitdir)
-	unit, err := NewUnitFromDir(unitdir)
+func StartUnit(rootdir, name string, command []string, policy RestartPolicy) error {
+	glog.Infof("Starting %v for %s in basedir %s", command, name, rootdir)
+	unit, err := OpenUnit(rootdir, name)
 	if err != nil {
 		return err
 	}
@@ -26,13 +26,8 @@ func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
 func startUnitHelper(rootdir, name string, args, appenv []string, policy RestartPolicy) (appid int, err error) {
-	unit, err := NewUnit(rootdir, name)
+	unit, err := OpenUnit(rootdir, name)
 	if err != nil {
-		return 0, err
-	}
-	unitdir := unit.Directory
-	if err = os.MkdirAll(unitdir, 0700); err != nil {
-		glog.Errorf("Error creating unit directory %s: %v", unitdir, err)
 		return 0, err
 	}
 	unitrootfs := unit.GetRootfs()
@@ -42,8 +37,10 @@ func startUnitHelper(rootdir, name string, args, appenv []string, policy Restart
 		strings.Join(args, " "),
 		"--restartpolicy",
 		RestartPolicyToString(policy),
-		"--unitdir",
-		unitdir,
+		"--unit",
+		name,
+		"--rootdir",
+		rootdir,
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
 	cmd.Env = appenv

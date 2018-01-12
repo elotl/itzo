@@ -41,7 +41,7 @@ const (
 	RESTART_POLICY_ONFAILURE RestartPolicy = iota
 )
 
-func NewUnit(rootdir, name string) (*Unit, error) {
+func OpenUnit(rootdir, name string) (*Unit, error) {
 	glog.Infof("Creating new unit '%s' in %s\n", name, rootdir)
 	directory := filepath.Join(rootdir, name)
 	// Make sure unit directory exists.
@@ -69,19 +69,6 @@ func NewUnit(rootdir, name string) (*Unit, error) {
 	}
 	u.SetStatus(UnitStatusCreated)
 	return &u, nil
-}
-
-func NewUnitFromDir(unitdir string) (*Unit, error) {
-	elements := strings.Split(unitdir, string(filepath.Separator))
-	if elements[len(elements)-1] == "" {
-		elements = elements[:len(elements)-1]
-	}
-	if len(elements) <= 1 {
-		return nil, fmt.Errorf("Invalid unitdir %s", unitdir)
-	}
-	rootdir := strings.Join(elements[:len(elements)-1], string(filepath.Separator))
-	name := elements[len(elements)-1]
-	return NewUnit(rootdir, name)
 }
 
 func (u *Unit) Close() {
