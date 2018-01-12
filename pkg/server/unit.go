@@ -13,7 +13,7 @@ type Unit struct {
 	LogPipe
 	Directory  string
 	Name       string
-	StatusFile *os.File
+	statusFile *os.File
 }
 
 type UnitStatus string
@@ -43,7 +43,7 @@ func NewUnit(rootdir, name string) (*Unit, error) {
 	u := Unit{
 		Directory:  directory,
 		Name:       name,
-		StatusFile: f,
+		statusFile: f,
 	}
 	u.SetStatus(UnitStatusCreated)
 	return &u, nil
@@ -63,7 +63,10 @@ func NewUnitFromDir(unitdir string) (*Unit, error) {
 }
 
 func (u *Unit) Close() {
-	u.StatusFile.Close()
+	if u.statusFile != nil {
+		u.statusFile.Close()
+		u.statusFile = nil
+	}
 }
 
 func (u *Unit) GetRootfs() string {
@@ -71,13 +74,13 @@ func (u *Unit) GetRootfs() string {
 }
 
 func (u *Unit) GetStatus() (UnitStatus, error) {
-	_, err := u.StatusFile.Seek(0, 0)
+	_, err := u.statusFile.Seek(0, 0)
 	if err != nil {
 		glog.Errorf("Error seeking in statusfile for %s\n", u.Name)
 		return UnitStatusUnknown, err
 	}
 	buf := make([]byte, 32)
-	n, err := u.StatusFile.Read(buf)
+	n, err := u.statusFile.Read(buf)
 	if err != nil {
 		glog.Errorf("Error reading statusfile for %s\n", u.Name)
 		return UnitStatusUnknown, err
@@ -104,16 +107,16 @@ func (u *Unit) GetStatus() (UnitStatus, error) {
 
 func (u *Unit) SetStatus(status UnitStatus) error {
 	glog.Infof("Updating status of unit '%s' to %s\n", u.Name, status)
-	_, err := u.StatusFile.Seek(0, 0)
+	_, err := u.statusFile.Seek(0, 0)
 	if err != nil {
 		glog.Errorf("Error seeking in statusfile for %s\n", u.Name)
 		return err
 	}
 	buf := []byte(status)
-	if _, err := u.StatusFile.Write(buf); err != nil {
+	if _, err := u.statusFile.Write(buf); err != nil {
 		glog.Errorf("Error updating statusfile for %s\n", u.Name)
 		return err
 	}
-	u.StatusFile.Truncate(int64(len(buf)))
+	u.statusFile.Truncate(int64(len(buf)))
 	return nil
 }
