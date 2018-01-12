@@ -431,109 +431,16 @@ func TestGetLogsLines(t *testing.T) {
 	}
 }
 
-func pidExists(pid int) bool {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	} else {
-		err = process.Signal(syscall.Signal(0))
-		if err != nil {
-			return false
-		}
-	}
-	return true
-}
-
-func TestStartDefaultRestart(t *testing.T) {
+func TestStart(t *testing.T) {
 	exe := "/bin/echo"
 	command := fmt.Sprintf("%s %s", exe, "foobar")
 	path := "/milpa/start/foobar"
 	data := url.Values{}
 	data.Set("command", command)
-	// The default for restartpolicy is "always".
 	body := strings.NewReader(data.Encode())
 	rr := sendRequest(t, "PUT", path, body)
 	assert.Equal(t, rr.Code, http.StatusOK)
 	pid, err := strconv.Atoi(rr.Body.String())
 	assert.Nil(t, err)
 	assert.True(t, pid > 0)
-	assert.True(t, pidExists(pid))
-}
-
-func TestStartAlwaysRestart(t *testing.T) {
-	exe := "/bin/echo"
-	command := fmt.Sprintf("%s %s", exe, "foobar")
-	path := "/milpa/start/foobar"
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "always")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	assert.True(t, pidExists(pid))
-}
-
-func TestStartNeverRestart(t *testing.T) {
-	exe := "/bin/echo"
-	command := fmt.Sprintf("%s %s", exe, "foobar")
-	path := "/milpa/start/foobar"
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "never")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	timeout := time.Now().Add(10 * time.Second)
-	for time.Now().Before(timeout) {
-		if !pidExists(pid) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	assert.False(t, pidExists(pid))
-}
-
-func TestStartOnFailureRestartSuccess(t *testing.T) {
-	exe := "/bin/echo"
-	command := fmt.Sprintf("%s %s", exe, "foobar")
-	path := "/milpa/start/foobar"
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "onfailure")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	timeout := time.Now().Add(10 * time.Second)
-	for time.Now().Before(timeout) {
-		if !pidExists(pid) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	assert.False(t, pidExists(pid))
-}
-
-func TestStartOnFailureRestartFailure(t *testing.T) {
-	exe := "/bin/echo"
-	command := fmt.Sprintf("%s %s", exe, "foobar")
-	path := "/milpa/start/foobar"
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "onfailure")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	assert.True(t, pidExists(pid))
 }
