@@ -134,10 +134,7 @@ func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
 
 	// Open log pipes _before_ chrooting, since the named pipes are outside of
 	// the rootfs.
-	lp, err := NewLogPipe(unitdir)
-	if err != nil {
-		return err
-	}
+	lp := unit.LogPipe
 	helperout, err := lp.OpenWriter(PIPE_HELPER_OUT, true)
 	if err != nil {
 		lp.Remove()
@@ -246,11 +243,7 @@ func startUnitHelper(rootdir, name string, args, appenv []string, policy Restart
 		}
 	}
 
-	lp, err := NewLogPipe(unitdir)
-	if err != nil {
-		glog.Errorf("Error creating log pipes for %s: %v", name, err)
-		return 0, err
-	}
+	lp := unit.LogPipe
 	// XXX: Make number of log lines retained configurable.
 	logbuf[name] = NewLogBuffer(1000)
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {

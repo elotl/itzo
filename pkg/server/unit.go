@@ -10,7 +10,7 @@ import (
 )
 
 type Unit struct {
-	LogPipe
+	*LogPipe
 	Directory  string
 	Name       string
 	statusFile *os.File
@@ -40,7 +40,14 @@ func NewUnit(rootdir, name string) (*Unit, error) {
 		glog.Errorf("Error opening statusfile for unit '%s': %v\n", name, err)
 		return nil, err
 	}
+	lp, err := NewLogPipe(directory)
+	if err != nil {
+		f.Close()
+		glog.Errorf("Error creating logpipes for unit '%s': %v\n", name, err)
+		return nil, err
+	}
 	u := Unit{
+		LogPipe:    lp,
 		Directory:  directory,
 		Name:       name,
 		statusFile: f,
