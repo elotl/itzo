@@ -121,7 +121,11 @@ func StringToRestartPolicy(pstr string) RestartPolicy {
 
 // Helper function to start a unit in a chroot.
 func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
-	rootfs := getUnitRootfs(unitdir)
+	unit, err := NewUnitFromDir(unitdir)
+	if err != nil {
+		return err
+	}
+	rootfs := unit.GetRootfs()
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
 		// No chroot package has been deployed for the unit.
 		rootfs = ""
@@ -205,13 +209,17 @@ func StartUnit(unitdir string, command []string, policy RestartPolicy) error {
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func startUnitHelper(rootdir, unit string, args, appenv []string, policy RestartPolicy) (appid int, err error) {
-	unitdir := getUnitDir(rootdir, unit)
+func startUnitHelper(rootdir, name string, args, appenv []string, policy RestartPolicy) (appid int, err error) {
+	unit, err := NewUnit(rootdir, name)
+	if err != nil {
+		return 0, err
+	}
+	unitdir := unit.Directory
 	if err = os.MkdirAll(unitdir, 0700); err != nil {
 		glog.Errorf("Error creating unit directory %s: %v", unitdir, err)
 		return 0, err
 	}
-	unitrootfs := getUnitRootfs(unitdir)
+	unitrootfs := unit.GetRootfs()
 
 	cmdline := []string{
 		"--exec",
@@ -240,19 +248,19 @@ func startUnitHelper(rootdir, unit string, args, appenv []string, policy Restart
 
 	lp, err := NewLogPipe(unitdir)
 	if err != nil {
-		glog.Errorf("Error creating log pipes for %s: %v", unit, err)
+		glog.Errorf("Error creating log pipes for %s: %v", name, err)
 		return 0, err
 	}
 	// XXX: Make number of log lines retained configurable.
-	logbuf[unit] = NewLogBuffer(1000)
+	logbuf[name] = NewLogBuffer(1000)
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		logbuf[unit].Write(fmt.Sprintf("[%s stdout]", unit), line)
+		logbuf[name].Write(fmt.Sprintf("[%s stdout]", name), line)
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		logbuf[unit].Write(fmt.Sprintf("[%s stderr]", unit), line)
+		logbuf[name].Write(fmt.Sprintf("[%s stderr]", name), line)
 	})
 	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-		logbuf[unit].Write(fmt.Sprintf("[%s helper]", unit), line)
+		logbuf[name].Write(fmt.Sprintf("[%s helper]", name), line)
 	})
 
 	if err = cmd.Start(); err != nil {
