@@ -201,6 +201,10 @@ func TestFileUploader(t *testing.T) {
 }
 
 func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
+	u, err := OpenUnit(rootdir, unit)
+	assert.Nil(t, err)
+	defer u.Close()
+
 	var uid int = os.Geteuid()
 	var gid int = os.Getegid()
 	var entries = []struct {
@@ -215,7 +219,7 @@ func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
 		{"ROOTFS/", tar.TypeDir, "", "", 0755, uid, gid},
 		{"ROOTFS/bin", tar.TypeDir, "", "", 0700, uid, gid},
 		{"ROOTFS/readme.link", tar.TypeSymlink, "", "./readme.txt", 0000, uid, gid},
-		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", getUnitRootfs(getUnitDir(rootdir, unit))), 0660, uid, gid},
+		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", u.GetRootfs()), 0660, uid, gid},
 		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", "", 0640, uid, gid},
 		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), "", 0600, uid, gid},
 	}
@@ -238,7 +242,7 @@ func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
 		_, err = tw.Write([]byte(entry.Body))
 		assert.Nil(t, err)
 	}
-	err := tw.Close()
+	err = tw.Close()
 	assert.Nil(t, err)
 
 	// Create our gzip buffer, effectively a .tar.gz in memory.

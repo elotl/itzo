@@ -3,10 +3,8 @@
 package server
 
 import (
-	"archive/tar"
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -386,137 +384,6 @@ func downloadFile(url string) (filename string, n int64, err error) {
 	return saveFile(reader)
 }
 
-type Link struct {
-	dst      string
-	src      string
-	linktype byte
-	mode     os.FileMode
-	uid      int
-	gid      int
-}
-
-func extractAndInstall(rootdir, unit, filename string) (err error) {
-	unitdir := getUnitDir(rootdir, unit)
-	rootfs := getUnitRootfs(unitdir)
-	err = os.MkdirAll(rootfs, 0700)
-	if err != nil {
-		glog.Errorln("creating rootfs", rootfs, ":", err)
-		return err
-	}
-
-	f, err := os.Open(filename)
-	if err != nil {
-		glog.Errorln("opening package file:", err)
-		return err
-	}
-	defer f.Close()
-
-	gzr, err := gzip.NewReader(f)
-	if err != nil {
-		glog.Errorln("uncompressing package:", err)
-		return err
-	}
-	defer gzr.Close()
-
-	var links []Link
-
-	tr := tar.NewReader(gzr)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			glog.Errorln("extracting package:", err)
-			return err
-		}
-
-		name := header.Name
-		if name == "ROOTFS" {
-			continue
-		}
-		if len(name) < 7 || name[:7] != "ROOTFS/" {
-			glog.Warningln("file outside of ROOTFS in package:", name)
-			continue
-		}
-		name = filepath.Join(rootfs, name[7:])
-
-		switch header.Typeflag {
-		case tar.TypeDir: // directory
-			glog.Infoln("d", name)
-			os.Mkdir(name, os.FileMode(header.Mode))
-		case tar.TypeReg: // regular file
-			glog.Infoln("f", name)
-			data := make([]byte, header.Size)
-			read_so_far := int64(0)
-			for read_so_far < header.Size {
-				n, err := tr.Read(data[read_so_far:])
-				if err != nil && err != io.EOF {
-					glog.Errorln("extracting", name, ":", err)
-					return err
-				}
-				read_so_far += int64(n)
-			}
-			if read_so_far != header.Size {
-				glog.Errorf("f %s error: read %d bytes, but size is %d bytes", name, read_so_far, header.Size)
-			}
-			ioutil.WriteFile(name, data, os.FileMode(header.Mode))
-		case tar.TypeLink, tar.TypeSymlink:
-			linkname := header.Linkname
-			if len(linkname) >= 7 && linkname[:7] == "ROOTFS/" {
-				linkname = filepath.Join(rootfs, linkname[7:])
-			}
-			// Links might point to files or directories that have not been
-			// extracted from the tarball yet. Create them after going through
-			// all entries in the tarball.
-			links = append(links, Link{linkname, name, header.Typeflag, os.FileMode(header.Mode), header.Uid, header.Gid})
-			continue
-		default:
-			glog.Warningf("unknown type while untaring: %d", header.Typeflag)
-			continue
-		}
-		err = os.Chown(name, header.Uid, header.Gid)
-		if err != nil {
-			glog.Warningf("warning: chown %s type %d uid %d gid %d: %v", name, header.Typeflag, header.Uid, header.Gid, err)
-		}
-	}
-
-	for _, link := range links {
-		os.Remove(link.src) // Remove link in case it exists.
-		if link.linktype == tar.TypeSymlink {
-			glog.Infoln("s", link.src)
-			err = os.Symlink(link.dst, link.src)
-			if err != nil {
-				glog.Errorf("creating symlink %s -> %s: %v", link.src, link.dst, err)
-				return err
-			}
-			err = os.Lchown(link.src, link.uid, link.gid)
-			if err != nil {
-				glog.Warningf("warning: chown symlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
-			}
-		}
-		if link.linktype == tar.TypeLink {
-			glog.Infoln("h", link.src)
-			err = os.Link(link.dst, link.src)
-			if err != nil {
-				glog.Errorf("creating hardlink %s -> %s: %v", link.src, link.dst, err)
-				return err
-			}
-			err = os.Chmod(link.src, link.mode)
-			if err != nil {
-				glog.Errorf("chmod hardlink %s %d: %v", link.src, link.mode, err)
-				return err
-			}
-			err = os.Chown(link.src, link.uid, link.gid)
-			if err != nil {
-				glog.Warningf("warning: chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
-			}
-		}
-	}
-
-	return nil
-}
-
 func (s *Server) deployFileHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -542,7 +409,14 @@ func (s *Server) deployFileHandler(w http.ResponseWriter, r *http.Request) {
 		defer os.Remove(pkgfile)
 		glog.Infof("package for unit \"%s\" saved as: %s (%d bytes)",
 			unit, pkgfile, n)
-		if err = extractAndInstall(s.installRootdir, unit, pkgfile); err != nil {
+		u, err := OpenUnit(s.installRootdir, unit)
+		if err != nil {
+			glog.Errorln("opening unit %s for package deploy:", unit, err)
+			serverError(w, err)
+			return
+		}
+		defer u.Close()
+		if err = u.DeployPackage(pkgfile); err != nil {
 			glog.Errorln("extracting and installing package:", err)
 			serverError(w, err)
 			return
@@ -579,7 +453,16 @@ func (s *Server) deployURLHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		defer os.Remove(pkgfile)
-		if err = extractAndInstall(s.installRootdir, unit, pkgfile); err != nil {
+
+		u, err := OpenUnit(s.installRootdir, unit)
+		if err != nil {
+			glog.Errorln("opening unit %s for package deploy:", unit, err)
+			serverError(w, err)
+			return
+		}
+		defer u.Close()
+
+		if err = u.DeployPackage(pkgfile); err != nil {
 			glog.Errorln("extracting and installing package:", err)
 			serverError(w, err)
 			return
