@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -91,14 +90,6 @@ func resizeVolume() error {
 	glog.Errorf("resizing %s failed", rootdev)
 	return fmt.Errorf("no resizing performed; does %s have new capacity?",
 		rootdev)
-}
-
-func getUnitDir(rootdir, unit string) string {
-	return filepath.Join(rootdir, unit)
-}
-
-func getUnitRootfs(unitdir string) string {
-	return filepath.Join(unitdir, "ROOTFS")
 }
 
 func isEmptyDir(name string) (bool, error) {
