@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	ITZO_UNITDIR     = "ITZO_UNITDIR"
 	MAX_BACKOFF_TIME = 5 * time.Minute
 )
 
