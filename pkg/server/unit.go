@@ -261,13 +261,19 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			glog.Errorf("copyFile() resolv.conf to %s: %v", rootfs, err)
 			return err
 		}
-		if err := syscall.Mount(filepath.Join(u.Directory, "status"), "status", "", syscall.MS_BIND, ""); err != nil {
-			glog.Errorf("Mount() statusfile: %v", err)
-			return err
-		}
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 		if err := syscall.Mount(rootfs, rootfs, "", syscall.MS_BIND, ""); err != nil {
 			glog.Errorf("Mount() %s: %v", rootfs, err)
+			return err
+		}
+		// Bind mount statusfile into the chroot. Note: both the source and the
+		// destination files need to exist, otherwise the bind mount will fail.
+		statussrc := filepath.Join(u.Directory, "status")
+		ensureFileExists(statussrc)
+		statusdst := filepath.Join(u.GetRootfs(), "status")
+		ensureFileExists(statusdst)
+		if err := syscall.Mount(statussrc, statusdst, "", syscall.MS_BIND, ""); err != nil {
+			glog.Errorf("Mount() statusfile: %v", err)
 			return err
 		}
 		if err := os.MkdirAll(oldrootfs, 0700); err != nil {

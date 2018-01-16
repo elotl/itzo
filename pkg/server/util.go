@@ -106,3 +106,15 @@ func isEmptyDir(name string) (bool, error) {
 	}
 	return false, err
 }
+
+func ensureFileExists(name string) error {
+	f, err := os.Open(name)
+	if err != nil && os.IsNotExist(err) {
+		f, err = os.Create(name)
+	}
+	if err != nil {
+		return err
+	}
+	f.Close()
+	return nil
+}
