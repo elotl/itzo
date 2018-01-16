@@ -22,9 +22,8 @@ const (
 
 type Unit struct {
 	*LogPipe
-	Directory  string
-	Name       string
-	statusFile *os.File
+	Directory string
+	Name      string
 }
 
 type UnitStatus string
@@ -53,61 +52,45 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		glog.Errorf("Error reating unit '%s': %v\n", name, err)
 		return nil, err
 	}
-	spath := filepath.Join(directory, "status")
-	f, err := os.OpenFile(spath, os.O_CREATE|os.O_RDWR, 0600)
+	// Change to directory, so statusfile can be referenced via a relative path.
+	err := os.Chdir(directory)
 	if err != nil {
-		glog.Errorf("Error opening statusfile for unit '%s': %v\n", name, err)
+		glog.Errorf("Error changing directory for '%s': %v\n", name, err)
 		return nil, err
 	}
 	lp, err := NewLogPipe(directory)
 	if err != nil {
-		f.Close()
 		glog.Errorf("Error creating logpipes for unit '%s': %v\n", name, err)
 		return nil, err
 	}
 	u := Unit{
-		LogPipe:    lp,
-		Directory:  directory,
-		Name:       name,
-		statusFile: f,
+		LogPipe:   lp,
+		Directory: directory,
+		Name:      name,
 	}
-	u.SetStatus(UnitStatusCreated)
 	return &u, nil
 }
 
 func (u *Unit) Close() {
-	if u.statusFile != nil {
-		name := u.statusFile.Name()
-		u.statusFile.Close()
-		u.statusFile = nil
-		os.Remove(name)
-	}
+	// No-op for now.
 }
 
 func (u *Unit) GetRootfs() string {
 	return filepath.Join(u.Directory, "ROOTFS")
 }
 
-// Note: even though multiple goroutines might call GetStatus(), they are
-// expected to create their own instances of Unit, thus statusFile is _not_
-// shared. Only the helper process calls SetStatus(), so writes to the
-// statusfile don't need to be locked either.
 func (u *Unit) GetStatus() (UnitStatus, error) {
-	_, err := u.statusFile.Seek(0, 0)
+	buf, err := ioutil.ReadFile("status")
 	if err != nil {
-		glog.Errorf("Error seeking in statusfile for %s\n", u.Name)
-		return UnitStatusUnknown, err
-	}
-	buf := make([]byte, 32)
-	n, err := u.statusFile.Read(buf)
-	if err != nil {
+		if os.IsNotExist(err) {
+			return UnitStatusUnknown, nil
+		}
 		glog.Errorf("Error reading statusfile for %s\n", u.Name)
 		return UnitStatusUnknown, err
 	}
-	s := string(buf[:n])
 	err = nil
 	var status UnitStatus
-	switch s {
+	switch string(buf) {
 	case string(UnitStatusCreated):
 		status = UnitStatusCreated
 	case string(UnitStatusRunning):
@@ -118,7 +101,7 @@ func (u *Unit) GetStatus() (UnitStatus, error) {
 		status = UnitStatusSucceeded
 	default:
 		status = UnitStatusUnknown
-		err := fmt.Errorf("Invalid status for %s: '%v'\n", u.Name, s)
+		err := fmt.Errorf("Invalid status for %s: '%v'\n", u.Name, buf)
 		glog.Error(err)
 	}
 	return status, err
@@ -126,22 +109,17 @@ func (u *Unit) GetStatus() (UnitStatus, error) {
 
 func (u *Unit) SetStatus(status UnitStatus) error {
 	glog.Infof("Updating status of unit '%s' to %s\n", u.Name, status)
-	_, err := u.statusFile.Seek(0, 0)
-	if err != nil {
-		glog.Errorf("Error seeking in statusfile for %s\n", u.Name)
-		return err
-	}
 	buf := []byte(status)
-	if _, err := u.statusFile.Write(buf); err != nil {
+	if err := ioutil.WriteFile("status", buf, 0600); err != nil {
 		glog.Errorf("Error updating statusfile for %s\n", u.Name)
 		return err
 	}
-	u.statusFile.Truncate(int64(len(buf)))
 	return nil
 }
 
 func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 	policy RestartPolicy) (err error) {
+	u.SetStatus(UnitStatusRunning)
 	backoff := 1 * time.Second
 	for {
 		start := time.Now()
@@ -154,6 +132,7 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 		if err != nil {
 			// Start() failed, it is either an error looking up the executable,
 			// or a resource allocation problem.
+			u.SetStatus(UnitStatusFailed)
 			glog.Errorf("Start() %v: %v", command, err)
 			return err
 		}
@@ -181,9 +160,15 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 
 		switch policy {
 		case RESTART_POLICY_NEVER:
+			if err != nil {
+				u.SetStatus(UnitStatusFailed)
+			} else {
+				u.SetStatus(UnitStatusSucceeded)
+			}
 			return err
 		case RESTART_POLICY_ONFAILURE:
 			if err == nil {
+				u.SetStatus(UnitStatusSucceeded)
 				return nil
 			}
 		case RESTART_POLICY_ALWAYS:
@@ -234,6 +219,8 @@ func StringToRestartPolicy(pstr string) RestartPolicy {
 }
 
 func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
+	u.SetStatus(UnitStatusCreated)
+
 	rootfs := u.GetRootfs()
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
 		// No chroot package has been deployed for the unit.
@@ -272,6 +259,10 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 		}
 		if err := copyFile("/etc/resolv.conf", filepath.Join(rootfs, "/etc/resolv.conf")); err != nil {
 			glog.Errorf("copyFile() resolv.conf to %s: %v", rootfs, err)
+			return err
+		}
+		if err := syscall.Mount(filepath.Join(u.Directory, "status"), "status", "", syscall.MS_BIND, ""); err != nil {
+			glog.Errorf("Mount() statusfile: %v", err)
 			return err
 		}
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
