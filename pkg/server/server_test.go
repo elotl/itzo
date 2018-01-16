@@ -492,10 +492,29 @@ func TestGetLogsLines(t *testing.T) {
 	}
 }
 
+func randStr(t *testing.T, n int) string {
+	s := ""
+	for len(s) < n {
+		buf := make([]byte, 16)
+		m, err := rand.Read(buf)
+		buf = buf[:m]
+		assert.Nil(t, err)
+		for _, b := range buf {
+			if (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') {
+				s = s + string(b)
+				if len(s) == n {
+					break
+				}
+			}
+		}
+	}
+	return s
+}
+
 func TestStart(t *testing.T) {
-	exe := "/bin/echo"
-	command := fmt.Sprintf("%s %s", exe, "foobar")
-	path := "/milpa/start/foobar"
+	rnd := randStr(t, 16)
+	command := fmt.Sprintf("echo %s", rnd)
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
 	data := url.Values{}
 	data.Set("command", command)
 	body := strings.NewReader(data.Encode())
@@ -504,4 +523,124 @@ func TestStart(t *testing.T) {
 	pid, err := strconv.Atoi(rr.Body.String())
 	assert.Nil(t, err)
 	assert.True(t, pid > 0)
+}
+
+func TestStatusHandler(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := fmt.Sprintf("echo %s", rnd)
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "always")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "running" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "running", status)
+}
+
+func TestStatusHandlerStartFailed(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := "/does_not_exist"
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "never")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "failed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "failed", status)
+}
+
+func TestStatusHandlerFailed(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := "cat /does_not_exist"
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "never")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "failed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "failed", status)
+}
+
+func TestStatusHandlerSucceeded(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := fmt.Sprintf("echo %s", rnd)
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "never")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "succeeded" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "succeeded", status)
 }

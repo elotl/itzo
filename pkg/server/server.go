@@ -191,6 +191,41 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) getStatus(unitname string) (string, error) {
+	u, err := OpenUnit(s.installRootdir, unitname)
+	if err != nil {
+		glog.Errorf("Error opening unit %s: %v\n", unitname, err)
+		return UnitStatusUnknown, err
+	}
+	defer u.Close()
+	st, err := u.GetStatus()
+	if err != nil {
+		glog.Errorf("Error getting status of unit %s: %v\n", unitname, err)
+		return UnitStatusUnknown, err
+	}
+	return string(st), nil
+}
+
+func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		unit := ""
+		if len(parts) > 2 {
+			unit = strings.Join(parts[2:], "/")
+		}
+		status, err := s.getStatus(unit)
+		if err != nil {
+			serverError(w, fmt.Errorf("getStatus(): %v", err))
+			return
+		}
+		fmt.Fprintf(w, "%s", status)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 	// POST
 	// curl -X POST -d "val=bar" http://localhost:8000/env/foo
@@ -510,6 +545,8 @@ func (s *Server) getHandlers() {
 
 	s.mux.HandleFunc("/milpa/start/", s.startHandler)
 	s.mux.HandleFunc("/milpa/resizevolume", s.resizevolumeHandler)
+
+	s.mux.HandleFunc("/milpa/status/", s.statusHandler)
 }
 
 func (s *Server) ListenAndServe(addr string) {
