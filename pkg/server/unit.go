@@ -22,8 +22,9 @@ const (
 
 type Unit struct {
 	*LogPipe
-	Directory string
-	Name      string
+	Directory  string
+	Name       string
+	statusPath string
 }
 
 type UnitStatus string
@@ -52,21 +53,16 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		glog.Errorf("Error reating unit '%s': %v\n", name, err)
 		return nil, err
 	}
-	// Change to directory, so statusfile can be referenced via a relative path.
-	err := os.Chdir(directory)
-	if err != nil {
-		glog.Errorf("Error changing directory for '%s': %v\n", name, err)
-		return nil, err
-	}
 	lp, err := NewLogPipe(directory)
 	if err != nil {
 		glog.Errorf("Error creating logpipes for unit '%s': %v\n", name, err)
 		return nil, err
 	}
 	u := Unit{
-		LogPipe:   lp,
-		Directory: directory,
-		Name:      name,
+		LogPipe:    lp,
+		Directory:  directory,
+		Name:       name,
+		statusPath: filepath.Join(directory, "status"),
 	}
 	return &u, nil
 }
@@ -80,7 +76,7 @@ func (u *Unit) GetRootfs() string {
 }
 
 func (u *Unit) GetStatus() (UnitStatus, error) {
-	buf, err := ioutil.ReadFile("status")
+	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return UnitStatusUnknown, nil
@@ -110,7 +106,7 @@ func (u *Unit) GetStatus() (UnitStatus, error) {
 func (u *Unit) SetStatus(status UnitStatus) error {
 	glog.Infof("Updating status of unit '%s' to %s\n", u.Name, status)
 	buf := []byte(status)
-	if err := ioutil.WriteFile("status", buf, 0600); err != nil {
+	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
 		glog.Errorf("Error updating statusfile for %s\n", u.Name)
 		return err
 	}
@@ -268,7 +264,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 		}
 		// Bind mount statusfile into the chroot. Note: both the source and the
 		// destination files need to exist, otherwise the bind mount will fail.
-		statussrc := filepath.Join(u.Directory, "status")
+		statussrc := filepath.Join(u.statusPath)
 		ensureFileExists(statussrc)
 		statusdst := filepath.Join(u.GetRootfs(), "status")
 		ensureFileExists(statusdst)
@@ -297,6 +293,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			glog.Errorf("mountSpecial(): %v", rootfs, err)
 			return err
 		}
+		u.statusPath = "/status"
 	}
 
 	err = u.runUnitLoop(command, env, unitout, uniterr, policy)
