@@ -78,3 +78,38 @@ func TestIsEmptyDirContainsDir(t *testing.T) {
 	assert.Nil(t, err)
 	assert.False(t, empty)
 }
+
+func TestEnsureFileExists(t *testing.T) {
+	f, err := ioutil.TempFile("", "itzo-test")
+	assert.Nil(t, err)
+	name := f.Name()
+	defer os.Remove(name)
+	defer f.Close()
+	err = ensureFileExists(name)
+	assert.Nil(t, err)
+}
+
+func TestEnsureFileExistsCreate(t *testing.T) {
+	f, err := ioutil.TempFile("", "itzo-test")
+	assert.Nil(t, err)
+	name := f.Name()
+	f.Close()
+	os.Remove(name)
+	_, err = os.Open(name)
+	assert.True(t, os.IsNotExist(err))
+	err = ensureFileExists(name)
+	assert.Nil(t, err)
+	_, err = os.Open(name)
+	assert.False(t, os.IsNotExist(err))
+}
+
+func TestEnsureFileExistsFail(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	os.RemoveAll(tmpdir)
+	name := filepath.Join(tmpdir, "foobar")
+	err = ensureFileExists(name)
+	assert.NotNil(t, err)
+	_, err = os.Open(name)
+	assert.True(t, os.IsNotExist(err))
+}
