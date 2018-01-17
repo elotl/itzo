@@ -238,3 +238,10 @@ func TestIsUnitExist(t *testing.T) {
 	defer unit.Close()
 	assert.True(t, IsUnitExist(tmpdir, name))
 }
+
+func TestIsUnitExistEmpty(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpdir)
+	assert.False(t, IsUnitExist(tmpdir, ""))
+}

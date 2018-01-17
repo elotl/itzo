@@ -46,6 +46,9 @@ const (
 )
 
 func IsUnitExist(rootdir, name string) bool {
+	if len(name) == 0 {
+		return false
+	}
 	f, err := os.Open(filepath.Join(rootdir, name))
 	if err != nil {
 		return false
