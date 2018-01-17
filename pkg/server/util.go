@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -93,14 +92,6 @@ func resizeVolume() error {
 		rootdev)
 }
 
-func getUnitDir(rootdir, unit string) string {
-	return filepath.Join(rootdir, unit)
-}
-
-func getUnitRootfs(unitdir string) string {
-	return filepath.Join(unitdir, "ROOTFS")
-}
-
 func isEmptyDir(name string) (bool, error) {
 	f, err := os.Open(name)
 	if err != nil && !os.IsExist(err) {
@@ -114,4 +105,16 @@ func isEmptyDir(name string) (bool, error) {
 		return true, nil
 	}
 	return false, err
+}
+
+func ensureFileExists(name string) error {
+	f, err := os.Open(name)
+	if err != nil && os.IsNotExist(err) {
+		f, err = os.Create(name)
+	}
+	if err != nil {
+		return err
+	}
+	f.Close()
+	return nil
 }

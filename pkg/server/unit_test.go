@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -12,6 +13,48 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestOpenUnit(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	defer os.RemoveAll(tmpdir)
+	assert.Nil(t, err)
+	u, err := OpenUnit(tmpdir, "foobar")
+	assert.Nil(t, err)
+	defer u.Close()
+	uu, err := OpenUnit(tmpdir, "foobar")
+	assert.Nil(t, err)
+	defer uu.Close()
+	assert.Equal(t, u.Name, uu.Name)
+	assert.Equal(t, u.Directory, uu.Directory)
+}
+
+func TestGetRootfs(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	defer os.RemoveAll(tmpdir)
+	assert.Nil(t, err)
+	u, err := OpenUnit(tmpdir, "foobar")
+	assert.Nil(t, err)
+	defer u.Close()
+	isEmpty, err := isEmptyDir(u.GetRootfs())
+	assert.Nil(t, err)
+	assert.True(t, isEmpty)
+}
+
+func TestStatus(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	defer os.RemoveAll(tmpdir)
+	assert.Nil(t, err)
+	u, err := OpenUnit(tmpdir, "foobar")
+	assert.Nil(t, err)
+	defer u.Close()
+	for _, s := range []UnitStatus{UnitStatusCreated, UnitStatusRunning, UnitStatusFailed, UnitStatusSucceeded} {
+		err = u.SetStatus(s)
+		assert.Nil(t, err)
+		ss, err := u.GetStatus()
+		assert.Nil(t, err)
+		assert.Equal(t, s, ss)
+	}
+}
 
 func TestStringToRestartPolicy(t *testing.T) {
 	policyStrs := []string{"always", "never", "onfailure"}
@@ -36,9 +79,15 @@ func TestUnitRestartPolicyAlways(t *testing.T) {
 	tmpfile, err := ioutil.TempFile("", "itzo-test")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpdir)
+	unit, err := OpenUnit(tmpdir, "myunit")
+	assert.Nil(t, err)
+	defer unit.Close()
 	ch := make(chan error)
 	go func() {
-		err = runUnit(
+		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
 			[]string{}, nil, nil, RESTART_POLICY_ALWAYS)
 		ch <- err
@@ -47,7 +96,7 @@ func TestUnitRestartPolicyAlways(t *testing.T) {
 	tries := 0
 	select {
 	case err = <-ch:
-		// Error, runUnit() should not return.
+		// Error, runUnitLoop() should not return.
 		assert.True(t, false)
 	case <-time.After(50 * time.Millisecond):
 		tries++
@@ -79,9 +128,15 @@ func TestUnitRestartPolicyNever(t *testing.T) {
 	tmpfile, err := ioutil.TempFile("", "itzo-test")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpdir)
+	unit, err := OpenUnit(tmpdir, "myunit")
+	assert.Nil(t, err)
+	defer unit.Close()
 	ch := make(chan error)
 	go func() {
-		err = runUnit(
+		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
 			[]string{}, nil, nil, RESTART_POLICY_NEVER)
 		ch <- err
@@ -105,9 +160,15 @@ func TestUnitRestartPolicyOnFailureHappy(t *testing.T) {
 	tmpfile, err := ioutil.TempFile("", "itzo-test")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpdir)
+	unit, err := OpenUnit(tmpdir, "myunit")
+	assert.Nil(t, err)
+	defer unit.Close()
 	ch := make(chan error)
 	go func() {
-		err = runUnit(
+		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 0", tmpfile.Name())},
 			[]string{}, nil, nil, RESTART_POLICY_ONFAILURE)
 		ch <- err
@@ -129,9 +190,15 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 	tmpfile, err := ioutil.TempFile("", "itzo-test")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpdir)
+	unit, err := OpenUnit(tmpdir, "myunit")
+	assert.Nil(t, err)
+	defer unit.Close()
 	ch := make(chan error)
 	go func() {
-		err = runUnit(
+		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
 			[]string{}, nil, nil, RESTART_POLICY_ONFAILURE)
 		ch <- err
@@ -140,7 +207,7 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 	tries := 0
 	select {
 	case err = <-ch:
-		// Error, runUnit() should not return.
+		// Error, runUnitLoop() should not return.
 		assert.True(t, false)
 	case <-time.After(50 * time.Millisecond):
 		tries++
@@ -158,4 +225,23 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 			pid = newPid
 		}
 	}
+}
+
+func TestIsUnitExist(t *testing.T) {
+	name := randStr(t, 32)
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpdir)
+	assert.False(t, IsUnitExist(tmpdir, name))
+	unit, err := OpenUnit(tmpdir, name)
+	assert.Nil(t, err)
+	defer unit.Close()
+	assert.True(t, IsUnitExist(tmpdir, name))
+}
+
+func TestIsUnitExistEmpty(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.Nil(t, err)
+	defer os.RemoveAll(tmpdir)
+	assert.False(t, IsUnitExist(tmpdir, ""))
 }
