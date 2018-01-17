@@ -192,6 +192,9 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getStatus(unitname string) (string, error) {
+	if !IsUnitExist(s.installRootdir, unitname) {
+		return UnitStatusUnknown, fmt.Errorf("Unit %s does not exist", unitname)
+	}
 	u, err := OpenUnit(s.installRootdir, unitname)
 	if err != nil {
 		glog.Errorf("Error opening unit %s: %v\n", unitname, err)

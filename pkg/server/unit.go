@@ -45,6 +45,15 @@ const (
 	RESTART_POLICY_ONFAILURE RestartPolicy = iota
 )
 
+func IsUnitExist(rootdir, name string) bool {
+	f, err := os.Open(filepath.Join(rootdir, name))
+	if err != nil {
+		return false
+	}
+	f.Close()
+	return true
+}
+
 func OpenUnit(rootdir, name string) (*Unit, error) {
 	glog.Infof("Creating new unit '%s' in %s\n", name, rootdir)
 	directory := filepath.Join(rootdir, name)
