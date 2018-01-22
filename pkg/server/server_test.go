@@ -30,17 +30,89 @@ import (
 // we used to use gorilla mux??? Either way, it should go away   :/
 var s Server
 
+// This will ensure all the helper processes and their children get terminated
+// before the main process exits.
+func killChildren() {
+	// Set of pids.
+	var pids map[int]interface{} = make(map[int]interface{})
+	pids[os.Getpid()] = nil
+
+	d, err := os.Open("/proc")
+	if err != nil {
+		return
+	}
+	defer d.Close()
+
+	for {
+		fis, err := d.Readdir(10)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return
+		}
+
+		for _, fi := range fis {
+			if !fi.IsDir() {
+				continue
+			}
+			name := fi.Name()
+			if name[0] < '0' || name[0] > '9' {
+				continue
+			}
+			pid64, err := strconv.ParseInt(name, 10, 0)
+			if err != nil {
+				continue
+			}
+			pid := int(pid64)
+			statPath := fmt.Sprintf("/proc/%s/stat", name)
+			dataBytes, err := ioutil.ReadFile(statPath)
+			if err != nil {
+				continue
+			}
+			data := string(dataBytes)
+			binStart := strings.IndexRune(data, '(') + 1
+			binEnd := strings.IndexRune(data[binStart:], ')')
+			data = data[binStart+binEnd+2:]
+			var state int
+			var ppid int
+			var pgrp int
+			var sid int
+			_, _ = fmt.Sscanf(data, "%c %d %d %d", &state, &ppid, &pgrp, &sid)
+			_, ok := pids[ppid]
+			if ok {
+				syscall.Kill(pid, syscall.SIGKILL)
+				// Kill any children of this process too.
+				pids[pid] = nil
+			}
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
+	var rootdir = flag.String("rootdir", DEFAULT_ROOTDIR, "Base dir for units")
+	var unit = flag.String("unit", "myunit", "Unit name")
+	var rp = flag.String("restartpolicy", "always", "Restart policy")
 	flag.Parse()
 	if *appcmdline != "" {
-		StartUnit("", strings.Split(*appcmdline, " "))
+		policy := StringToRestartPolicy(*rp)
+		StartUnit(*rootdir, *unit, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
-	s = Server{env: StringMap{data: map[string]string{}}}
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	if err != nil {
+		panic("Error creating temporary directory")
+	}
+	s = Server{
+		env:            StringMap{data: map[string]string{}},
+		installRootdir: tmpdir,
+	}
 	s.getHandlers()
-	os.Exit(m.Run())
+	ret := m.Run()
+	killChildren()
+	os.Exit(ret)
 }
 
 func sendRequest(t *testing.T, method, url string, body io.Reader) *httptest.ResponseRecorder {
@@ -190,6 +262,10 @@ func TestFileUploader(t *testing.T) {
 }
 
 func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
+	u, err := OpenUnit(rootdir, unit)
+	assert.Nil(t, err)
+	defer u.Close()
+
 	var uid int = os.Geteuid()
 	var gid int = os.Getegid()
 	var entries = []struct {
@@ -204,7 +280,7 @@ func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
 		{"ROOTFS/", tar.TypeDir, "", "", 0755, uid, gid},
 		{"ROOTFS/bin", tar.TypeDir, "", "", 0700, uid, gid},
 		{"ROOTFS/readme.link", tar.TypeSymlink, "", "./readme.txt", 0000, uid, gid},
-		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", getRootfs(rootdir, unit)), 0660, uid, gid},
+		{"ROOTFS/hard.link", tar.TypeLink, "", fmt.Sprintf("%s/bin/data.bin", u.GetRootfs()), 0660, uid, gid},
 		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", "", 0640, uid, gid},
 		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), "", 0600, uid, gid},
 	}
@@ -227,7 +303,7 @@ func createTarGzBuf(t *testing.T, rootdir, unit string) []byte {
 		_, err = tw.Write([]byte(entry.Body))
 		assert.Nil(t, err)
 	}
-	err := tw.Close()
+	err = tw.Close()
 	assert.Nil(t, err)
 
 	// Create our gzip buffer, effectively a .tar.gz in memory.
@@ -358,10 +434,87 @@ func TestDeployUrl(t *testing.T) {
 	assert.Equal(t, err, nil)
 
 }
+
+func TestGetLogs(t *testing.T) {
+	command := "echo foobar"
+	path := "/milpa/start/echo"
+	data := url.Values{}
+	data.Set("command", command)
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	var lines []string
+	timeout := time.Now().Add(3 * time.Second)
+	for time.Now().Before(timeout) {
+		path = "/milpa/logs/echo"
+		rr = sendRequest(t, "GET", path, nil)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		lines = strings.Split(rr.Body.String(), "\n")
+		if len(lines) >= 2 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.True(t, 2 <= len(lines))
+	found := false
+	for _, line := range lines {
+		if strings.Contains(line, "foobar") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found)
+}
+
+func TestGetLogsLines(t *testing.T) {
+	command := "sh -c \"yes|head -n10\""
+	path := "/milpa/start/yes"
+	data := url.Values{}
+	data.Set("command", command)
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	var lines []string
+	timeout := time.Now().Add(3 * time.Second)
+	for time.Now().Before(timeout) {
+		path = "/milpa/logs/yes?lines=3"
+		rr = sendRequest(t, "GET", path, nil)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		lines = strings.Split(rr.Body.String(), "\n")
+		if len(lines) >= 4 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.True(t, 4 <= len(lines))
+	for _, line := range lines[:len(lines)-1] {
+		assert.Equal(t, line, "y")
+	}
+}
+
+func randStr(t *testing.T, n int) string {
+	s := ""
+	for len(s) < n {
+		buf := make([]byte, 16)
+		m, err := rand.Read(buf)
+		buf = buf[:m]
+		assert.Nil(t, err)
+		for _, b := range buf {
+			if (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') {
+				s = s + string(b)
+				if len(s) == n {
+					break
+				}
+			}
+		}
+	}
+	return s
+}
+
 func TestStart(t *testing.T) {
-	exe := "/bin/echo"
-	command := fmt.Sprintf("%s %s", exe, "foobar")
-	path := "/milpa/start/foobar"
+	rnd := randStr(t, 16)
+	command := fmt.Sprintf("echo %s", rnd)
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
 	data := url.Values{}
 	data.Set("command", command)
 	body := strings.NewReader(data.Encode())
@@ -370,4 +523,124 @@ func TestStart(t *testing.T) {
 	pid, err := strconv.Atoi(rr.Body.String())
 	assert.Nil(t, err)
 	assert.True(t, pid > 0)
+}
+
+func TestStatusHandler(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := fmt.Sprintf("echo %s", rnd)
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "always")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "running" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "running", status)
+}
+
+func TestStatusHandlerStartFailed(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := "/does_not_exist"
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "never")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "failed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "failed", status)
+}
+
+func TestStatusHandlerFailed(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := "cat /does_not_exist"
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "never")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "failed" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "failed", status)
+}
+
+func TestStatusHandlerSucceeded(t *testing.T) {
+	rnd := randStr(t, 16)
+	command := fmt.Sprintf("echo %s", rnd)
+	path := fmt.Sprintf("/milpa/start/%s", rnd)
+	data := url.Values{}
+	data.Set("command", command)
+	data.Set("restartpolicy", "never")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "PUT", path, body)
+	assert.Equal(t, rr.Code, http.StatusOK)
+	pid, err := strconv.Atoi(rr.Body.String())
+	assert.Nil(t, err)
+	assert.True(t, pid > 0)
+	path = fmt.Sprintf("/milpa/status/%s", rnd)
+	data = url.Values{}
+	body = strings.NewReader(data.Encode())
+	status := ""
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr = sendRequest(t, "GET", path, body)
+		assert.Equal(t, rr.Code, http.StatusOK)
+		status = rr.Body.String()
+		if status == "succeeded" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.Equal(t, "succeeded", status)
 }
