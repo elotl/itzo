@@ -97,7 +97,7 @@ git clean -fdx
 #
 #     kvm -m 512 -net nic,model=virtio -net user,hostfwd=tcp:127.0.0.1:9222-:22 -drive file=alpine.qcow2,if=virtio
 #
-./alpine-make-vm-image --kernel-flavor vanilla --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$(cat ../elotl/packages)" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh
+./alpine-make-vm-image --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$(cat ../elotl/packages)" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh
 
 popd > /dev/null
 
