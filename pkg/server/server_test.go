@@ -435,6 +435,75 @@ func TestDeployUrl(t *testing.T) {
 
 }
 
+// TODO: once the logic has been moved to a separate package, mock out tosi.
+// This test hits the actual official docker registry, and might take >30s.
+func TestDeployImage(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
+	assert.Nil(t, err)
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+
+	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
+	assert.Nil(t, err)
+	srv := New(rootdir)
+	srv.getHandlers()
+
+	unit := fmt.Sprintf("alpine-%d", time.Now().UnixNano())
+
+	data := url.Values{}
+	data.Set("image", "library/alpine:latest")
+	body := strings.NewReader(data.Encode())
+	req, err := http.NewRequest("POST", "/milpa/deploy/"+unit, body)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.getHandlers()
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	err = filepath.Walk(rootdir, func(path string, info os.FileInfo, e error) error {
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Uid, uint32(os.Geteuid()))
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Gid, uint32(os.Getegid()))
+		return nil
+	})
+	assert.Equal(t, err, nil)
+
+	rootfs := filepath.Join(rootdir, unit, "ROOTFS")
+	fi, err := os.Stat(rootfs)
+	assert.Nil(t, err)
+	assert.NotNil(t, fi)
+	isempty, err := isEmptyDir(rootfs)
+	assert.False(t, isempty)
+	assert.Nil(t, err)
+}
+
+func TestDeployImageFail(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
+	assert.Nil(t, err)
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+
+	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
+	assert.Nil(t, err)
+	srv := New(rootdir)
+	srv.getHandlers()
+
+	unit := fmt.Sprintf("alpine-%d", time.Now().UnixNano())
+
+	data := url.Values{}
+	data.Set("image", "library/this-container-image-does-not-exist:latest")
+	body := strings.NewReader(data.Encode())
+	req, err := http.NewRequest("POST", "/milpa/deploy/"+unit, body)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.getHandlers()
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
 func TestGetLogs(t *testing.T) {
 	command := "echo foobar"
 	path := "/milpa/start/echo"

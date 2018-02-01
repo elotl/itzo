@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -117,4 +118,39 @@ func ensureFileExists(name string) error {
 	}
 	f.Close()
 	return nil
+}
+
+func downloadTosi(tosipath string) error {
+	resp, err := http.Get("http://tosi-download.s3.amazonaws.com/tosi")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Error downloading tosi: got S3 statuscode %d",
+			resp.StatusCode)
+	}
+	f, err := os.OpenFile(tosipath, os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, resp.Body)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func pullAndExtractImage(image, rootfs string) error {
+	tp, err := exec.LookPath("tosi")
+	if err != nil {
+		tp = "/tmp/tosiprg"
+		err = downloadTosi(tp)
+	}
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(tp, "-image", image, "-extractto", rootfs)
+	return cmd.Run()
 }
