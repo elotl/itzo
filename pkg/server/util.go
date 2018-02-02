@@ -123,7 +123,7 @@ func ensureFileExists(name string) error {
 func downloadTosi(tosipath string) error {
 	resp, err := http.Get("http://tosi-download.s3.amazonaws.com/tosi")
 	if err != nil {
-		return err
+		return fmt.Errorf("Error creating get request for tosi: %+v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -132,12 +132,13 @@ func downloadTosi(tosipath string) error {
 	}
 	f, err := os.OpenFile(tosipath, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error opening tosi for writing after download: %+v",
+			err)
 	}
 	defer f.Close()
 	_, err = io.Copy(f, resp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error writing tosi to filesystem: %+v", err)
 	}
 	return nil
 }
@@ -152,5 +153,9 @@ func pullAndExtractImage(image, rootfs string) error {
 		return err
 	}
 	cmd := exec.Command(tp, "-image", image, "-extractto", rootfs)
-	return cmd.Run()
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Error extracting image: %+v", err)
+	}
+	return nil
 }
