@@ -524,6 +524,55 @@ func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		unit := ""
+		if len(parts) > 2 {
+			unit = strings.Join(parts[2:], "/")
+		}
+
+		if err := r.ParseForm(); err != nil {
+			glog.Errorf("Parsing form failed: %v", err)
+			fmt.Fprintf(w, "appHandler ParseForm() err: %v", err)
+			return
+		}
+
+		image := r.FormValue("image")
+		if image == "" {
+			msg := fmt.Sprintf("No image specified; Form: %v PostForm: %v",
+				r.Form, r.PostForm)
+			glog.Error(msg)
+			badRequest(w, msg)
+			return
+		}
+
+		// XXX: for private registries, the form also contains the username and
+		// password for logging in.
+
+		u, err := OpenUnit(s.installRootdir, unit)
+		if err != nil {
+			glog.Errorf("opening unit %s for package deploy: %v", unit, err)
+			serverError(w, err)
+			return
+		}
+		defer u.Close()
+		rootfs := u.GetRootfs()
+
+		err = pullAndExtractImage(image, rootfs)
+		if err != nil {
+			glog.Errorf("pulling image %s: %v", image, err)
+			serverError(w, err)
+			return
+		}
+
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) getHandlers() {
 	// The /file/<path> endpoint is a real pain point
 	// by default, go's handlers will strip out double slashes //
@@ -537,14 +586,12 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/os/uptime", s.uptimeHandler)
 	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
 	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
+	// TODO: Remove deployfile and deployurl endpoints.
 	s.mux.HandleFunc("/milpa/deployfile/", s.deployFileHandler)
-	// Remove the next two once milpa always specifies unit for deploy.
 	s.mux.HandleFunc("/milpa/deployfile", s.deployFileHandler)
-	// remove deploy endpoint when we are all upgraded to use deployfile
-	s.mux.HandleFunc("/milpa/deploy/", s.deployFileHandler)
-	s.mux.HandleFunc("/milpa/deploy", s.deployFileHandler)
-
 	s.mux.HandleFunc("/milpa/deployurl/", s.deployURLHandler)
+	// This is the one used for deploying a docker image.
+	s.mux.HandleFunc("/milpa/deploy/", s.deployHandler)
 
 	s.mux.HandleFunc("/milpa/start/", s.startHandler)
 	s.mux.HandleFunc("/milpa/resizevolume", s.resizevolumeHandler)
