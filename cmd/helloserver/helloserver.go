@@ -20,7 +20,11 @@ func getMyIP() string {
 
 func sayHello(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()
-	fmt.Fprintf(w, "Hello Milpa from %s - %s", hostname, getMyIP())
+	fmt.Fprintf(w, "Hello Milpa from %s - %s\n", hostname, getMyIP())
+	fmt.Fprintf(w, "Env Vars:\n")
+	for _, v := range os.Environ() {
+		fmt.Fprintf(w, "    %s\n", v)
+	}
 }
 
 func main() {
