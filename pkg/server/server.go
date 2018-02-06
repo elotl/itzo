@@ -14,18 +14,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/google/shlex"
-	"golang.org/x/sys/unix"
 )
 
 const (
 	MULTIPART_FILE_NAME = "file"
 	MULTIPART_PKG_NAME  = "pkg"
 	DEFAULT_ROOTDIR     = "/tmp/milpa/units"
+	ITZO_VERSION        = "1.0"
 )
 
 type Server struct {
@@ -108,38 +107,6 @@ func ensureExecutable(path string) error {
 	return nil
 }
 
-func (s *Server) appHandler(w http.ResponseWriter, r *http.Request) {
-	// query parameters
-	// command
-	switch r.Method {
-	case "PUT":
-		if err := r.ParseForm(); err != nil {
-			fmt.Fprintf(w, "appHandler ParseForm() err: %v", err)
-			return
-		}
-		command := r.FormValue("command")
-		if command == "" {
-			badRequest(w, "No command specified")
-			return
-		}
-		commandParts, err := shlex.Split(command)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		appid, err := startUnitHelper(s.installRootdir, "", commandParts,
-			s.makeAppEnv(), RESTART_POLICY_ALWAYS)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		fmt.Fprintf(w, "%d", appid)
-		// todo: capture stdout logs
-	default:
-		http.NotFound(w, r)
-	}
-}
-
 func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "PUT":
@@ -150,8 +117,8 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.Split(path, "/")
 		unit := ""
-		if len(parts) > 2 {
-			unit = strings.Join(parts[2:], "/")
+		if len(parts) > 3 {
+			unit = strings.Join(parts[3:], "/")
 		}
 		command := r.FormValue("command")
 		if command == "" {
@@ -215,8 +182,8 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.Split(path, "/")
 		unit := ""
-		if len(parts) > 2 {
-			unit = strings.Join(parts[2:], "/")
+		if len(parts) > 3 {
+			unit = strings.Join(parts[3:], "/")
 		}
 		status, err := s.getStatus(unit)
 		if err != nil {
@@ -232,7 +199,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 	// POST
 	// curl -X POST -d "val=bar" http://localhost:8000/env/foo
-	key, err := getURLPart(2, r.URL.Path)
+	key, err := getURLPart(4, r.URL.Path)
 	if err != nil {
 		badRequest(w, "Incorrect url format")
 		return
@@ -248,18 +215,14 @@ func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprintf(w, value)
 	case "POST":
-		//vars := mux.Vars(r)
 		if err := r.ParseForm(); err != nil {
 			fmt.Fprintf(w, "envHandler ParseForm() err: %v", err)
 			return
 		}
-		//key := vars["name"]
 		value := r.FormValue("val")
 		s.env.Add(key, value)
 		fmt.Fprintf(w, "OK")
 	case "DELETE":
-		//vars := mux.Vars(r)
-		//key := vars["name"]
 		s.env.Delete(key)
 		fmt.Fprintf(w, "OK")
 	default:
@@ -267,10 +230,19 @@ func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) pingHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		fmt.Fprintf(w, "OK")
+		fmt.Fprintf(w, "pong")
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) versionHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		fmt.Fprintf(w, "%s", ITZO_VERSION)
 	default:
 		http.NotFound(w, r)
 	}
@@ -342,8 +314,8 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.Split(path, "/")
 		unit := ""
-		if len(parts) > 2 {
-			unit = strings.Join(parts[2:], "/")
+		if len(parts) > 3 {
+			unit = strings.Join(parts[3:], "/")
 		}
 		n := 0
 		lines := r.FormValue("lines")
@@ -359,23 +331,6 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "%s", buffer.String())
-	default:
-		http.NotFound(w, r)
-	}
-}
-
-func (s *Server) rebootHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "POST":
-		fmt.Fprintf(w, "OK")
-		// todo, stop serving
-		go func() {
-			time.Sleep(500 * time.Millisecond)
-			// from https://github.com/golang/go/issues/9584
-			const c = unix.LINUX_REBOOT_CMD_RESTART
-			syscall.Sync()
-			_ = unix.Reboot(-(c>>31)<<31 | c&(1<<31-1))
-		}()
 	default:
 		http.NotFound(w, r)
 	}
@@ -422,95 +377,6 @@ func downloadFile(url string) (filename string, n int64, err error) {
 	return saveFile(reader)
 }
 
-func (s *Server) deployFileHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "POST":
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		parts := strings.Split(path, "/")
-		unit := ""
-		if len(parts) > 2 {
-			unit = strings.Join(parts[2:], "/")
-		}
-		formFile, _, err := r.FormFile(MULTIPART_PKG_NAME)
-		if err != nil {
-			glog.Errorln("parsing form for package deploy:", err)
-			serverError(w, err)
-			return
-		}
-		defer formFile.Close()
-		pkgfile, n, err := saveFile(formFile)
-		if err != nil {
-			glog.Errorln("saving file for package deploy:", err)
-			serverError(w, err)
-			return
-		}
-		defer os.Remove(pkgfile)
-		glog.Infof("package for unit \"%s\" saved as: %s (%d bytes)",
-			unit, pkgfile, n)
-		u, err := OpenUnit(s.installRootdir, unit)
-		if err != nil {
-			glog.Errorln("opening unit %s for package deploy:", unit, err)
-			serverError(w, err)
-			return
-		}
-		defer u.Close()
-		if err = u.DeployPackage(pkgfile); err != nil {
-			glog.Errorln("extracting and installing package:", err)
-			serverError(w, err)
-			return
-		}
-	default:
-		http.NotFound(w, r)
-	}
-}
-
-func (s *Server) deployURLHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "POST":
-		if err := r.ParseForm(); err != nil {
-			fmt.Fprintf(w, "appHandler ParseForm() err: %v", err)
-			return
-		}
-		url := r.FormValue("url")
-		if url == "" {
-			badRequest(w, "No url specified")
-			return
-		}
-		unit := r.FormValue("unit")
-		if unit == "" {
-			badRequest(w, "No unit name specified")
-			return
-		}
-
-		pkgfile, _, err := downloadFile(url)
-		if err != nil {
-			err := fmt.Errorf("Error downloading package from %s to node: %s", url, err)
-			glog.Errorln(err)
-			serverError(w, err)
-			return
-		}
-
-		defer os.Remove(pkgfile)
-
-		u, err := OpenUnit(s.installRootdir, unit)
-		if err != nil {
-			glog.Errorln("opening unit %s for package deploy:", unit, err)
-			serverError(w, err)
-			return
-		}
-		defer u.Close()
-
-		if err = u.DeployPackage(pkgfile); err != nil {
-			glog.Errorln("extracting and installing package:", err)
-			serverError(w, err)
-			return
-		}
-
-	default:
-		http.NotFound(w, r)
-	}
-}
-
 func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -530,8 +396,8 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.Split(path, "/")
 		unit := ""
-		if len(parts) > 2 {
-			unit = strings.Join(parts[2:], "/")
+		if len(parts) > 3 {
+			unit = strings.Join(parts[3:], "/")
 		}
 
 		if err := r.ParseForm(); err != nil {
@@ -574,29 +440,16 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getHandlers() {
-	// The /file/<path> endpoint is a real pain point
-	// by default, go's handlers will strip out double slashes //
-	// as well as a slash followed by an encoded slash (/%2F)
-	// So we create our own handler that handles /file specially
-	// and defer all other endpoints to our mux
 	s.mux = http.ServeMux{}
-	s.mux.HandleFunc("/env/", s.envHandler)
-	s.mux.HandleFunc("/app/", s.appHandler) // OSv seems to need trailing slash
-	s.mux.HandleFunc("/milpa/health", s.healthcheckHandler)
-	s.mux.HandleFunc("/os/uptime", s.uptimeHandler)
-	s.mux.HandleFunc("/os/reboot", s.rebootHandler)
-	s.mux.HandleFunc("/milpa/logs/", s.logsHandler)
-	// TODO: Remove deployfile and deployurl endpoints.
-	s.mux.HandleFunc("/milpa/deployfile/", s.deployFileHandler)
-	s.mux.HandleFunc("/milpa/deployfile", s.deployFileHandler)
-	s.mux.HandleFunc("/milpa/deployurl/", s.deployURLHandler)
-	// This is the one used for deploying a docker image.
-	s.mux.HandleFunc("/milpa/deploy/", s.deployHandler)
+	s.mux.HandleFunc("/rest/v1/logs/", s.logsHandler)
+	s.mux.HandleFunc("/rest/v1/deploy/", s.deployHandler)
+	s.mux.HandleFunc("/rest/v1/start/", s.startHandler)
+	s.mux.HandleFunc("/rest/v1/status/", s.statusHandler)
 
-	s.mux.HandleFunc("/milpa/start/", s.startHandler)
-	s.mux.HandleFunc("/milpa/resizevolume", s.resizevolumeHandler)
-
-	s.mux.HandleFunc("/milpa/status/", s.statusHandler)
+	s.mux.HandleFunc("/rest/v1/env/", s.envHandler)
+	s.mux.HandleFunc("/rest/v1/resizevolume", s.resizevolumeHandler)
+	s.mux.HandleFunc("/rest/v1/ping", s.pingHandler)
+	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)
 }
 
 func (s *Server) ListenAndServe(addr string) {
