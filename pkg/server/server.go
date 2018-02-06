@@ -198,7 +198,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 	// POST
-	// curl -X POST -d "val=bar" http://localhost:8000/env/foo
+	// curl -X POST -d "val=bar" http://localhost:8000/rest/v1/unit/env/<unitname>
 	key, err := getURLPart(4, r.URL.Path)
 	if err != nil {
 		badRequest(w, "Incorrect url format")
