@@ -2,6 +2,7 @@ package server
 
 import "sync"
 
+// A 2d map protected by a mutex.
 type EnvStore struct {
 	sync.RWMutex
 	data map[string]map[string]string

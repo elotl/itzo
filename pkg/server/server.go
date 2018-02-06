@@ -28,7 +28,7 @@ const (
 )
 
 type Server struct {
-	env        StringMap
+	env        EnvStore
 	httpServer *http.Server
 	mux        http.ServeMux
 	startTime  time.Time
@@ -42,7 +42,7 @@ func New(rootdir string) *Server {
 		rootdir = DEFAULT_ROOTDIR
 	}
 	return &Server{
-		env:            StringMap{data: map[string]string{}},
+		env:            EnvStore{},
 		startTime:      time.Now().UTC(),
 		installRootdir: rootdir,
 	}
@@ -58,9 +58,9 @@ func badRequest(w http.ResponseWriter, errMsg string) {
 	http.Error(w, msg, http.StatusBadRequest)
 }
 
-func (s *Server) makeAppEnv() []string {
+func (s *Server) makeAppEnv(unit string) []string {
 	e := os.Environ()
-	for _, d := range s.env.Items() {
+	for _, d := range s.env.Items(unit) {
 		e = append(e, fmt.Sprintf("%s=%s", d[0], d[1]))
 	}
 	return e
@@ -147,7 +147,7 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		appid, err := startUnitHelper(s.installRootdir, unit, commandParts,
-			s.makeAppEnv(), policy)
+			s.makeAppEnv(unit), policy)
 		if err != nil {
 			serverError(w, err)
 			return
@@ -198,17 +198,21 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 	// POST
-	// curl -X POST -d "val=bar" http://localhost:8000/rest/v1/unit/env/<unitname>
-	key, err := getURLPart(4, r.URL.Path)
+	// curl -X POST -d "val=bar" http://localhost:8000/rest/v1/unit/env/<unitname>/varname
+	unit, err := getURLPart(4, r.URL.Path)
+
 	if err != nil {
-		badRequest(w, "Incorrect url format")
+		badRequest(w, "Incorrect url format, no unit name")
+		return
+	}
+	name, err := getURLPart(5, r.URL.Path)
+	if err != nil {
+		badRequest(w, "Incorrect url format, no variable name")
 		return
 	}
 	switch r.Method {
 	case "GET":
-		// vars := mux.Vars(r)
-		// key := vars["name"]
-		value, found := s.env.Get(key)
+		value, found := s.env.Get(unit, name)
 		if !found {
 			http.NotFound(w, r)
 			return
@@ -220,10 +224,10 @@ func (s *Server) envHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		value := r.FormValue("val")
-		s.env.Add(key, value)
+		s.env.Add(unit, name, value)
 		fmt.Fprintf(w, "OK")
 	case "DELETE":
-		s.env.Delete(key)
+		s.env.Delete(unit, name)
 		fmt.Fprintf(w, "OK")
 	default:
 		http.NotFound(w, r)

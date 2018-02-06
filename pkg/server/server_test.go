@@ -101,11 +101,12 @@ func TestMain(m *testing.M) {
 		panic("Error creating temporary directory")
 	}
 	s = Server{
-		env:            StringMap{data: map[string]string{}},
+		env:            EnvStore{},
 		installRootdir: tmpdir,
 	}
 	s.getHandlers()
 	ret := m.Run()
+	// Engineering: where killing children is how you keep things clean.
 	killChildren()
 	os.Exit(ret)
 }
@@ -139,7 +140,7 @@ func TestPingHandler(t *testing.T) {
 func TestEnvHandler(t *testing.T) {
 	varName1 := "john"
 	varVal1 := "lenon"
-	path1 := fmt.Sprintf("/rest/v1/env/%s", varName1)
+	path1 := "/rest/v1/env/foounit/" + varName1
 	data := url.Values{}
 	data.Set("val", varVal1)
 	body := strings.NewReader(data.Encode())
@@ -148,7 +149,7 @@ func TestEnvHandler(t *testing.T) {
 
 	varName2 := "ringo"
 	varVal2 := "star"
-	path2 := fmt.Sprintf("/rest/v1/env/%s", varName2)
+	path2 := "/rest/v1/env/foounit/" + varName2
 	data = url.Values{}
 	data.Set("val", varVal2)
 	body = strings.NewReader(data.Encode())
