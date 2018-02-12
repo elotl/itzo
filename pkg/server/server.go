@@ -394,6 +394,16 @@ func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getServerFromImage(image string) (string, string) {
+	u, err := url.Parse(image)
+	if err != nil {
+		glog.Warningf(
+			"Trouble parsing image string %s, trying to continue", image)
+		return "", image
+	}
+	return u.Scheme + u.Host, u.Path
+}
+
 func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -418,10 +428,11 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, msg)
 			return
 		}
-
-		// XXX: for private registries, the form also contains the username and
-		// password for logging in.
-
+		url, image := getServerFromImage(image)
+		// if we don't have a username and password, these values will
+		// be empty and they won't be used by pullAndExtractImage
+		username := r.FormValue("username")
+		password := r.FormValue("password")
 		u, err := OpenUnit(s.installRootdir, unit)
 		if err != nil {
 			glog.Errorf("opening unit %s for package deploy: %v", unit, err)
@@ -431,7 +442,7 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		defer u.Close()
 		rootfs := u.GetRootfs()
 
-		err = pullAndExtractImage(image, rootfs)
+		err = pullAndExtractImage(image, rootfs, url, username, password)
 		if err != nil {
 			glog.Errorf("pulling image %s: %v", image, err)
 			serverError(w, err)

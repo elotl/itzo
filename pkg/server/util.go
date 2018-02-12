@@ -143,7 +143,7 @@ func downloadTosi(tosipath string) error {
 	return nil
 }
 
-func pullAndExtractImage(image, rootfs string) error {
+func pullAndExtractImage(image, rootfs, url, username, password string) error {
 	tp, err := exec.LookPath("tosi")
 	if err != nil {
 		tp = "/tmp/tosiprg"
@@ -152,10 +152,24 @@ func pullAndExtractImage(image, rootfs string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(tp, "-image", image, "-extractto", rootfs)
+	args := []string{"-image", image, "-extractto", rootfs}
+	if username != "" {
+		args = append(args, []string{"-username", username}...)
+	}
+	if password != "" {
+		args = append(args, []string{"-password", password}...)
+	}
+	if url != "" {
+		args = append(args, []string{"-url", url}...)
+	}
+	var stderr bytes.Buffer
+	cmd := exec.Command(tp, args...)
+	cmd.Stderr = &stderr
 	err = cmd.Run()
 	if err != nil {
-		return fmt.Errorf("Error extracting image: %+v", err)
+		return fmt.Errorf(
+			"Error extracting image: %+v, command output was: %s",
+			err, stderr.String())
 	}
 	return nil
 }
