@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
@@ -508,4 +509,98 @@ func TestStatusHandlerSucceeded(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	assert.Equal(t, "succeeded", status)
+}
+
+func TestCreateMountHandler(t *testing.T) {
+	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
+	path := fmt.Sprintf("/rest/v1/mount")
+	vol := `{
+        "name": "test-mount",
+        "emptyDir": {}
+    }`
+	body := bytes.NewBuffer([]byte(vol))
+	rr := sendRequest(t, "POST", path, body)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestCreateMountHandlerFail(t *testing.T) {
+	mounter = func(source, target, fstype string, flags uintptr, data string) error {
+		return fmt.Errorf("Test /mount failure")
+	}
+	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
+	path := fmt.Sprintf("/rest/v1/mount")
+	vol := `{
+        "name": "test-mount",
+        "emptyDir": {
+            "medium": "Memory"
+        }
+    }`
+	body := bytes.NewBuffer([]byte(vol))
+	rr := sendRequest(t, "POST", path, body)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+func TestCreateMountHandlerUserError(t *testing.T) {
+	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
+	path := fmt.Sprintf("/rest/v1/mount")
+	vol := ""
+	body := bytes.NewBuffer([]byte(vol))
+	rr := sendRequest(t, "POST", path, body)
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestAttachMountHandler(t *testing.T) {
+	mounter = func(source, target, fstype string, flags uintptr, data string) error {
+		return nil
+	}
+	defer os.RemoveAll(s.installRootdir)
+	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
+	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
+	assert.Nil(t, err)
+	err = os.MkdirAll(filepath.Join(s.installRootdir, "../mounts", "my-mount"), 0755)
+	assert.Nil(t, err)
+	path := fmt.Sprintf("/rest/v1/mount/my-unit")
+	data := url.Values{}
+	data.Set("name", "my-mount")
+	data.Set("path", "/mount-target")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "POST", path, body)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestAttachMountHandlerFail(t *testing.T) {
+	mounter = func(source, target, fstype string, flags uintptr, data string) error {
+		return fmt.Errorf("Testing mount attach failure")
+	}
+	defer os.RemoveAll(s.installRootdir)
+	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
+	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
+	assert.Nil(t, err)
+	err = os.MkdirAll(filepath.Join(s.installRootdir, "../mounts", "my-mount"), 0755)
+	assert.Nil(t, err)
+	path := fmt.Sprintf("/rest/v1/mount/my-unit")
+	data := url.Values{}
+	data.Set("name", "my-mount")
+	data.Set("path", "/mount-target")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "POST", path, body)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+func TestAttachMountHandlerMissingMount(t *testing.T) {
+	mounter = func(source, target, fstype string, flags uintptr, data string) error {
+		return nil
+	}
+	defer os.RemoveAll(s.installRootdir)
+	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
+	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
+	assert.Nil(t, err)
+	os.RemoveAll(filepath.Join(s.installRootdir, "../mounts", "my-mount"))
+	path := fmt.Sprintf("/rest/v1/mount/my-unit")
+	data := url.Values{}
+	data.Set("name", "my-mount")
+	data.Set("path", "/mount-target")
+	body := strings.NewReader(data.Encode())
+	rr := sendRequest(t, "POST", path, body)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }
