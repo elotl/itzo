@@ -509,6 +509,12 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 		server := r.FormValue("server")
+		// Tosi requires that we start with http:// or https://
+		// always try to use https://
+		if server != "" && !strings.HasPrefix(server, "http") {
+			server = "https://" + server
+		}
+
 		u, err := OpenUnit(s.installRootdir, unit)
 		if err != nil {
 			glog.Errorf("opening unit %s for package deploy: %v", unit, err)
