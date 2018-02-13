@@ -504,9 +504,16 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, msg)
 			return
 		}
-
-		// XXX: for private registries, the form also contains the username and
-		// password for logging in.
+		// if we don't have a username and password, these values will
+		// be empty and they won't be used by pullAndExtractImage
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		server := r.FormValue("server")
+		// Tosi requires that we start with http:// or https://
+		// always try to use https://
+		if server != "" && !strings.HasPrefix(server, "http") {
+			server = "https://" + server
+		}
 
 		u, err := OpenUnit(s.installRootdir, unit)
 		if err != nil {
@@ -517,7 +524,7 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		defer u.Close()
 		rootfs := u.GetRootfs()
 
-		err = pullAndExtractImage(image, rootfs)
+		err = pullAndExtractImage(image, rootfs, server, username, password)
 		if err != nil {
 			glog.Errorf("pulling image %s: %v", image, err)
 			serverError(w, err)
