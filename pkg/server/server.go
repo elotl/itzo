@@ -27,6 +27,19 @@ const (
 	ITZO_VERSION        = "1.0"
 )
 
+// Some kind of invalid input from the user. Useful here to decide when to
+// return a 4xx vs a 5xx.
+type ParameterError struct {
+	err error
+}
+
+func (pe *ParameterError) Error() string {
+	if pe.err != nil {
+		return pe.err.Error()
+	}
+	return ""
+}
+
 type Server struct {
 	env        EnvStore
 	httpServer *http.Server
@@ -394,25 +407,88 @@ func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getServerFromImage(image string) (string, string) {
-	u, err := url.Parse(image)
-	if err != nil {
-		glog.Warningf(
-			"Trouble parsing image string %s, trying to continue", image)
-		return "", image
+func getUnitFromPath(path string) string {
+	// The path is always /rest/v1/<endpoint>/<unit> for unit-specific
+	// endpoints.
+	path = strings.TrimPrefix(path, "/")
+	parts := strings.Split(path, "/")
+	unit := ""
+	if len(parts) > 3 {
+		unit = strings.Join(parts[3:], "/")
 	}
-	return u.Scheme + u.Host, u.Path
+	return unit
+}
+
+func (s *Server) createMountHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		if r.Body == nil {
+			msg := "missing body in mount request"
+			glog.Errorf("%s", msg)
+			badRequest(w, msg)
+			return
+		}
+		mount, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			glog.Errorf("reading body in createMountHandler(): %v", err)
+			serverError(w, err)
+			return
+		}
+		err = createMount(s.installRootdir, string(mount))
+		if err != nil {
+			glog.Errorf("Error creating mount %s: %v", string(mount), err)
+			if perr, ok := err.(*ParameterError); ok {
+				// Return the original error.
+				badRequest(w, perr.err.Error())
+				return
+			}
+			serverError(w, err)
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) attachMountHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		unit := getUnitFromPath(r.URL.Path)
+		if unit == "" {
+			msg := "Error, missing unit name in mount attach request"
+			glog.Errorf("%s", msg)
+			badRequest(w, msg)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			msg := fmt.Sprintf("Error parsing form for mount attach: %v", err)
+			glog.Errorf("%s", msg)
+			badRequest(w, msg)
+			return
+		}
+		mountname := r.FormValue("name")
+		mountpath := r.FormValue("path")
+		if mountname == "" || mountpath == "" {
+			msg := fmt.Sprintf("Missing parameters for mount attach, got: %+v",
+				r.Form)
+			badRequest(w, msg)
+			return
+		}
+		err := attachMount(s.installRootdir, unit, mountname, mountpath)
+		if err != nil {
+			glog.Errorf("Error attaching mount %s: %v", mountname, err)
+			serverError(w, err)
+			return
+		}
+		return
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		parts := strings.Split(path, "/")
-		unit := ""
-		if len(parts) > 3 {
-			unit = strings.Join(parts[3:], "/")
-		}
+		unit := getUnitFromPath(r.URL.Path)
 
 		if err := r.ParseForm(); err != nil {
 			glog.Errorf("Parsing form failed: %v", err)
@@ -428,11 +504,11 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, msg)
 			return
 		}
-		url, image := getServerFromImage(image)
 		// if we don't have a username and password, these values will
 		// be empty and they won't be used by pullAndExtractImage
 		username := r.FormValue("username")
 		password := r.FormValue("password")
+		server := r.FormValue("server")
 		u, err := OpenUnit(s.installRootdir, unit)
 		if err != nil {
 			glog.Errorf("opening unit %s for package deploy: %v", unit, err)
@@ -442,7 +518,7 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		defer u.Close()
 		rootfs := u.GetRootfs()
 
-		err = pullAndExtractImage(image, rootfs, url, username, password)
+		err = pullAndExtractImage(image, rootfs, server, username, password)
 		if err != nil {
 			glog.Errorf("pulling image %s: %v", image, err)
 			serverError(w, err)
@@ -460,8 +536,9 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/deploy/", s.deployHandler)
 	s.mux.HandleFunc("/rest/v1/start/", s.startHandler)
 	s.mux.HandleFunc("/rest/v1/status/", s.statusHandler)
-
 	s.mux.HandleFunc("/rest/v1/env/", s.envHandler)
+	s.mux.HandleFunc("/rest/v1/mount/", s.attachMountHandler)
+	s.mux.HandleFunc("/rest/v1/mount", s.createMountHandler)
 	s.mux.HandleFunc("/rest/v1/resizevolume", s.resizevolumeHandler)
 	s.mux.HandleFunc("/rest/v1/ping", s.pingHandler)
 	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)

@@ -26,7 +26,9 @@ func TestEnvStore(t *testing.T) {
 		{"name1", "val1"},
 		{"name2", "val2"},
 	}
-	assert.Equal(t, expected, items)
+	for _, item := range expected {
+		assert.Contains(t, items, item)
+	}
 	e.Delete("foo", "name2")
 	items = e.Items("foo")
 	assert.Len(t, items, 1)
