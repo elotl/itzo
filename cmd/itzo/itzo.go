@@ -4,10 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/elotl/itzo/pkg/server"
 	"github.com/golang/glog"
+	"github.com/google/shlex"
 )
 
 var buildDate string
@@ -29,7 +29,12 @@ func main() {
 		policy := server.StringToRestartPolicy(*apprestartpolicy)
 		glog.Infof("Starting %s for %s; restart policy is %v",
 			*appcmdline, *appunit, policy)
-		err := server.StartUnit(*rootdir, *appunit, strings.Split(*appcmdline, " "), policy)
+		cmdargs, err := shlex.Split(*appcmdline)
+		if err != nil {
+			glog.Fatalf("Invalid command '%s' for unit %s: %v",
+				*appcmdline, *appunit, err)
+		}
+		err = server.StartUnit(*rootdir, *appunit, cmdargs, policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s for unit %s: %v",
 				*appcmdline, *appunit, err)

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/google/shlex"
 )
 
 const (
@@ -138,11 +137,6 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, "No command specified")
 			return
 		}
-		commandParts, err := shlex.Split(command)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
 		policy := RESTART_POLICY_ALWAYS
 		for k, v := range r.Form {
 			if strings.ToLower(k) != "restartpolicy" {
@@ -159,7 +153,7 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		appid, err := startUnitHelper(s.installRootdir, unit, commandParts,
+		appid, err := startUnitHelper(s.installRootdir, unit, command,
 			s.makeAppEnv(unit), policy)
 		if err != nil {
 			serverError(w, err)
