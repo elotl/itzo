@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 
 	"github.com/golang/glog"
@@ -25,7 +24,7 @@ func StartUnit(rootdir, name string, command []string, policy RestartPolicy) err
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func startUnitHelper(rootdir, name string, args, appenv []string, policy RestartPolicy) (appid int, err error) {
+func startUnitHelper(rootdir, name, command string, appenv []string, policy RestartPolicy) (appid int, err error) {
 	unit, err := OpenUnit(rootdir, name)
 	if err != nil {
 		return 0, err
@@ -34,7 +33,7 @@ func startUnitHelper(rootdir, name string, args, appenv []string, policy Restart
 
 	cmdline := []string{
 		"--exec",
-		strings.Join(args, " "),
+		command,
 		"--restartpolicy",
 		RestartPolicyToString(policy),
 		"--unit",
@@ -80,9 +79,9 @@ func startUnitHelper(rootdir, name string, args, appenv []string, policy Restart
 	go func() {
 		err = cmd.Wait()
 		if err == nil {
-			glog.Infof("Unit %v (helper pid %d) exited", args, pid)
+			glog.Infof("Unit %s (helper pid %d) exited", command, pid)
 		} else {
-			glog.Errorf("Unit %v (helper pid %d) exited with error %v", args, pid, err)
+			glog.Errorf("Unit %s (helper pid %d) exited with error %v", command, pid, err)
 		}
 		lp.Remove()
 		unit.Close()
