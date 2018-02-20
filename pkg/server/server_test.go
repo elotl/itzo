@@ -333,7 +333,7 @@ func TestGetLogs(t *testing.T) {
 }
 
 func TestGetLogsLines(t *testing.T) {
-	command := "sh -c \"yes|head -n10\""
+	command := "sh -c yes | head -n10"
 	path := "/rest/v1/start/yes"
 	data := url.Values{}
 	data.Set("command", command)
@@ -354,7 +354,7 @@ func TestGetLogsLines(t *testing.T) {
 	}
 	assert.True(t, 4 <= len(lines))
 	for _, line := range lines[:len(lines)-1] {
-		assert.Equal(t, line, "y")
+		assert.Equal(t, "y", line)
 	}
 }
 
