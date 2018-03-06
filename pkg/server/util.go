@@ -14,6 +14,10 @@ import (
 	"github.com/golang/glog"
 )
 
+const (
+	TOSI_MAX_RETRIES = 3
+)
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -143,6 +147,33 @@ func downloadTosi(tosipath string) error {
 	return nil
 }
 
+func runTosi(tp string, args ...string) error {
+	n := 0
+	start := time.Now()
+	backoff := 1 * time.Second
+	var err error
+	for n < TOSI_MAX_RETRIES {
+		n++
+		var stderr bytes.Buffer
+		cmd := exec.Command(tp, args...)
+		cmd.Stderr = &stderr
+		err = cmd.Run()
+		if err == nil {
+			glog.Infof("Image download succeeded after %d attempt(s), %v",
+				n, time.Now().Sub(start))
+			break
+		}
+		err = fmt.Errorf(
+			"Error getting image after %d attempt(s): %+v, output:\n%s",
+			n, err, stderr.String())
+		glog.Errorf("Image download problem: %v", err)
+		glog.Infof("Retrying image download in %v", backoff)
+		time.Sleep(backoff)
+		backoff = backoff * 2
+	}
+	return err
+}
+
 func pullAndExtractImage(image, rootfs, url, username, password string) error {
 	tp, err := exec.LookPath("tosi")
 	if err != nil {
@@ -162,14 +193,5 @@ func pullAndExtractImage(image, rootfs, url, username, password string) error {
 	if url != "" {
 		args = append(args, []string{"-url", url}...)
 	}
-	var stderr bytes.Buffer
-	cmd := exec.Command(tp, args...)
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf(
-			"Error extracting image: %+v, command output was: %s",
-			err, stderr.String())
-	}
-	return nil
+	return runTosi(tp, args...)
 }
