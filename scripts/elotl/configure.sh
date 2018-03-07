@@ -81,16 +81,21 @@ cat > /usr/local/bin/itzo_download.sh <<-EOF
 # upload file with cli:
 # aws s3 cp itzo s3://itzo-download/ --acl public-read
 
-s3_path="http://itzo-download.s3.amazonaws.com/itzo"
-itzo_dir=/usr/local/bin
-itzo_path=\${itzo_dir}/itzo
-rm -f \$itzo_path
-while true; do
-	echo "\$(date) downloading itzo from S3" >> /var/log/itzo/itzo_download.log 2>&1
-	wget --timeout=3 \$s3_path -P \$itzo_dir && break >> /var/log/itzo/itzo_download.log 2>&1
+s3_bucket="http://itzo-download.s3.amazonaws.com"
+app_dir=/usr/local/bin
+for app in cloud-init itzo; do
+    s3_path="\${s3_bucket}/\$app"
+    app_path="\${app_dir}/\$app"
+    rm -f \$app_path
+    while true; do
+        echo "\$(date) downloading \$app from S3" >> /var/log/itzo/itzo_download.log 2>&1
+        wget --timeout=3 \$s3_path -P \$app_dir && break >> /var/log/itzo/itzo_download.log 2>&1
+        sleep 1
+    done
+    chmod 755 \$app_path
 done
-chmod 755 \$itzo_path
-\$itzo_path >> /var/log/itzo/itzo.log 2>&1
+\${app_dir}/cloud-init --from-metadata-service >> /var/log/itzo/itzo.log 2>&1
+\${app_dir}/itzo >> /var/log/itzo/itzo.log 2>&1
 EOF
 chmod 755 /usr/local/bin/itzo_download.sh
 cat /usr/local/bin/itzo_download.sh
