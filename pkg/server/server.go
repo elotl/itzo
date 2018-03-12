@@ -5,6 +5,8 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -546,6 +548,24 @@ func (s *Server) getHandlers() {
 
 func (s *Server) ListenAndServe(addr string) {
 	s.getHandlers()
-	s.httpServer = &http.Server{Addr: addr, Handler: s}
-	glog.Fatalln(s.httpServer.ListenAndServe())
+
+	caCert, err := ioutil.ReadFile("/ca.crt")
+	if err != nil {
+		glog.Fatalln("Could not load root cert", err)
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+	tlsConfig := &tls.Config{
+		ClientCAs:  caCertPool,
+		ServerName: "MilpaNode",
+		ClientAuth: tls.RequireAndVerifyClientCert,
+	}
+
+	tlsConfig.BuildNameToCertificate()
+	s.httpServer = &http.Server{
+		Addr:      addr,
+		Handler:   s,
+		TLSConfig: tlsConfig,
+	}
+	glog.Fatalln(s.httpServer.ListenAndServeTLS("server.crt", "server.key"))
 }
