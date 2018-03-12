@@ -549,7 +549,7 @@ func (s *Server) getHandlers() {
 func (s *Server) ListenAndServe(addr string) {
 	s.getHandlers()
 
-	caCert, err := ioutil.ReadFile("/ca.crt")
+	caCert, err := ioutil.ReadFile("/tmp/milpa/ca.crt")
 	if err != nil {
 		glog.Fatalln("Could not load root cert", err)
 	}
@@ -567,5 +567,6 @@ func (s *Server) ListenAndServe(addr string) {
 		Handler:   s,
 		TLSConfig: tlsConfig,
 	}
-	glog.Fatalln(s.httpServer.ListenAndServeTLS("server.crt", "server.key"))
+	glog.Fatalln(s.httpServer.ListenAndServeTLS(
+		"/tmp/milpa/server.crt", "/tmp/milpa/server.key"))
 }
