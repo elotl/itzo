@@ -113,3 +113,35 @@ func TestEnsureFileExistsFail(t *testing.T) {
 	_, err = os.Open(name)
 	assert.True(t, os.IsNotExist(err))
 }
+
+func TestTailFile(t *testing.T) {
+	f, err := ioutil.TempFile("", "itzo-test")
+	assert.NoError(t, err)
+	defer f.Close()
+	data := `1
+2
+3
+4
+5
+6
+7
+8
+9
+0
+`
+	_, err = f.Write([]byte(data))
+	assert.NoError(t, err)
+	// Get the last 3 lines
+	vals, err := tailFile(f.Name(), 3, 999)
+	assert.NoError(t, err)
+	expected := "8\n9\n0\n"
+	assert.Equal(t, expected, vals)
+	// Last three lines are also the last 6 bytes, get those
+	vals, err = tailFile(f.Name(), 0, 6)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, vals)
+	// make sure we can get the whole thing
+	vals, err = tailFile(f.Name(), 0, int64(len(data)))
+	assert.NoError(t, err)
+	assert.Equal(t, data, vals)
+}

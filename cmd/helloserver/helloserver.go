@@ -20,6 +20,9 @@ func getMyIP() string {
 
 func sayHello(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()
+	// write something to the logs so we can test out logging
+	fmt.Println("Got request from", r.RemoteAddr)
+
 	fmt.Fprintf(w, "Hello Milpa from %s - %s\n", hostname, getMyIP())
 	fmt.Fprintf(w, "Env Vars:\n")
 	for _, v := range os.Environ() {

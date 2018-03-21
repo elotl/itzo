@@ -26,6 +26,7 @@ const (
 	MULTIPART_PKG_NAME  = "pkg"
 	DEFAULT_ROOTDIR     = "/tmp/milpa/units"
 	ITZO_VERSION        = "1.0"
+	FILE_BYTES_LIMIT    = 4096
 )
 
 // Some kind of invalid input from the user. Useful here to decide when to
@@ -349,6 +350,44 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) fileHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		path := r.FormValue("path")
+		if path == "" {
+			badRequest(w, "Missing path parameter")
+			return
+		}
+		lines := 0
+		numBytes := 0
+		strLines := r.FormValue("lines")
+		strBytes := r.FormValue("bytes")
+		if strLines != "" {
+			if i, err := strconv.Atoi(strLines); err == nil {
+				lines = i
+			}
+		}
+		if strBytes != "" {
+			if i, err := strconv.Atoi(strBytes); err == nil {
+				numBytes = i
+			}
+		}
+		if numBytes == 0 && lines == 0 {
+			numBytes = FILE_BYTES_LIMIT
+		}
+		s, err := tailFile(path, lines, int64(numBytes))
+		if err != nil {
+			badRequest(w, "Error reading file "+err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "%s", s)
+	default:
+		http.NotFound(w, r)
+	}
+
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/file") {
 		s.fileUploadHandler(w, r)
@@ -535,6 +574,7 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getHandlers() {
 	s.mux = http.ServeMux{}
 	s.mux.HandleFunc("/rest/v1/logs/", s.logsHandler)
+	s.mux.HandleFunc("/rest/v1/file/", s.fileHandler)
 	s.mux.HandleFunc("/rest/v1/deploy/", s.deployHandler)
 	s.mux.HandleFunc("/rest/v1/start/", s.startHandler)
 	s.mux.HandleFunc("/rest/v1/status/", s.statusHandler)

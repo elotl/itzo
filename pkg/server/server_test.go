@@ -332,6 +332,40 @@ func TestGetLogs(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestGetFile(t *testing.T) {
+	f, err := ioutil.TempFile("", "itzo-test")
+	assert.NoError(t, err)
+	defer f.Close()
+	contents := "123\n456\n789\n0\n"
+	_, err = f.Write([]byte(contents))
+	assert.NoError(t, err)
+	data := url.Values{}
+	data.Set("path", f.Name())
+	// Test getting the whole thing
+	path := "/rest/v1/file/?" + data.Encode()
+	rr := sendRequest(t, "GET", path, strings.NewReader(""))
+	assert.Equal(t, http.StatusOK, rr.Code)
+	responseBody := rr.Body.String()
+	assert.Equal(t, contents, responseBody)
+
+	// Test getting a couple of bytes
+	data.Set("bytes", "6")
+	path = "/rest/v1/file/?" + data.Encode()
+	rr = sendRequest(t, "GET", path, strings.NewReader(""))
+	assert.Equal(t, http.StatusOK, rr.Code)
+	responseBody = rr.Body.String()
+	assert.Equal(t, "789\n0\n", responseBody)
+
+	// Test getting a couple of lines
+	data.Set("bytes", "0")
+	data.Set("lines", "2")
+	path = "/rest/v1/file/?" + data.Encode()
+	rr = sendRequest(t, "GET", path, strings.NewReader(""))
+	assert.Equal(t, http.StatusOK, rr.Code)
+	responseBody = rr.Body.String()
+	assert.Equal(t, "789\n0\n", responseBody)
+}
+
 func TestGetLogsLines(t *testing.T) {
 	command := "sh -c yes | head -n10"
 	path := "/rest/v1/start/yes"
