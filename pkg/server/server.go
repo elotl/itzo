@@ -332,11 +332,22 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			unit = strings.Join(parts[3:], "/")
 		}
 		n := 0
+		numBytes := 0
 		lines := r.FormValue("lines")
+		strBytes := r.FormValue("bytes")
 		if lines != "" {
 			if i, err := strconv.Atoi(lines); err == nil {
 				n = i
 			}
+		}
+		if strBytes != "" {
+			if i, err := strconv.Atoi(strBytes); err == nil {
+				numBytes = i
+			}
+		}
+		if len(logbuf) > 1 && unit == "" {
+			badRequest(w, "A unit name is required when getting logs from a pod with multiple units")
+			return
 		}
 		logs := getLogBuffer(unit, n)
 		var buffer bytes.Buffer
@@ -344,7 +355,12 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			buffer.WriteString(entry.Line)
 		}
 		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "%s", buffer.String())
+		buffStr := buffer.String()
+		if numBytes > 0 && len(buffStr) > numBytes {
+			startOffset := len(buffStr) - numBytes
+			buffStr = buffStr[startOffset:]
+		}
+		fmt.Fprintf(w, "%s", buffStr)
 	default:
 		http.NotFound(w, r)
 	}

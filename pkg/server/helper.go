@@ -91,7 +91,7 @@ func startUnitHelper(rootdir, name, command string, appenv []string, policy Rest
 }
 
 func getLogBuffer(unit string, n int) []LogEntry {
-	if unit == "" {
+	if unit == "" && len(logbuf) == 1 {
 		// Logs from the first unit in the map, if there's any.
 		for _, v := range logbuf {
 			return v.Read(n)
