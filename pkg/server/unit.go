@@ -58,11 +58,10 @@ func IsUnitExist(rootdir, name string) bool {
 }
 
 func OpenUnit(rootdir, name string) (*Unit, error) {
-	glog.Infof("Creating new unit '%s' in %s\n", name, rootdir)
 	directory := filepath.Join(rootdir, name)
 	// Make sure unit directory exists.
 	if err := os.MkdirAll(directory, 0700); err != nil {
-		glog.Errorf("Error reating unit '%s': %v\n", name, err)
+		glog.Errorf("Error creating unit '%s': %v\n", name, err)
 		return nil, err
 	}
 	lp, err := NewLogPipe(directory)
