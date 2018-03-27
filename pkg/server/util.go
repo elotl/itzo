@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	TOSI_MAX_RETRIES = 3
-	MaxBufferSize    = 1024 * 1024 * 10 // 10MB
-	TOSI_PRG         = "tosi"
+	TOSI_MAX_RETRIES       = 3
+	MaxBufferSize    int64 = 1024 * 1024 * 10 // 10MB
+	TOSI_PRG               = "tosi"
 )
 
 func copyFile(src, dst string) error {
