@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 
 	"github.com/golang/glog"
 )
 
-var logbuf = make(map[string]*LogBuffer)
+var (
+	logbuf  = make(map[string]*LogBuffer)
+	logLock = sync.Mutex{}
+)
 
 // Helper function to start a unit in a chroot.
 func StartUnit(rootdir, name string, command []string, policy RestartPolicy) error {
@@ -60,15 +64,23 @@ func startUnitHelper(rootdir, name, command string, appenv []string, policy Rest
 
 	lp := unit.LogPipe
 	// XXX: Make number of log lines retained configurable.
+	logLock.Lock()
 	logbuf[name] = NewLogBuffer(1000)
+	logLock.Unlock()
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
+		logLock.Lock()
 		logbuf[name].Write(fmt.Sprintf("[%s stdout]", name), line)
+		logLock.Unlock()
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
+		logLock.Lock()
 		logbuf[name].Write(fmt.Sprintf("[%s stderr]", name), line)
+		logLock.Unlock()
 	})
 	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
+		logLock.Lock()
 		logbuf[name].Write(fmt.Sprintf("[%s helper]", name), line)
+		logLock.Unlock()
 	})
 
 	if err = cmd.Start(); err != nil {
@@ -91,6 +103,8 @@ func startUnitHelper(rootdir, name, command string, appenv []string, policy Rest
 }
 
 func getLogBuffer(unit string, n int) []LogEntry {
+	logLock.Lock()
+	defer logLock.Unlock()
 	if unit == "" && len(logbuf) == 1 {
 		// Logs from the first unit in the map, if there's any.
 		for _, v := range logbuf {
