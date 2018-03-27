@@ -14,9 +14,10 @@ import (
 	"github.com/golang/glog"
 )
 
-const (
+var (
 	TOSI_MAX_RETRIES = 3
 	MaxBufferSize    = 1024 * 1024 * 10 // 10MB
+	TOSI_PRG         = "tosi"
 )
 
 func copyFile(src, dst string) error {
@@ -176,7 +177,7 @@ func runTosi(tp string, args ...string) error {
 }
 
 func pullAndExtractImage(image, rootfs, url, username, password string) error {
-	tp, err := exec.LookPath("tosi")
+	tp, err := exec.LookPath(TOSI_PRG)
 	if err != nil {
 		tp = "/tmp/tosiprg"
 		err = downloadTosi(tp)

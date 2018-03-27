@@ -22,9 +22,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// UUgh, not sure why I made this a global var possibly because
-// we used to use gorilla mux??? Either way, it should go away   :/
-var s Server
+var (
+	// UUgh, not sure why I made this a global var possibly because
+	// we used to use gorilla mux??? Either way, it should go away   :/
+	s             Server
+	runFunctional = flag.Bool("functional", false, "run functional tests")
+)
 
 // This will ensure all the helper processes and their children get terminated
 // before the main process exits.
@@ -232,9 +235,11 @@ func deleteFile(path string) {
 	}
 }
 
-// TODO: once the logic has been moved to a separate package, mock out tosi.
-// This test hits the actual official docker registry, and might take >30s.
 func TestDeployImage(t *testing.T) {
+	if !(*runFunctional) {
+		// Mock out tosi.
+		TOSI_PRG = "true"
+	}
 	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
@@ -259,6 +264,10 @@ func TestDeployImage(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 
+	if !(*runFunctional) {
+		return
+	}
+
 	err = filepath.Walk(rootdir, func(path string, info os.FileInfo, e error) error {
 		assert.Equal(t, info.Sys().(*syscall.Stat_t).Uid, uint32(os.Geteuid()))
 		assert.Equal(t, info.Sys().(*syscall.Stat_t).Gid, uint32(os.Getegid()))
@@ -276,6 +285,10 @@ func TestDeployImage(t *testing.T) {
 }
 
 func TestDeployImageFail(t *testing.T) {
+	if !(*runFunctional) {
+		// Mock out tosi, don't try to access Docker Hub.
+		TOSI_PRG = "false"
+	}
 	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
