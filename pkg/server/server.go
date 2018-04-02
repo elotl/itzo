@@ -3,15 +3,12 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,6 +21,7 @@ import (
 const (
 	MULTIPART_FILE_NAME = "file"
 	MULTIPART_PKG_NAME  = "pkg"
+	CERTS_DIR           = "/tmp/milpa"
 	DEFAULT_ROOTDIR     = "/tmp/milpa/units"
 	ITZO_VERSION        = "1.0"
 	FILE_BYTES_LIMIT    = 4096
@@ -88,38 +86,6 @@ func getURLPart(i int, path string) (string, error) {
 		return "", fmt.Errorf("Could not find part %d of url", i)
 	}
 	return parts[i-1], nil
-}
-
-func isExecutable(path string) bool {
-	file, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	header := make([]byte, 4)
-	n1, err := file.Read(header)
-	if err != nil {
-		return false
-	}
-	if n1 < 4 {
-		return false
-	}
-	if (header[0] == 0x7F && string(header[1:]) == "ELF") ||
-		string(header[0:2]) == "#!" {
-		return true
-	}
-	return false
-}
-
-func ensureExecutable(path string) error {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("Could not stat file at %s", path)
-	}
-	perms := fi.Mode()
-	if (perms & 0110) == 0 {
-		os.Chmod(path, perms|0110)
-	}
-	return nil
 }
 
 func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
@@ -271,56 +237,6 @@ func (s *Server) uptimeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) fileUploadHandler(w http.ResponseWriter, r *http.Request) {
-	// example usage: curl -X POST http://localhost:8000/file/dest.txt -Ffile=@testfile.txt
-	switch r.Method {
-	case "POST":
-		key, err := getURLPart(2, r.URL.RawPath)
-		if err != nil {
-			badRequest(w, "Incorrect url format")
-			return
-		}
-
-		formFile, _, err := r.FormFile(MULTIPART_FILE_NAME)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		localPath, err := url.PathUnescape(key)
-		if err != nil {
-			msg := fmt.Sprintf("Error unescaping path: %s", err.Error())
-			badRequest(w, msg)
-			return
-		}
-		dirpath := filepath.Dir(localPath)
-		err = os.MkdirAll(dirpath, 0760)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		destFile, err := os.Create(localPath)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		_, err = io.Copy(destFile, formFile)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		_ = destFile.Close()
-		// if the user uploaded an elf, make it executable
-		if isExecutable(localPath) {
-			if err := ensureExecutable(localPath); err != nil {
-				serverError(w, err)
-				return
-			}
-		}
-	default:
-		http.NotFound(w, r)
-	}
-}
-
 func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	// additional params: need PID of process
 	switch r.Method {
@@ -405,44 +321,7 @@ func (s *Server) fileHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/file") {
-		s.fileUploadHandler(w, r)
-	} else {
-		s.mux.ServeHTTP(w, r)
-	}
-}
-
-func saveFile(r io.Reader) (filename string, n int64, err error) {
-	tmpfile, err := ioutil.TempFile("", "milpa-pkg-")
-	if err != nil {
-		return "", 0, err
-	}
-
-	defer tmpfile.Close()
-	filename = tmpfile.Name()
-
-	written, err := io.Copy(tmpfile, r)
-	if err != nil {
-		os.Remove(filename)
-		filename = ""
-	}
-
-	return filename, written, err
-}
-
-func downloadFile(url string) (filename string, n int64, err error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		err = fmt.Errorf("Error downloading file: %s", err)
-		return
-	}
-	if resp.StatusCode != 200 {
-		err = fmt.Errorf("Download error, server responded with status code %d", resp.StatusCode)
-		return
-	}
-	reader := bufio.NewReader(resp.Body)
-	defer resp.Body.Close()
-	return saveFile(reader)
+	s.mux.ServeHTTP(w, r)
 }
 
 func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
@@ -566,6 +445,7 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			server = "https://" + server
 		}
 
+		glog.Infof("Creating new unit '%s' in %s\n", unit, s.installRootdir)
 		u, err := OpenUnit(s.installRootdir, unit)
 		if err != nil {
 			glog.Errorf("opening unit %s for package deploy: %v", unit, err)
@@ -605,7 +485,7 @@ func (s *Server) getHandlers() {
 func (s *Server) ListenAndServe(addr string) {
 	s.getHandlers()
 
-	caCert, err := ioutil.ReadFile("/tmp/milpa/ca.crt")
+	caCert, err := ioutil.ReadFile(filepath.Join(CERTS_DIR, "ca.crt"))
 	if err != nil {
 		glog.Fatalln("Could not load root cert", err)
 	}
@@ -623,6 +503,8 @@ func (s *Server) ListenAndServe(addr string) {
 		Handler:   s,
 		TLSConfig: tlsConfig,
 	}
+
 	glog.Fatalln(s.httpServer.ListenAndServeTLS(
-		"/tmp/milpa/server.crt", "/tmp/milpa/server.key"))
+		filepath.Join(CERTS_DIR, "server.crt"),
+		filepath.Join(CERTS_DIR, "server.key")))
 }
