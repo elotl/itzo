@@ -117,7 +117,6 @@ func NewLogPipe(dir string) (*LogPipe, error) {
 	// Create named pipes that the unit will use for stdout/stderr. A separate
 	// one is created for the helper process itself, so outputs from the helper
 	// and the application are not intertwined.
-	glog.Infof("Creating log pipes in unit dir %s", dir)
 	l := LogPipe{
 		Unitdir: dir,
 		Pipes:   make(map[string]*os.File),
