@@ -82,6 +82,13 @@ func (u *Unit) Close() {
 	// No-op for now.
 }
 
+func (u *Unit) Destroy() {
+	// you'll need to kill the child process before
+	//
+	u.LogPipe.Remove()
+	os.RemoveAll(u.Directory)
+}
+
 func (u *Unit) GetRootfs() string {
 	return filepath.Join(u.Directory, "ROOTFS")
 }
@@ -269,6 +276,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			return err
 		}
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
+
 		if err := syscall.Mount(rootfs, rootfs, "", syscall.MS_BIND, ""); err != nil {
 			glog.Errorf("Mount() %s: %v", rootfs, err)
 			return err
@@ -276,9 +284,15 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 		// Bind mount statusfile into the chroot. Note: both the source and the
 		// destination files need to exist, otherwise the bind mount will fail.
 		statussrc := filepath.Join(u.statusPath)
-		ensureFileExists(statussrc)
+		err = ensureFileExists(statussrc)
+		if err != nil {
+			glog.Errorln("error creating status file #1")
+		}
 		statusdst := filepath.Join(u.GetRootfs(), "status")
-		ensureFileExists(statusdst)
+		err = ensureFileExists(statusdst)
+		if err != nil {
+			glog.Errorln("error creating status file #2")
+		}
 		if err := syscall.Mount(statussrc, statusdst, "", syscall.MS_BIND, ""); err != nil {
 			glog.Errorf("Mount() statusfile: %v", err)
 			return err
@@ -301,7 +315,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 		}
 		os.Remove("/.oldrootfs")
 		if err := mountSpecial(); err != nil {
-			glog.Errorf("mountSpecial(): %v", rootfs, err)
+			glog.Errorf("mountSpecial(): %v", err)
 			return err
 		}
 		u.statusPath = "/status"

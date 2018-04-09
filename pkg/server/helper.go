@@ -25,13 +25,28 @@ func StartUnit(rootdir, name string, command []string, policy RestartPolicy) err
 	return unit.Run(command, os.Environ(), policy)
 }
 
+// It's possible we need to set up some communication with the waiting
+// process that it doesn't need to clean up everything.  Lets see how
+// the logging works out...
+func stopUnitHelper(rootdir, name string, proc *os.Process) {
+	unit, err := OpenUnit(rootdir, name)
+	if err != nil {
+		glog.Errorf("Error opening unit %s for termination: %s", name, err)
+	}
+	unit.Remove()
+	err := proc.Kill()
+	if err != nil {
+		glog.Errorln("Error terminating", unit, err)
+	}
+}
+
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func startUnitHelper(rootdir, name, command string, appenv []string, policy RestartPolicy) (appid int, err error) {
+func startUnitHelper(rootdir, name, command string, appenv []string, policy RestartPolicy) (*os.Process, error) {
 	unit, err := OpenUnit(rootdir, name)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	unitrootfs := unit.GetRootfs()
 
@@ -85,7 +100,7 @@ func startUnitHelper(rootdir, name, command string, appenv []string, policy Rest
 
 	if err = cmd.Start(); err != nil {
 		lp.Remove()
-		return 0, err
+		return nil, err
 	}
 	pid := cmd.Process.Pid
 	go func() {
@@ -99,7 +114,7 @@ func startUnitHelper(rootdir, name, command string, appenv []string, policy Rest
 		unit.Close()
 		// XXX: use LogBuffer via Units, too.
 	}()
-	return pid, nil
+	return cmd.Process, nil
 }
 
 func getLogBuffer(unit string, n int) []LogEntry {

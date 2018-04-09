@@ -45,6 +45,7 @@ type Server struct {
 	httpServer *http.Server
 	mux        http.ServeMux
 	startTime  time.Time
+
 	// Packages will be installed under this directory (created if it does not
 	// exist).
 	installRootdir string
@@ -122,13 +123,14 @@ func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		appid, err := startUnitHelper(s.installRootdir, unit, command,
+		proc, err := startUnitHelper(s.installRootdir, unit, command,
 			s.makeAppEnv(unit), policy)
+
 		if err != nil {
 			serverError(w, err)
 			return
 		}
-		fmt.Fprintf(w, "%d", appid)
+		fmt.Fprintf(w, "%d", proc.Pid)
 	default:
 		http.NotFound(w, r)
 	}
@@ -482,8 +484,14 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)
 }
 
-func (s *Server) ListenAndServe(addr string) {
+func (s *Server) ListenAndServe(addr string, insecure bool) {
 	s.getHandlers()
+
+	if insecure {
+		s.httpServer = &http.Server{Addr: addr, Handler: s}
+		glog.Fatalln(s.httpServer.ListenAndServe())
+		return
+	}
 
 	caCert, err := ioutil.ReadFile(filepath.Join(CERTS_DIR, "ca.crt"))
 	if err != nil {
