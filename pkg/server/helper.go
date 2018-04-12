@@ -34,7 +34,7 @@ func stopUnitHelper(rootdir, name string, proc *os.Process) {
 		glog.Errorf("Error opening unit %s for termination: %s", name, err)
 	}
 	unit.Remove()
-	err := proc.Kill()
+	err = proc.Kill()
 	if err != nil {
 		glog.Errorln("Error terminating", unit, err)
 	}

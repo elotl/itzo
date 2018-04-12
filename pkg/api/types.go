@@ -1,6 +1,9 @@
 package api
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 type PodSpec struct {
 	// Desired condition of the pod.
@@ -234,3 +237,32 @@ const (
 	ProtocolUDP  Protocol = "UDP"
 	ProtocolICMP Protocol = "ICMP"
 )
+
+type UnitStateWaiting struct {
+	Reason string
+}
+
+type UnitStateRunning struct {
+	StartedAt time.Time `json:"startedAt,omitempty"`
+}
+
+type UnitStateTerminated struct {
+	ExitCode   int32     `json:"exitCode"`
+	FinishedAt time.Time `json:"finishedAt,omitempty"`
+}
+
+// UnitState holds a possible state of a pod unit.  Only one of its
+// members may be specified.  If none of them is specified, the
+// default one is UnitStateRunning.
+type UnitState struct {
+	Waiting    *UnitStateWaiting
+	Running    *UnitStateRunning    `json:"running,omitempty"`
+	Terminated *UnitStateTerminated `json:"terminated,omitempty"`
+}
+
+type UnitStatus struct {
+	Name         string    `json:"name"`
+	State        UnitState `json:"state,omitempty"`
+	RestartCount int32     `json:"restartCount"`
+	Image        string    `json:"image"`
+}

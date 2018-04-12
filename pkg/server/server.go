@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -73,7 +72,9 @@ func badRequest(w http.ResponseWriter, errMsg string) {
 }
 
 func (s *Server) makeAppEnv(unit string) []string {
-	e := os.Environ()
+	// I don't think we should pull in the environ from itzo...
+	//e := os.Environ()
+	e := []string{}
 	for _, d := range s.env.Items(unit) {
 		e = append(e, fmt.Sprintf("%s=%s", d[0], d[1]))
 	}
