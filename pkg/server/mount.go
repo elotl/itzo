@@ -1,12 +1,12 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
 
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/golang/glog"
 )
 
@@ -59,31 +59,6 @@ var Mounts = []Mount{
 	},
 }
 
-type Volume struct {
-	Name         string `json:"name"`
-	VolumeSource `json:",inline,omitempty"`
-}
-
-type VolumeSource struct {
-	EmptyDir *EmptyDir `json:"emptyDir,omitempty"`
-}
-
-// Backing storage for volumes.
-type StorageMedium string
-
-const (
-	StorageMediumDefault StorageMedium = ""       // Use default (disk).
-	StorageMediumMemory  StorageMedium = "Memory" // Use tmpfs.
-	// Supporting huge pages will require some extra steps.
-	//StorageMediumHugePages StorageMedium = "HugePages" // use hugepages
-)
-
-type EmptyDir struct {
-	// SizeLimit is only meaningful for tmpfs.
-	Medium    StorageMedium `json:"medium,omitempty"`
-	SizeLimit int64         `json:"sizeLimit,omitempty"`
-}
-
 func unmountSpecial() {
 	// Unmount in reverse order, since /dev/pts is inside /dev.
 	for i := len(Mounts) - 1; i >= 0; i-- {
@@ -123,27 +98,21 @@ func createTmpfs(dir string, size int64) error {
 	return nil
 }
 
-func createEmptydir(dir string, emptyDir *EmptyDir) error {
+func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
 	switch emptyDir.Medium {
-	case StorageMediumDefault:
+	case api.StorageMediumDefault:
 		glog.Infof("Using disk space for backing EmptyDir %s", dir)
 		return nil
-	case StorageMediumMemory:
+	case api.StorageMediumMemory:
 		glog.Infof("Using tmpfs for backing EmptyDir %s", dir)
 		return createTmpfs(dir, emptyDir.SizeLimit)
 	}
 	return fmt.Errorf("Unknown medium %s in createEmptydir()", emptyDir.Medium)
 }
 
-func createMount(basedir, volspec string) error {
-	var volume Volume
-	err := json.Unmarshal([]byte(volspec), &volume)
-	if err != nil {
-		glog.Errorf("Error deserializing volume json %s: %v", volspec, err)
-		return &ParameterError{err: err}
-	}
+func createMount(basedir string, volume *api.Volume) error {
 	mountsdir := filepath.Join(basedir, "../mounts")
-	err = os.MkdirAll(mountsdir, 0700)
+	err := os.MkdirAll(mountsdir, 0700)
 	if err != nil {
 		glog.Errorf("Error creating base mount directory %s: %v",
 			mountsdir, err)
@@ -168,10 +137,19 @@ func createMount(basedir, volspec string) error {
 		err = createEmptydir(mdir, volume.EmptyDir)
 	}
 	if !found {
-		err = fmt.Errorf("No volume specified in %s", volspec)
+		err = fmt.Errorf("No volume specified in %v", volume)
 		glog.Errorf("%v", err)
 	}
 	return err
+}
+
+func deleteMount(basedir string, volume *api.Volume) error {
+	mdir := filepath.Join(basedir, "..", "mounts", volume.Name)
+	if err := unmounter(mdir, syscall.MNT_DETACH); err != nil {
+		glog.Errorf("Error unmounting %s: %v", mdir, err)
+		return err
+	}
+	return nil
 }
 
 func attachMount(basedir, unit, mount, mountpath string) error {
