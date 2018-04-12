@@ -171,6 +171,7 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("Error decoding pod update request: %v", err))
 			return
 		}
+		// uc.UpdatePod(params)
 	default:
 		http.NotFound(w, r)
 	}
