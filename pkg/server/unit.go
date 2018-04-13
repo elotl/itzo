@@ -273,7 +273,7 @@ func StringToRestartPolicy(pstr string) RestartPolicy {
 	return policy
 }
 
-func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
+func (u *Unit) Run(command, env []string, policy RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",
@@ -322,7 +322,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 		}
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 
-		if err := syscall.Mount(rootfs, rootfs, "", syscall.MS_BIND, ""); err != nil {
+		if err := mounter.BindMount(rootfs, rootfs); err != nil {
 			glog.Errorf("Mount() %s: %v", rootfs, err)
 			return err
 		}
@@ -338,7 +338,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 		if err != nil {
 			glog.Errorln("error creating status file #2")
 		}
-		if err := syscall.Mount(statussrc, statusdst, "", syscall.MS_BIND, ""); err != nil {
+		if err := mounter.BindMount(statussrc, statusdst); err != nil {
 			glog.Errorf("Mount() statusfile: %v", err)
 			return err
 		}
@@ -346,7 +346,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			glog.Errorf("MkdirAll() %s: %v", oldrootfs, err)
 			return err
 		}
-		if err := syscall.PivotRoot(rootfs, oldrootfs); err != nil {
+		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
 			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
 			return err
 		}
@@ -354,7 +354,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			glog.Errorf("Chdir() /: %v", err)
 			return err
 		}
-		if err := syscall.Unmount("/.oldrootfs", syscall.MNT_DETACH); err != nil {
+		if err := mounter.Unmount("/.oldrootfs"); err != nil {
 			glog.Errorf("Unmount() %s: %v", oldrootfs, err)
 			return err
 		}
@@ -369,7 +369,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 	err = u.runUnitLoop(command, env, unitout, uniterr, policy)
 
 	if rootfs != "" {
-		unmountSpecial()
+		mounter.UnmountSpecial()
 	}
 
 	return err

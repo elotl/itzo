@@ -13,12 +13,14 @@ import (
 type (
 	mountFunc   func(source string, target string, fstype string, flags uintptr, data string) error
 	unmountFunc func(target string, flags int) error
+	pivoterFunc func(rootfs, oldrootfs string) error
 )
 
 var (
 	// Allow mocking out these syscalls in tests.
 	mounter   mountFunc   = syscall.Mount
 	unmounter unmountFunc = syscall.Unmount
+	pivoter   pivoterFunc = syscall.PivotRoot
 )
 
 type Mounter interface {
@@ -27,6 +29,9 @@ type Mounter interface {
 	AttachMount(unitname, src, dst string) error
 	MountSpecial() error
 	UnmountSpecial()
+	BindMount(src, dst string) error
+	Unmount(dir string) error
+	PivotRoot(rootfs, oldrootfs string) error
 }
 
 type OSMounter struct {
@@ -71,6 +76,12 @@ var Mounts = []Mount{
 	},
 }
 
+func NewOSMounter(basedir string) Mounter {
+	return &OSMounter{
+		basedir: basedir,
+	}
+}
+
 func (om *OSMounter) UnmountSpecial() {
 	// Unmount in reverse order, since /dev/pts is inside /dev.
 	for i := len(Mounts) - 1; i >= 0; i-- {
@@ -98,10 +109,16 @@ func (om *OSMounter) MountSpecial() error {
 	return nil
 }
 
-func NewOSMounter(basedir string) Mounter {
-	return &OSMounter{
-		basedir: basedir,
-	}
+func (om *OSMounter) BindMount(src, dst string) error {
+	return mounter(src, dst, "", syscall.MS_BIND, "")
+}
+
+func (om *OSMounter) Unmount(dir string) error {
+	return unmounter(dir, syscall.MNT_DETACH)
+}
+
+func (om *OSMounter) PivotRoot(rootfs, oldrootfs string) error {
+	return pivoter(rootfs, oldrootfs)
 }
 
 func (om *OSMounter) CreateMount(volume *api.Volume) error {
