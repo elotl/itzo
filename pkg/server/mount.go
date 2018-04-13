@@ -145,11 +145,35 @@ func createMount(basedir string, volume *api.Volume) error {
 
 func deleteMount(basedir string, volume *api.Volume) error {
 	mdir := filepath.Join(basedir, "..", "mounts", volume.Name)
-	if err := unmounter(mdir, syscall.MNT_DETACH); err != nil {
-		glog.Errorf("Error unmounting %s: %v", mdir, err)
-		return err
+	_, err := os.Stat(mdir)
+	if err != nil {
+		glog.Errorf("Error accessing mount %s: %v", mdir, err)
 	}
-	return nil
+	// For now, we only support EmptyDir. Later on we will need to check if
+	// only one volume is in volspec.
+	found := false
+	if volume.EmptyDir != nil {
+		found = true
+		switch volume.EmptyDir.Medium {
+		case api.StorageMediumDefault:
+			err = os.RemoveAll(mdir)
+			if err != nil {
+				glog.Errorf("Error removing emptyDir %s: %v", mdir, err)
+			}
+			return err
+		case api.StorageMediumMemory:
+			err = unmounter(mdir, syscall.MNT_DETACH)
+			if err != nil {
+				glog.Errorf("Error unmounting tmpfs %s: %v", mdir, err)
+			}
+			return err
+		}
+	}
+	if !found {
+		err = fmt.Errorf("No volume specified in %v", volume)
+		glog.Errorf("%v", err)
+	}
+	return err
 }
 
 func attachMount(basedir, unit, mount, mountpath string) error {
