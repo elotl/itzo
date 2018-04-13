@@ -25,7 +25,8 @@ func TestMountSpecial(t *testing.T) {
 		})
 		return nil
 	}
-	err := mountSpecial()
+	m := NewOSMounter("")
+	err := m.MountSpecial()
 	assert.Nil(t, err)
 	assert.Equal(t, 4, len(mounts))
 }
@@ -43,7 +44,8 @@ func TestMountSpecialFail(t *testing.T) {
 		unmountCalled = true
 		return nil
 	}
-	err := mountSpecial()
+	m := NewOSMounter("")
+	err := m.MountSpecial()
 	assert.NotNil(t, err)
 	assert.True(t, unmountCalled)
 	assert.Equal(t, failedTarget, unmountTarget)
@@ -55,7 +57,8 @@ func TestUnmountSpecial(t *testing.T) {
 		unmounts = append(unmounts, target)
 		return nil
 	}
-	unmountSpecial()
+	m := NewOSMounter("")
+	m.UnmountSpecial()
 	assert.Equal(t, 4, len(unmounts))
 }
 
@@ -72,7 +75,8 @@ func TestAttachMount(t *testing.T) {
 	assert.Nil(t, err)
 	err = os.MkdirAll("/tmp/itzo-test-mount/mounts/mountSrc", 0755)
 	assert.Nil(t, err)
-	err = attachMount("/tmp/itzo-test-mount/units", "unit123", "mountSrc", "/mountDst")
+	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	err = m.AttachMount("unit123", "mountSrc", "/mountDst")
 	assert.Nil(t, err)
 	assert.True(t, strings.Contains(mountSrc, "/mountSrc"))
 	assert.True(t, strings.Contains(mountDst, "/unit123"))
@@ -88,7 +92,8 @@ func TestAttachMountFail(t *testing.T) {
 	assert.Nil(t, err)
 	err = os.MkdirAll("/tmp/itzo-test-mount/mounts/mountSrc", 0755)
 	assert.Nil(t, err)
-	err = attachMount("/tmp/itzo-test-mount/units", "unit123", "mountSrc", "/mountDst")
+	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	err = m.AttachMount("unit123", "mountSrc", "/mountDst")
 	assert.NotNil(t, err)
 }
 
@@ -109,7 +114,8 @@ func TestCreateMountEmptyDirDisk(t *testing.T) {
 			EmptyDir: &api.EmptyDir{},
 		},
 	}
-	err = createMount("/tmp/itzo-test-mount/units", &vol)
+	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	err = m.CreateMount(&vol)
 	assert.Nil(t, err)
 	assert.False(t, mountCalled)
 }
@@ -142,7 +148,8 @@ func TestCreateMountEmptyDirTmpfs(t *testing.T) {
 			},
 		},
 	}
-	err = createMount("/tmp/itzo-test-mount/units", &vol)
+	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	err = m.CreateMount(&vol)
 	assert.Nil(t, err)
 	assert.True(t, mountCalled)
 	assert.Equal(t, "tmpfs", mountSrc)
@@ -280,7 +287,8 @@ func TestDeleteDiskBackedEmptyDirMount(t *testing.T) {
 			EmptyDir: &api.EmptyDir{},
 		},
 	}
-	err = deleteMount("/tmp/itzo-test-mount/units", &vol)
+	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	err = m.DeleteMount(&vol)
 	assert.Nil(t, err)
 	assert.False(t, unmountCalled)
 }
@@ -305,7 +313,8 @@ func TestDeleteMemoryBackedEmptyDirMount(t *testing.T) {
 			},
 		},
 	}
-	err = deleteMount("/tmp/itzo-test-mount/units", &vol)
+	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	err = m.DeleteMount(&vol)
 	assert.Nil(t, err)
 	assert.True(t, unmountCalled)
 }

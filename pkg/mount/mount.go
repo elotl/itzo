@@ -21,6 +21,18 @@ var (
 	unmounter unmountFunc = syscall.Unmount
 )
 
+type Mounter interface {
+	CreateMount(volume *api.Volume) error
+	DeleteMount(volume *api.Volume) error
+	AttachMount(unitname, src, dst string) error
+	MountSpecial() error
+	UnmountSpecial()
+}
+
+type OSMounter struct {
+	basedir string
+}
+
 type Mount struct {
 	Source string
 	Target string
@@ -59,7 +71,7 @@ var Mounts = []Mount{
 	},
 }
 
-func unmountSpecial() {
+func (om *OSMounter) UnmountSpecial() {
 	// Unmount in reverse order, since /dev/pts is inside /dev.
 	for i := len(Mounts) - 1; i >= 0; i-- {
 		m := Mounts[i]
@@ -70,7 +82,7 @@ func unmountSpecial() {
 	}
 }
 
-func mountSpecial() error {
+func (om *OSMounter) MountSpecial() error {
 	for _, m := range Mounts {
 		if err := os.MkdirAll(m.Target, 0700); err != nil {
 			glog.Errorf("MkdirAll() %s: %v", m.Target, err)
@@ -79,39 +91,21 @@ func mountSpecial() error {
 		glog.Infof("Mounting %s -> %s", m.Source, m.Target)
 		if err := mounter(m.Source, m.Target, m.Fs, uintptr(m.Flags), m.Data); err != nil {
 			glog.Errorf("Mount() %s -> %s: %v", m.Source, m.Target, err)
-			unmountSpecial()
+			om.UnmountSpecial()
 			return err
 		}
 	}
 	return nil
 }
 
-// Size is the amount of RAM in MB.
-func createTmpfs(dir string, size int64) error {
-	// Example: mount -t tmpfs -o size=512m tmpfs /mnt/mytmpfs
-	sz := fmt.Sprintf("size=%dm", size)
-	err := mounter("tmpfs", dir, "tmpfs", uintptr(0), sz)
-	if err != nil {
-		glog.Errorf("Failed to create tmpfs at %s: %v", dir, err)
-		return err
+func NewOSMounter(basedir string) Mounter {
+	return &OSMounter{
+		basedir: basedir,
 	}
-	return nil
 }
 
-func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
-	switch emptyDir.Medium {
-	case api.StorageMediumDefault:
-		glog.Infof("Using disk space for backing EmptyDir %s", dir)
-		return nil
-	case api.StorageMediumMemory:
-		glog.Infof("Using tmpfs for backing EmptyDir %s", dir)
-		return createTmpfs(dir, emptyDir.SizeLimit)
-	}
-	return fmt.Errorf("Unknown medium %s in createEmptydir()", emptyDir.Medium)
-}
-
-func createMount(basedir string, volume *api.Volume) error {
-	mountsdir := filepath.Join(basedir, "../mounts")
+func (om *OSMounter) CreateMount(volume *api.Volume) error {
+	mountsdir := filepath.Join(om.basedir, "../mounts")
 	err := os.MkdirAll(mountsdir, 0700)
 	if err != nil {
 		glog.Errorf("Error creating base mount directory %s: %v",
@@ -143,8 +137,8 @@ func createMount(basedir string, volume *api.Volume) error {
 	return err
 }
 
-func deleteMount(basedir string, volume *api.Volume) error {
-	mdir := filepath.Join(basedir, "..", "mounts", volume.Name)
+func (om *OSMounter) DeleteMount(volume *api.Volume) error {
+	mdir := filepath.Join(om.basedir, "..", "mounts", volume.Name)
 	_, err := os.Stat(mdir)
 	if err != nil {
 		glog.Errorf("Error accessing mount %s: %v", mdir, err)
@@ -176,9 +170,9 @@ func deleteMount(basedir string, volume *api.Volume) error {
 	return err
 }
 
-func attachMount(basedir, unit, mount, mountpath string) error {
-	source := filepath.Join(basedir, "../mounts", mount)
-	target := filepath.Join(basedir, unit, "ROOTFS", mountpath)
+func (om *OSMounter) AttachMount(unit, src, dst string) error {
+	source := filepath.Join(om.basedir, "../mounts", src)
+	target := filepath.Join(om.basedir, unit, "ROOTFS", dst)
 	err := os.MkdirAll(target, 0755)
 	if err != nil {
 		glog.Errorf("Error creating mount target directory %s: %v",
@@ -197,4 +191,28 @@ func attachMount(basedir, unit, mount, mountpath string) error {
 		return err
 	}
 	return nil
+}
+
+// Size is the amount of RAM in MB.
+func createTmpfs(dir string, size int64) error {
+	// Example: mount -t tmpfs -o size=512m tmpfs /mnt/mytmpfs
+	sz := fmt.Sprintf("size=%dm", size)
+	err := mounter("tmpfs", dir, "tmpfs", uintptr(0), sz)
+	if err != nil {
+		glog.Errorf("Failed to create tmpfs at %s: %v", dir, err)
+		return err
+	}
+	return nil
+}
+
+func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
+	switch emptyDir.Medium {
+	case api.StorageMediumDefault:
+		glog.Infof("Using disk space for backing EmptyDir %s", dir)
+		return nil
+	case api.StorageMediumMemory:
+		glog.Infof("Using tmpfs for backing EmptyDir %s", dir)
+		return createTmpfs(dir, emptyDir.SizeLimit)
+	}
+	return fmt.Errorf("Unknown medium %s in createEmptydir()", emptyDir.Medium)
 }
