@@ -239,7 +239,8 @@ const (
 )
 
 type UnitStateWaiting struct {
-	Reason string
+	Reason        string
+	launchFailure bool
 }
 
 type UnitStateRunning struct {

@@ -99,6 +99,10 @@ func SyncPodUnits(desired *api.PodSpec, current *api.PodSpec) map[string]api.Uni
 		}
 	}
 
+	// Todo: create a list of all modified volumes
+	// get a list of units that depend on thsoe volumes
+	// and make sure we update all those units
+
 	// Sync the volumes before adding new units
 	SyncVolumes(desired, current)
 
