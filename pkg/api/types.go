@@ -2,7 +2,6 @@ package api
 
 import (
 	"strings"
-	"time"
 )
 
 type PodSpec struct {
@@ -240,16 +239,16 @@ const (
 
 type UnitStateWaiting struct {
 	Reason        string
-	launchFailure bool
+	LaunchFailure bool
 }
 
 type UnitStateRunning struct {
-	StartedAt time.Time `json:"startedAt,omitempty"`
+	StartedAt Time `json:"startedAt,omitempty"`
 }
 
 type UnitStateTerminated struct {
-	ExitCode   int32     `json:"exitCode"`
-	FinishedAt time.Time `json:"finishedAt,omitempty"`
+	ExitCode   int32 `json:"exitCode"`
+	FinishedAt Time  `json:"finishedAt,omitempty"`
 }
 
 // UnitState holds a possible state of a pod unit.  Only one of its

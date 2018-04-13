@@ -3,6 +3,7 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/golang/glog"
 )
 
@@ -24,18 +26,9 @@ type Unit struct {
 	*LogPipe
 	Directory  string
 	Name       string
+	Image      string
 	statusPath string
 }
-
-type UnitStatus string
-
-const (
-	UnitStatusUnknown   = ""
-	UnitStatusCreated   = "created"
-	UnitStatusRunning   = "running"
-	UnitStatusFailed    = "failed"
-	UnitStatusSucceeded = "succeeded"
-)
 
 type RestartPolicy int
 
@@ -93,37 +86,69 @@ func (u *Unit) GetRootfs() string {
 	return filepath.Join(u.Directory, "ROOTFS")
 }
 
-func (u *Unit) GetStatus() (UnitStatus, error) {
+func (u *Unit) PullAndExtractImage(image, url, username, password string) error {
+	if u.Image != "" {
+		glog.Warningf("Unit %s has already pulled image %s", u.Name, u.Image)
+	}
+	glog.Infof("Unit %s pulling image %s", u.Name, image)
+	u.Image = image
+	tp, err := exec.LookPath(TOSI_PRG)
+	if err != nil {
+		tp = "/tmp/tosiprg"
+		err = downloadTosi(tp)
+	}
+	if err != nil {
+		return err
+	}
+	args := []string{"-image", image, "-extractto", u.GetRootfs()}
+	if username != "" {
+		args = append(args, []string{"-username", username}...)
+	}
+	if password != "" {
+		args = append(args, []string{"-password", password}...)
+	}
+	if url != "" {
+		args = append(args, []string{"-url", url}...)
+	}
+	return runTosi(tp, args...)
+}
+
+func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return UnitStatusUnknown, nil
+			return &api.UnitStatus{
+				Name: u.Name,
+				State: api.UnitState{
+					Waiting: &api.UnitStateWaiting{},
+				},
+				RestartCount: 0,
+				Image:        u.Image,
+			}, nil
 		}
 		glog.Errorf("Error reading statusfile for %s\n", u.Name)
-		return UnitStatusUnknown, err
+		return nil, err
 	}
-	err = nil
-	var status UnitStatus
-	switch string(buf) {
-	case string(UnitStatusCreated):
-		status = UnitStatusCreated
-	case string(UnitStatusRunning):
-		status = UnitStatusRunning
-	case string(UnitStatusFailed):
-		status = UnitStatusFailed
-	case string(UnitStatusSucceeded):
-		status = UnitStatusSucceeded
-	default:
-		status = UnitStatusUnknown
-		err := fmt.Errorf("Invalid status for %s: '%v'\n", u.Name, buf)
-		glog.Error(err)
-	}
-	return status, err
+	var status api.UnitStatus
+	err = json.Unmarshal(buf, &status)
+	return &status, err
 }
 
-func (u *Unit) SetStatus(status UnitStatus) error {
-	glog.Infof("Updating status of unit '%s' to %s\n", u.Name, status)
-	buf := []byte(status)
+func (u *Unit) SetState(state api.UnitState) error {
+	// Check current status, and update status.State. Name and Image are
+	// immutable, and RestartCount is kept up to date automatically here.
+	status, err := u.GetStatus()
+	if err != nil {
+		glog.Errorf("Error getting current status for %s\n", u.Name)
+		return err
+	}
+	glog.Infof("Updating state of unit '%s' to %v\n", u.Name, state)
+	status.State = state
+	buf, err := json.Marshal(status)
+	if err != nil {
+		glog.Errorf("Error serializing status for %s\n", u.Name)
+		return err
+	}
 	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
 		glog.Errorf("Error updating statusfile for %s\n", u.Name)
 		return err
@@ -131,9 +156,22 @@ func (u *Unit) SetStatus(status UnitStatus) error {
 	return nil
 }
 
+func maybeBackOff(err error, command []string, backoff *time.Duration) {
+	if err != nil {
+		*backoff *= 2
+		if *backoff > MAX_BACKOFF_TIME {
+			*backoff = MAX_BACKOFF_TIME
+		}
+	} else {
+		// Reset backoff.
+		*backoff = 1 * time.Second
+	}
+	glog.Infof("Waiting for %v before starting %v again", *backoff, command)
+	time.Sleep(*backoff)
+}
+
 func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 	policy RestartPolicy) (err error) {
-	u.SetStatus(UnitStatusRunning)
 	backoff := 1 * time.Second
 	for {
 		start := time.Now()
@@ -146,11 +184,23 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 		if err != nil {
 			// Start() failed, it is either an error looking up the executable,
 			// or a resource allocation problem.
-			u.SetStatus(UnitStatusFailed)
+			u.SetState(api.UnitState{
+				Waiting: &api.UnitStateWaiting{
+					LaunchFailure: true,
+					Reason:        err.Error(),
+				},
+			})
 			glog.Errorf("Start() %v: %v", command, err)
-			return err
+			maybeBackOff(err, command, &backoff)
 		}
+		u.SetState(api.UnitState{
+			Running: &api.UnitStateRunning{
+				StartedAt: api.Now(),
+			},
+		})
 		glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+
+		exitCode := 0
 
 		err = cmd.Wait()
 		d := time.Since(start)
@@ -159,8 +209,9 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 			if exiterr, ok := err.(*exec.ExitError); ok {
 				if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 					foundRc = true
+					exitCode = ws.ExitStatus()
 					glog.Infof("Command %v pid %d exited with %d after %.2fs",
-						command, cmd.Process.Pid, ws.ExitStatus(), d.Seconds())
+						command, cmd.Process.Pid, exitCode, d.Seconds())
 				}
 			}
 			if !foundRc {
@@ -171,35 +222,25 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 			glog.Infof("Command %v pid %d exited with 0 after %.2fs",
 				command, cmd.Process.Pid, d.Seconds())
 		}
+		u.SetState(api.UnitState{
+			Terminated: &api.UnitStateTerminated{
+				ExitCode:   int32(exitCode),
+				FinishedAt: api.Now(),
+			},
+		})
 
 		switch policy {
 		case RESTART_POLICY_NEVER:
-			if err != nil {
-				u.SetStatus(UnitStatusFailed)
-			} else {
-				u.SetStatus(UnitStatusSucceeded)
-			}
 			return err
 		case RESTART_POLICY_ONFAILURE:
 			if err == nil {
-				u.SetStatus(UnitStatusSucceeded)
 				return nil
 			}
 		case RESTART_POLICY_ALWAYS:
-			// Fallthrough.
+			// No-op.
 		}
 
-		if err != nil {
-			backoff *= 2
-			if backoff > MAX_BACKOFF_TIME {
-				backoff = MAX_BACKOFF_TIME
-			}
-		} else {
-			// Reset backoff.
-			backoff = 1 * time.Second
-		}
-		glog.Infof("Waiting for %v before starting %v again", backoff, command)
-		time.Sleep(backoff)
+		maybeBackOff(err, command, &backoff)
 	}
 }
 
@@ -233,7 +274,11 @@ func StringToRestartPolicy(pstr string) RestartPolicy {
 }
 
 func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
-	u.SetStatus(UnitStatusCreated)
+	u.SetState(api.UnitState{
+		Waiting: &api.UnitStateWaiting{
+			Reason: "starting",
+		},
+	})
 
 	rootfs := u.GetRootfs()
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
