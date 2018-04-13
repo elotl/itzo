@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -102,12 +103,13 @@ func TestCreateMountEmptyDirDisk(t *testing.T) {
 	assert.Nil(t, err)
 	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
 	assert.Nil(t, err)
-	err = createMount(
-		"/tmp/itzo-test-mount/units",
-		`{
-            "name": "test-mount-name",
-            "emptyDir": {}
-        }`)
+	vol := api.Volume{
+		Name: "test-mount-name",
+		VolumeSource: api.VolumeSource{
+			EmptyDir: &api.EmptyDir{},
+		},
+	}
+	err = createMount("/tmp/itzo-test-mount/units", &vol)
 	assert.Nil(t, err)
 	assert.False(t, mountCalled)
 }
@@ -131,15 +133,16 @@ func TestCreateMountEmptyDirTmpfs(t *testing.T) {
 	assert.Nil(t, err)
 	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
 	assert.Nil(t, err)
-	err = createMount(
-		"/tmp/itzo-test-mount/units",
-		`{
-            "name": "test-mount-name",
-            "emptyDir": {
-                "medium": "Memory",
-                "sizeLimit": 128
-            }
-        }`)
+	vol := api.Volume{
+		Name: "test-mount-name",
+		VolumeSource: api.VolumeSource{
+			EmptyDir: &api.EmptyDir{
+				Medium:    api.StorageMediumMemory,
+				SizeLimit: 128,
+			},
+		},
+	}
+	err = createMount("/tmp/itzo-test-mount/units", &vol)
 	assert.Nil(t, err)
 	assert.True(t, mountCalled)
 	assert.Equal(t, "tmpfs", mountSrc)
@@ -209,7 +212,7 @@ func TestCreateEmptydirDisk(t *testing.T) {
 	defer os.RemoveAll("/tmp/itzo-test-mount")
 	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
 	assert.Nil(t, err)
-	err = createEmptydir("/tmp/itzo-test-mount", &EmptyDir{})
+	err = createEmptydir("/tmp/itzo-test-mount", &api.EmptyDir{})
 	assert.Nil(t, err)
 	assert.False(t, mountCalled)
 }
@@ -231,7 +234,7 @@ func TestCreateEmptydirTmpfs(t *testing.T) {
 	defer os.RemoveAll("/tmp/itzo-test-mount")
 	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
 	assert.Nil(t, err)
-	err = createEmptydir("/tmp/itzo-test-mount", &EmptyDir{
+	err = createEmptydir("/tmp/itzo-test-mount", &api.EmptyDir{
 		Medium:    "Memory",
 		SizeLimit: 128,
 	})
@@ -252,7 +255,7 @@ func TestCreateEmptydirTmpfsFail(t *testing.T) {
 	defer os.RemoveAll("/tmp/itzo-test-mount")
 	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
 	assert.Nil(t, err)
-	err = createEmptydir("/tmp/itzo-test-mount", &EmptyDir{
+	err = createEmptydir("/tmp/itzo-test-mount", &api.EmptyDir{
 		Medium:    "Memory",
 		SizeLimit: 128,
 	})
