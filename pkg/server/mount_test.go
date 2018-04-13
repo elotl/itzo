@@ -262,3 +262,50 @@ func TestCreateEmptydirTmpfsFail(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.True(t, mountCalled)
 }
+
+func TestDeleteDiskBackedEmptyDirMount(t *testing.T) {
+	unmountCalled := false
+	unmounter = func(target string, flags int) error {
+		unmountCalled = true
+		return nil
+	}
+	defer os.RemoveAll("/tmp/itzo-test-mount")
+	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
+	assert.Nil(t, err)
+	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
+	assert.Nil(t, err)
+	vol := api.Volume{
+		Name: "test-mount-name",
+		VolumeSource: api.VolumeSource{
+			EmptyDir: &api.EmptyDir{},
+		},
+	}
+	err = deleteMount("/tmp/itzo-test-mount/units", &vol)
+	assert.Nil(t, err)
+	assert.False(t, unmountCalled)
+}
+
+func TestDeleteMemoryBackedEmptyDirMount(t *testing.T) {
+	unmountCalled := false
+	unmounter = func(target string, flags int) error {
+		unmountCalled = true
+		return nil
+	}
+	defer os.RemoveAll("/tmp/itzo-test-mount")
+	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
+	assert.Nil(t, err)
+	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
+	assert.Nil(t, err)
+	vol := api.Volume{
+		Name: "test-mount-name",
+		VolumeSource: api.VolumeSource{
+			EmptyDir: &api.EmptyDir{
+				Medium:    "Memory",
+				SizeLimit: 128,
+			},
+		},
+	}
+	err = deleteMount("/tmp/itzo-test-mount/units", &vol)
+	assert.Nil(t, err)
+	assert.True(t, unmountCalled)
+}
