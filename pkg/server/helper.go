@@ -7,6 +7,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/elotl/itzo/pkg/mount"
 	"github.com/golang/glog"
 )
 
@@ -22,7 +23,8 @@ func StartUnit(rootdir, name string, command []string, policy RestartPolicy) err
 	if err != nil {
 		return err
 	}
-	return unit.Run(command, os.Environ(), policy)
+	mounter := mount.NewOSMounter(rootdir)
+	return unit.Run(command, os.Environ(), policy, &mounter)
 }
 
 // It's possible we need to set up some communication with the waiting
