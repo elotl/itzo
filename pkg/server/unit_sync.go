@@ -6,8 +6,33 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/util"
+	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/golang/glog"
 )
+
+type Puller interface {
+	PullImage(name, image, server, username, password string) error
+}
+
+type Mounter interface {
+	CreateMount(string, *api.Volume) error
+	DeleteMount(string, *api.Volume) error
+	AttachMount(basedir, unitname, src, dst string) error
+}
+
+// Too bad there isn't a word for a creator AND destroyer
+// Coulda gone with Shiva(er) but that's a bit imprecise...
+type UnitManager interface {
+	AddUnit(string, *api.Unit, []string, api.RestartPolicy) error
+	DeleteUnit(string) error
+}
+
+type UnitSync struct {
+	basedir     string
+	mountCtl    Mounter
+	unitCtl     UnitManager
+	imagePuller Puller
+}
 
 // We need to remove the Ports from the unit spec since they
 // aren't used on the nodes
@@ -70,50 +95,111 @@ func makeFailedStatus(unit *api.Unit, msg string) api.UnitStatus {
 		Name: unit.Name,
 		State: api.UnitState{
 			Waiting: &api.UnitStateWaiting{
-				Reason: msg,
-				// todo: add failure info
+				Reason:        msg,
+				LaunchFailure: true,
 			},
 		},
 		Image: unit.Image,
 	}
 }
 
-func SyncPodUnits(desired *api.PodSpec, current *api.PodSpec) map[string]api.UnitStatus {
-	// By this point, spec must have had the secrets merged into the env vars
-	erroredUnits := make(map[string]api.UnitStatus)
+func DiffVolumes(spec *api.PodSpec, status *api.PodSpec) (map[string]api.Volume, map[string]api.Volume, sets.String) {
+	allModifiedVolumes := sets.NewString()
 
-	spec := specToUnitMap(desired)
-	status := specToUnitMap(current)
-	add, update, delete := util.MapDiff(spec, status)
+	specMap := volumesToMap(spec.Volumes)
+	statusMap := volumesToMap(status.Volumes)
+	add, update, delete := util.MapDiff(specMap, statusMap)
 
 	// Updates need to be deleted and then added
 	delete = append(delete, update...)
 	add = append(add, update...)
 
-	// do deletes
+	addVolumes := make(map[string]api.Volume)
+	for _, volName := range add {
+		addVolumes[volName] = specMap[volName].(api.Volume)
+		allModifiedVolumes.Insert(volName)
+	}
+	deleteVolumes := make(map[string]api.Volume)
+	for _, volName := range delete {
+		deleteVolumes[volName] = statusMap[volName].(api.Volume)
+		allModifiedVolumes.Insert(volName)
+	}
+	return addVolumes, deleteVolumes, allModifiedVolumes
+}
+
+func DiffUnits(spec *api.PodSpec, status *api.PodSpec, allModifiedVolumes sets.String) (map[string]api.Unit, map[string]api.Unit) {
+	specMap := specToUnitMap(spec)
+	statusMap := specToUnitMap(status)
+	add, update, delete := util.MapDiff(specMap, statusMap)
+
+	// Updates need to be deleted and then added
+	delete = append(delete, update...)
+	add = append(add, update...)
+
+	addUnits := make(map[string]api.Unit)
+	for _, unitName := range add {
+		addUnits[unitName] = specMap[unitName].(api.Unit)
+	}
+	deleteUnits := make(map[string]api.Unit)
 	for _, unitName := range delete {
-		unit := status[unitName].(api.Unit)
-		err := DeleteUnit(unit.Name)
-		if err != nil {
-			glog.Errorf("Error deleting unit %s, trying to continue", unit.Name)
+		deleteUnits[unitName] = statusMap[unitName].(api.Unit)
+	}
+
+	// Go through all modified volume names, find any running units that
+	// depend on those volumes.  Those units need to be deleted.
+	// go through any speced units, if any of those depend on the
+	// volumes, those need to be added
+	for _, u := range status.Units {
+		for _, vol := range u.VolumeMounts {
+			if allModifiedVolumes.Has(vol.Name) {
+				deleteUnits[u.Name] = statusMap[u.Name].(api.Unit)
+			}
+		}
+	}
+	for _, u := range spec.Units {
+		for _, vol := range u.VolumeMounts {
+			if allModifiedVolumes.Has(vol.Name) {
+				addUnits[u.Name] = specMap[u.Name].(api.Unit)
+			}
 		}
 	}
 
-	// Todo: create a list of all modified volumes
-	// get a list of units that depend on thsoe volumes
-	// and make sure we update all those units
+	return addUnits, deleteUnits
+}
 
-	// Sync the volumes before adding new units
-	SyncVolumes(desired, current)
+func (us *UnitSync) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec) map[string]api.UnitStatus {
+	// By this point, spec must have had the secrets merged into the env vars
+	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec, status)
+	addUnits, deleteUnits := DiffUnits(spec, status, allModifiedVolumes)
+
+	// do deletes
+	for unitName, _ := range deleteUnits {
+		err := us.unitCtl.DeleteUnit(unitName)
+		if err != nil {
+			glog.Errorf("Error deleting unit %s, trying to continue", unitName)
+		}
+	}
+	for _, volume := range deleteVolumes {
+		err := us.mountCtl.DeleteMount(us.baseDir, volume)
+		if err != nil {
+			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
+		}
+	}
+	// do adds
+	for _, volume := range addVolumes {
+		err := us.mountCtl.CreateMount(us.baseDir, volume)
+		if err != nil {
+			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+		}
+	}
 
 	// if a delete fails, attempt to carry on.  If an add fails,
 	// collect the units that failed and pass them back to the caller
 	// so that we can update the unit's status and bubble up the data
 	// to milpa.
 
-	for _, unitName := range add {
-		unit := spec[unitName].(api.Unit)
-
+	erroredUnits := make(map[string]api.UnitStatus)
+	for unitName, unit := range addUnits {
 		// pull image
 		server, imageRepo, err := util.ParseImageSpec(unit.Image)
 		if err != nil {
@@ -133,7 +219,8 @@ func SyncPodUnits(desired *api.PodSpec, current *api.PodSpec) map[string]api.Uni
 		// attach mounts
 		mountFailure := false
 		for _, mount := range unit.VolumeMounts {
-			err := attachMount(unit.Name, mount.Name, mount.MountPath)
+			err := us.mountCtl.AttachMount(
+				us.baseDir, unit.Name, mount.Name, mount.MountPath)
 			if err != nil {
 				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
 					mount.Name, unit.Name, err)
@@ -146,9 +233,12 @@ func SyncPodUnits(desired *api.PodSpec, current *api.PodSpec) map[string]api.Uni
 			continue
 		}
 
-		err = startUnitHelper(
-			rootDir, unit, unit.Command, makeAppEnv(unit),
+		err = us.unitCtl.AddUnit(
+			us.baseDir, unit, makeAppEnv(unit),
 			RestartPolicy(pod.Spec.RestartPolicy))
+		// err = startUnitHelper(
+		// 	rootDir, unit, unit.Command, makeAppEnv(unit),
+		// 	RestartPolicy(pod.Spec.RestartPolicy))
 		if err != nil {
 			msg := fmt.Sprintf("Error starting unit %s: %v",
 				unit.Name, err)
@@ -159,7 +249,10 @@ func SyncPodUnits(desired *api.PodSpec, current *api.PodSpec) map[string]api.Uni
 	return erroredUnits
 }
 
-func pullImage(name, image, server, username, password string) error {
+type ImagePuller struct {
+}
+
+func (ip *ImagePuller) PullImage(name, image, server, username, password string) error {
 	installRootDir := "/tmp/itzo"
 	if server != "" && !strings.HasPrefix(server, "http") {
 		server = "https://" + server
@@ -170,16 +263,12 @@ func pullImage(name, image, server, username, password string) error {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
 	defer u.Close()
-	rootfs := u.GetRootfs()
+	//rootfs := u.GetRootfs()
 
-	err = pullAndExtractImage(image, rootfs, server, username, password)
+	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)
 	}
-}
-
-func attachMount(unitName, mountName, mountPath string) error {
-
 }
 
 func volumesToMap(volumes []api.Volume) map[string]interface{} {
@@ -188,32 +277,4 @@ func volumesToMap(volumes []api.Volume) map[string]interface{} {
 		m[v.Name] = v
 	}
 	return m
-}
-
-func SyncVolumes(desired *api.PodSpec, current *api.PodSpec) {
-	spec := volumesToMap(desired.Volumes)
-	status := volumesToMap(current.Volumes)
-	add, update, delete := util.MapDiff(spec, status)
-
-	// Updates need to be deleted and then added
-	delete = append(delete, update...)
-	add = append(add, update...)
-
-	// do deletes
-	for _, volName := range delete {
-		vol := status[volName].(api.Volume)
-		err := DeleteMount(vol)
-		if err != nil {
-			glog.Errorf("Error removing volume %s: %v", vol.Name, err)
-		}
-	}
-
-	// do adds
-	for _, volName := range add {
-		vol := spec[volName].(api.Volume)
-		err := CreateMount(vol)
-		if err != nil {
-			glog.Errorf("Error creating volume: %s, %v", vol.Name, err)
-		}
-	}
 }
