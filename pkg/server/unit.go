@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/mount"
 	"github.com/golang/glog"
 )
 
@@ -359,7 +360,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy, mounter mount.Mo
 			return err
 		}
 		os.Remove("/.oldrootfs")
-		if err := mountSpecial(); err != nil {
+		if err := mounter.MountSpecial(); err != nil {
 			glog.Errorf("mountSpecial(): %v", err)
 			return err
 		}

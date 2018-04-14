@@ -24,7 +24,7 @@ func StartUnit(rootdir, name string, command []string, policy RestartPolicy) err
 		return err
 	}
 	mounter := mount.NewOSMounter(rootdir)
-	return unit.Run(command, os.Environ(), policy, &mounter)
+	return unit.Run(command, os.Environ(), policy, mounter)
 }
 
 // It's possible we need to set up some communication with the waiting

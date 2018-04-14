@@ -571,9 +571,9 @@ func TestCreateMountHandler(t *testing.T) {
 }
 
 func TestCreateMountHandlerFail(t *testing.T) {
-	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		return fmt.Errorf("Test /mount failure")
-	}
+	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
+	// 	return fmt.Errorf("Test /mount failure")
+	// }
 	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
 	path := fmt.Sprintf("/rest/v1/mount")
 	vol := `{
@@ -597,9 +597,9 @@ func TestCreateMountHandlerUserError(t *testing.T) {
 }
 
 func TestAttachMountHandler(t *testing.T) {
-	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		return nil
-	}
+	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
+	// 	return nil
+	// }
 	defer os.RemoveAll(s.installRootdir)
 	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
 	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
@@ -616,9 +616,9 @@ func TestAttachMountHandler(t *testing.T) {
 }
 
 func TestAttachMountHandlerFail(t *testing.T) {
-	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		return fmt.Errorf("Testing mount attach failure")
-	}
+	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
+	// 	return fmt.Errorf("Testing mount attach failure")
+	// }
 	defer os.RemoveAll(s.installRootdir)
 	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
 	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
@@ -635,9 +635,9 @@ func TestAttachMountHandlerFail(t *testing.T) {
 }
 
 func TestAttachMountHandlerMissingMount(t *testing.T) {
-	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		return nil
-	}
+	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
+	// 	return nil
+	// }
 	defer os.RemoveAll(s.installRootdir)
 	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
 	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)

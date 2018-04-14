@@ -40,21 +40,21 @@ func TestGetRootfs(t *testing.T) {
 	assert.True(t, isEmpty)
 }
 
-func TestStatus(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", "itzo-test")
-	defer os.RemoveAll(tmpdir)
-	assert.Nil(t, err)
-	u, err := OpenUnit(tmpdir, "foobar")
-	assert.Nil(t, err)
-	defer u.Close()
-	for _, s := range []UnitStatus{UnitStatusCreated, UnitStatusRunning, UnitStatusFailed, UnitStatusSucceeded} {
-		err = u.SetStatus(s)
-		assert.Nil(t, err)
-		ss, err := u.GetStatus()
-		assert.Nil(t, err)
-		assert.Equal(t, s, ss)
-	}
-}
+// func TestStatus(t *testing.T) {
+// 	tmpdir, err := ioutil.TempDir("", "itzo-test")
+// 	defer os.RemoveAll(tmpdir)
+// 	assert.Nil(t, err)
+// 	u, err := OpenUnit(tmpdir, "foobar")
+// 	assert.Nil(t, err)
+// 	defer u.Close()
+// 	for _, s := range []UnitStatus{UnitStatusCreated, UnitStatusRunning, UnitStatusFailed, UnitStatusSucceeded} {
+// 		err = u.SetStatus(s)
+// 		assert.Nil(t, err)
+// 		ss, err := u.GetStatus()
+// 		assert.Nil(t, err)
+// 		assert.Equal(t, s, ss)
+// 	}
+// }
 
 func TestStringToRestartPolicy(t *testing.T) {
 	policyStrs := []string{"always", "never", "onfailure"}
