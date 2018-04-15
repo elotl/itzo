@@ -28,10 +28,11 @@ type UnitManager interface {
 }
 
 type UnitSync struct {
-	baseDir     string
-	mountCtl    Mounter
-	unitCtl     UnitManager
-	imagePuller Puller
+	baseDir       string
+	mountCtl      Mounter
+	unitCtl       UnitManager
+	imagePuller   Puller
+	restartPolicy api.RestartPolicy
 }
 
 // We need to remove the Ports from the unit spec since they
@@ -178,87 +179,94 @@ func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.Strin
 	return addUnits, deleteUnits
 }
 
-// func (us *UnitSync) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec) map[string]api.UnitStatus {
-// 	// By this point, spec must have had the secrets merged into the env vars
-// 	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
-// 	addUnits, deleteUnits := DiffUnits(spec, status, allModifiedVolumes)
+func (us *UnitSync) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) map[string]api.UnitStatus {
+	// By this point, spec must have had the secrets merged into the env vars
+	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
+	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
 
-// 	// do deletes
-// 	for unitName, _ := range deleteUnits {
-// 		err := us.unitCtl.DeleteUnit(unitName)
-// 		if err != nil {
-// 			glog.Errorf("Error deleting unit %s, trying to continue", unitName)
-// 		}
-// 	}
-// 	for _, volume := range deleteVolumes {
-// 		err := us.mountCtl.DeleteMount(us.baseDir, &volume)
-// 		if err != nil {
-// 			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
-// 		}
-// 	}
-// 	// do adds
-// 	for _, volume := range addVolumes {
-// 		err := us.mountCtl.CreateMount(us.baseDir, &volume)
-// 		if err != nil {
-// 			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
-// 		}
-// 	}
+	// do deletes
+	for unitName, _ := range deleteUnits {
+		err := us.unitCtl.DeleteUnit(unitName)
+		if err != nil {
+			glog.Errorf("Error deleting unit %s, trying to continue", unitName)
+		}
+	}
+	for _, volume := range deleteVolumes {
+		err := us.mountCtl.DeleteMount(us.baseDir, &volume)
+		if err != nil {
+			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
+		}
+	}
+	// do adds
+	for _, volume := range addVolumes {
+		err := us.mountCtl.CreateMount(us.baseDir, &volume)
+		if err != nil {
+			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+		}
+	}
 
-// 	// if a delete fails, attempt to carry on.  If an add fails,
-// 	// collect the units that failed and pass them back to the caller
-// 	// so that we can update the unit's status and bubble up the data
-// 	// to milpa.
+	// if a delete fails, attempt to carry on.  If an add fails,
+	// collect the units that failed and pass them back to the caller
+	// so that we can update the unit's status and bubble up the data
+	// to milpa.
 
-// 	erroredUnits := make(map[string]api.UnitStatus)
-// 	for unitName, unit := range addUnits {
-// 		// pull image
-// 		server, imageRepo, err := util.ParseImageSpec(unit.Image)
-// 		if err != nil {
-// 			msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
-// 			erroredUnits[unit.Name] = makeFailedStatus(&unit, msg)
-// 			continue
-// 		}
-// 		creds := allCre{ds[server]
-// 		err = pullImage(unit.Name, image, server, creds.username, creds.password)
-// 		if err != nil {
-// 			msg := fmt.Sprintf("Error pulling image for unit %s: %v",
-// 				unit.Name, err)
-// 			erroredUnits[unit.Name] = makeFailedStatus(&unit, msg)
-// 			continue
-// 		}
+	erroredUnits := make(map[string]api.UnitStatus)
+	for _, unit := range addUnits {
+		// pull image
+		server, imageRepo, err := util.ParseImageSpec(unit.Image)
+		if err != nil {
+			msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
+			erroredUnits[unit.Name] = makeFailedStatus(&unit, msg)
+			continue
+		}
+		creds := allCreds[server]
+		err = us.imagePuller.PullImage(unit.Name, imageRepo, server, creds.Username, creds.Password)
+		if err != nil {
+			msg := fmt.Sprintf("Error pulling image for unit %s: %v",
+				unit.Name, err)
+			erroredUnits[unit.Name] = makeFailedStatus(&unit, msg)
+			continue
+		}
 
-// 		// attach mounts
-// 		mountFailure := false
-// 		for _, mount := range unit.VolumeMounts {
-// 			err := us.mountCtl.AttachMount(
-// 				us.baseDir, unit.Name, mount.Name, mount.MountPath)
-// 			if err != nil {
-// 				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
-// 					mount.Name, unit.Name, err)
-// 				erroredUnits[unit.Name] = makeFailedStatus(&unit, msg)
-// 				mountFailure = true
-// 				break
-// 			}
-// 		}
-// 		if mountFailure {
-// 			continue
-// 		}
+		// attach mounts
+		mountFailure := false
+		for _, mount := range unit.VolumeMounts {
+			err := us.mountCtl.AttachMount(
+				us.baseDir, unit.Name, mount.Name, mount.MountPath)
+			if err != nil {
+				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
+					mount.Name, unit.Name, err)
+				erroredUnits[unit.Name] = makeFailedStatus(&unit, msg)
+				mountFailure = true
+				break
+			}
+		}
+		if mountFailure {
+			continue
+		}
 
-// 		err = us.unitCtl.AddUnit(
-// 			us.baseDir, unit, makeAppEnv(unit),
-// 			RestartPolicy(pod.Spec.RestartPolicy))
-// 		// err = startUnitHelper(
-// 		// 	rootDir, unit, unit.Command, makeAppEnv(unit),
-// 		// 	RestartPolicy(pod.Spec.RestartPolicy))
-// 		if err != nil {
-// 			msg := fmt.Sprintf("Error starting unit %s: %v",
-// 				unit.Name, err)
-// 			erroredUnits[unit.Name] = makeFailedStatus(unit, msg)
-// 			continue
-// 		}
-// 	}
-// 	return erroredUnits
-// }
+		err = us.unitCtl.AddUnit(
+			us.baseDir, &unit, makeAppEnv(&unit), us.restartPolicy)
+		// err = startUnitHelper(
+		// 	rootDir, unit, unit.Command, makeAppEnv(unit),
+		// 	RestartPolicy(pod.Spec.RestartPolicy))
+		if err != nil {
+			msg := fmt.Sprintf("Error starting unit %s: %v",
+				unit.Name, err)
+			erroredUnits[unit.Name] = makeFailedStatus(&unit, msg)
+			continue
+		}
+	}
+	return erroredUnits
+}
+
+func makeAppEnv(unit *api.Unit) []string {
+	e := []string{}
+	for _, ev := range unit.Env {
+		e = append(e, fmt.Sprintf("%s=%s", ev.Name, ev.Value))
+	}
+	return e
+}
 
 type ImagePuller struct {
 }

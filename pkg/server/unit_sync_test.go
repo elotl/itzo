@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/elotl/itzo/pkg/api"
@@ -211,4 +212,207 @@ func TestDiffUnitsWithVolumeChange(t *testing.T) {
 	assert.Equal(t, expectedDelete, d)
 }
 
-// 1 full test of SyncPodUnits with mocks
+type MountMock struct {
+	Create func(string, *api.Volume) error
+	Delete func(string, *api.Volume) error
+	Attach func(basedir, unitname, src, dst string) error
+}
+
+func NewMountMock() *MountMock {
+	return &MountMock{
+		Create: func(name string, vol *api.Volume) error {
+			return nil
+		},
+		Delete: func(name string, vol *api.Volume) error {
+			return nil
+		},
+		Attach: func(basedir, unitname, src, dst string) error {
+			return nil
+		},
+	}
+}
+
+func (m *MountMock) CreateMount(name string, vol *api.Volume) error {
+	return m.Create(name, vol)
+}
+
+func (m *MountMock) DeleteMount(name string, vol *api.Volume) error {
+	return m.Delete(name, vol)
+}
+
+func (m *MountMock) AttachMount(basedir, unitname, src, dst string) error {
+	return m.Attach(basedir, unitname, src, dst)
+}
+
+type ImagePullMock struct {
+	Pull func(name, image, server, username, password string) error
+}
+
+func (p *ImagePullMock) PullImage(name, image, server, username, password string) error {
+	return p.Pull(name, image, server, username, password)
+}
+
+func NewImagePullMock() *ImagePullMock {
+	return &ImagePullMock{
+		Pull: func(name, image, server, username, password string) error {
+			return nil
+		},
+	}
+}
+
+type UnitMock struct {
+	Add    func(string, *api.Unit, []string, api.RestartPolicy) error
+	Delete func(string) error
+}
+
+func (u *UnitMock) AddUnit(name string, unit *api.Unit, env []string, rp api.RestartPolicy) error {
+	return u.Add(name, unit, env, rp)
+}
+
+func (u *UnitMock) DeleteUnit(name string) error {
+	return u.Delete(name)
+}
+
+func NewUnitMock() *UnitMock {
+	return &UnitMock{
+		Add: func(name string, unit *api.Unit, env []string, rp api.RestartPolicy) error {
+			return nil
+		},
+		Delete: func(name string) error {
+			return nil
+		},
+	}
+}
+
+func TestFullSyncErrors(t *testing.T) {
+	// pod spec and status
+	// -- make something that requires volumes to change
+	// and it requires units to change
+
+	// Only the volume size has chagned
+	spec := api.PodSpec{
+		Units: []api.Unit{{
+			Name:    "u",
+			Image:   "elotl/hello",
+			Command: "hello",
+			VolumeMounts: []api.VolumeMount{
+				{
+					Name: "v1",
+				},
+			},
+		}},
+		Volumes: []api.Volume{{
+			Name: "v1",
+			VolumeSource: api.VolumeSource{
+				EmptyDir: &api.EmptyDir{
+					Medium:    api.StorageMediumMemory,
+					SizeLimit: 20,
+				},
+			},
+		}},
+	}
+
+	status := api.PodSpec{
+		Units: []api.Unit{{
+			Name:    "u",
+			Image:   "elotl/hello",
+			Command: "hello",
+			VolumeMounts: []api.VolumeMount{
+				{
+					Name: "v1",
+				},
+			},
+		}},
+		Volumes: []api.Volume{{
+			Name: "v1",
+			VolumeSource: api.VolumeSource{
+				EmptyDir: &api.EmptyDir{
+					Medium:    api.StorageMediumMemory,
+					SizeLimit: 10, // HERE'S OUR CHANGE
+				},
+			},
+		}},
+	}
+	creds := make(map[string]api.RegistryCredentials)
+
+	testCases := []struct {
+		mod func(us *UnitSync)
+		// This isn't the most interesting assertion but we can't
+		// easily do a deep equal without recreating the exact errors
+		numFailures int
+	}{
+		{
+			mod:         func(us *UnitSync) {},
+			numFailures: 0,
+		},
+		{
+			mod: func(us *UnitSync) {
+				m := us.mountCtl.(*MountMock)
+				m.Delete = func(dir string, vol *api.Volume) error {
+					return fmt.Errorf("mounter failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			mod: func(us *UnitSync) {
+				m := us.mountCtl.(*MountMock)
+				m.Create = func(dir string, vol *api.Volume) error {
+					return fmt.Errorf("mounter failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			mod: func(us *UnitSync) {
+				m := us.unitCtl.(*UnitMock)
+				m.Delete = func(name string) error {
+					return fmt.Errorf("unit add failed")
+				}
+			},
+			numFailures: 0,
+		},
+
+		// Expects failure
+		{
+			mod: func(us *UnitSync) {
+				puller := us.imagePuller.(*ImagePullMock)
+				puller.Pull = func(name, image, server, username, password string) error {
+					return fmt.Errorf("Pull Failed")
+				}
+			},
+			numFailures: 1,
+		},
+		{
+			mod: func(us *UnitSync) {
+				m := us.mountCtl.(*MountMock)
+				m.Attach = func(basedir, unitname, src, dst string) error {
+					return fmt.Errorf("mounter failed")
+				}
+			},
+			numFailures: 1,
+		},
+		{
+			mod: func(us *UnitSync) {
+				m := us.unitCtl.(*UnitMock)
+				m.Add = func(name string, unit *api.Unit, env []string, rp api.RestartPolicy) error {
+					return fmt.Errorf("unit add failed")
+				}
+			},
+			numFailures: 1,
+		},
+	}
+
+	for _, testCase := range testCases {
+		unitSync := UnitSync{
+			baseDir:       "/tmp/milpa",
+			mountCtl:      NewMountMock(),
+			unitCtl:       NewUnitMock(),
+			imagePuller:   NewImagePullMock(),
+			restartPolicy: api.RestartPolicyAlways,
+		}
+		testCase.mod(&unitSync)
+		failures := unitSync.SyncPodUnits(&spec, &status, creds)
+		assert.Len(t, failures, testCase.numFailures)
+	}
+}
