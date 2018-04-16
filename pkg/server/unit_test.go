@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -40,21 +41,53 @@ func TestGetRootfs(t *testing.T) {
 	assert.True(t, isEmpty)
 }
 
-// func TestStatus(t *testing.T) {
-// 	tmpdir, err := ioutil.TempDir("", "itzo-test")
-// 	defer os.RemoveAll(tmpdir)
-// 	assert.Nil(t, err)
-// 	u, err := OpenUnit(tmpdir, "foobar")
-// 	assert.Nil(t, err)
-// 	defer u.Close()
-// 	for _, s := range []UnitStatus{UnitStatusCreated, UnitStatusRunning, UnitStatusFailed, UnitStatusSucceeded} {
-// 		err = u.SetStatus(s)
-// 		assert.Nil(t, err)
-// 		ss, err := u.GetStatus()
-// 		assert.Nil(t, err)
-// 		assert.Equal(t, s, ss)
-// 	}
-// }
+func TestStatus(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	defer os.RemoveAll(tmpdir)
+	assert.NoError(t, err)
+	u, err := OpenUnit(tmpdir, "foobar")
+	assert.NoError(t, err)
+	defer u.Close()
+	waiting := api.UnitState{
+		Waiting: &api.UnitStateWaiting{
+			Reason:        "testing waiting unit state",
+			LaunchFailure: false,
+		},
+	}
+	running := api.UnitState{
+		Running: &api.UnitStateRunning{
+			StartedAt: api.Now(),
+		},
+	}
+	terminated := api.UnitState{
+		Terminated: &api.UnitStateTerminated{
+			ExitCode:   0,
+			FinishedAt: api.Now(),
+		},
+	}
+	for _, s := range []api.UnitState{waiting, running, terminated} {
+		err = u.SetState(s)
+		assert.NoError(t, err)
+		status, err := u.GetStatus()
+		assert.NoError(t, err)
+		if s.Waiting != nil {
+			assert.NotNil(t, status.State.Waiting)
+			assert.Equal(t, s.Waiting.Reason, status.State.Waiting.Reason)
+			assert.Equal(t,
+				s.Waiting.LaunchFailure, status.State.Waiting.LaunchFailure)
+		}
+		if s.Running != nil {
+			assert.NotNil(t, status.State.Running)
+			assert.NotZero(t, status.State.Running.StartedAt)
+		}
+		if s.Terminated != nil {
+			assert.NotNil(t, status.State.Terminated)
+			assert.Equal(t,
+				s.Terminated.ExitCode, status.State.Terminated.ExitCode)
+			assert.NotZero(t, status.State.Terminated.FinishedAt)
+		}
+	}
+}
 
 func TestStringToRestartPolicy(t *testing.T) {
 	policyStrs := []string{"always", "never", "onfailure"}
