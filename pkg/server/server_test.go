@@ -1,9 +1,8 @@
 package server
 
 import (
-	"bytes"
 	"crypto/rand"
-	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -12,13 +11,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -124,225 +123,10 @@ func sendRequest(t *testing.T, method, url string, body io.Reader) *httptest.Res
 	return rr
 }
 
-func assertFileHasContents(t *testing.T, filepath, expectedContent string) {
-	f, err := os.Open(filepath)
-	assert.Nil(t, err)
-	defer f.Close()
-	buf := make([]byte, 10000)
-	_, err = f.Read(buf)
-	assert.Nil(t, err)
-	fileContent := string(buf[:]) // This ends up looking like
-	assert.Contains(t, fileContent, expectedContent)
-}
-
 func TestPingHandler(t *testing.T) {
 	rr := sendRequest(t, "GET", "/rest/v1/ping", nil)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "pong", rr.Body.String())
-}
-
-func TestEnvHandler(t *testing.T) {
-	varName1 := "john"
-	varVal1 := "lenon"
-	path1 := "/rest/v1/env/foounit/" + varName1
-	data := url.Values{}
-	data.Set("val", varVal1)
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "POST", path1, body)
-	assert.Equal(t, http.StatusOK, rr.Code)
-
-	varName2 := "ringo"
-	varVal2 := "star"
-	path2 := "/rest/v1/env/foounit/" + varName2
-	data = url.Values{}
-	data.Set("val", varVal2)
-	body = strings.NewReader(data.Encode())
-	rr = sendRequest(t, "POST", path2, body)
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "OK", rr.Body.String())
-
-	rr = sendRequest(t, "GET", path1, nil)
-	assert.Equal(t, varVal1, rr.Body.String())
-	rr = sendRequest(t, "GET", path2, nil)
-	assert.Equal(t, varVal2, rr.Body.String())
-
-	rr = sendRequest(t, "DELETE", path1, nil)
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "OK", rr.Body.String())
-	rr = sendRequest(t, "GET", path1, nil)
-	assert.Equal(t, http.StatusNotFound, rr.Code)
-
-	rr = sendRequest(t, "GET", path2, nil)
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, varVal2, rr.Body.String())
-
-}
-
-// func TestAppHandler(t *testing.T) {
-// 	exe := "/bin/sleep"
-// 	command := fmt.Sprintf("%s 3", exe)
-// 	path := "/app/"
-// 	data := url.Values{}
-// 	data.Set("command", command)
-// 	body := strings.NewReader(data.Encode())
-// 	rr := sendRequest(t, "PUT", path, body)
-// 	assert.Equal(t, http.StatusOK, rr.Code)
-// 	pid, err := strconv.Atoi(rr.Body.String())
-// 	assert.Nil(t, err)
-// 	time.Sleep(500 * time.Millisecond)
-// 	procfile := fmt.Sprintf("/proc/%d/cmdline", pid)
-// 	assertFileHasContents(t, procfile, exe)
-// }
-
-// func TestAppHandlerEnv(t *testing.T) {
-// 	varName := "THIS_IS_A_VERY_UNIQUE_VAR"
-// 	varVal := "bar"
-// 	path := fmt.Sprintf("/env/%s", varName)
-// 	data := url.Values{}
-// 	data.Set("val", varVal)
-// 	body := strings.NewReader(data.Encode())
-// 	rr := sendRequest(t, "POST", path, body)
-// 	assert.Equal(t, http.StatusOK, rr.Code)
-
-// 	exe := "/bin/sleep"
-// 	command := fmt.Sprintf("%s 1", exe)
-// 	path = "/app/"
-// 	data = url.Values{}
-// 	data.Set("command", command)
-// 	body = strings.NewReader(data.Encode())
-// 	rr = sendRequest(t, "PUT", path, body)
-// 	assert.Equal(t, rr.Code, http.StatusOK)
-// 	pid, err := strconv.Atoi(rr.Body.String())
-// 	assert.Nil(t, err)
-// 	time.Sleep(500 * time.Millisecond)
-
-// 	procfile := fmt.Sprintf("/proc/%d/environ", pid)
-// 	assertFileHasContents(t, procfile, fmt.Sprintf("%s=%s", varName, varVal))
-// }
-
-// generates a temporary filename for use in testing or whatever
-// https://stackoverflow.com/questions/28005865/golang-generate-unique-filename-with-extension
-func tempfileName(prefix, suffix string) string {
-	randBytes := make([]byte, 6)
-	_, _ = rand.Read(randBytes)
-	return filepath.Join(os.TempDir(), prefix+hex.EncodeToString(randBytes)+suffix)
-}
-
-func deleteFile(path string) {
-	_, err := os.Stat(path)
-	if err == nil {
-		_ = os.Remove(path)
-	}
-}
-
-func TestDeployImage(t *testing.T) {
-	if !(*runFunctional) {
-		// Mock out tosi.
-		TOSI_PRG = "true"
-	}
-	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
-	assert.Nil(t, err)
-	defer tmpfile.Close()
-	defer os.Remove(tmpfile.Name())
-
-	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
-	assert.Nil(t, err)
-	srv := New(rootdir)
-	srv.getHandlers()
-
-	unit := fmt.Sprintf("alpine-%d", time.Now().UnixNano())
-
-	data := url.Values{}
-	data.Set("image", "library/alpine:latest")
-	body := strings.NewReader(data.Encode())
-	req, err := http.NewRequest("POST", "/rest/v1/deploy/"+unit, body)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	srv.getHandlers()
-	rr := httptest.NewRecorder()
-	srv.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusOK, rr.Code)
-
-	if !(*runFunctional) {
-		return
-	}
-
-	err = filepath.Walk(rootdir, func(path string, info os.FileInfo, e error) error {
-		assert.Equal(t, info.Sys().(*syscall.Stat_t).Uid, uint32(os.Geteuid()))
-		assert.Equal(t, info.Sys().(*syscall.Stat_t).Gid, uint32(os.Getegid()))
-		return nil
-	})
-	assert.Equal(t, err, nil)
-
-	rootfs := filepath.Join(rootdir, unit, "ROOTFS")
-	fi, err := os.Stat(rootfs)
-	assert.Nil(t, err)
-	assert.NotNil(t, fi)
-	isempty, err := isEmptyDir(rootfs)
-	assert.False(t, isempty)
-	assert.Nil(t, err)
-}
-
-func TestDeployImageFail(t *testing.T) {
-	if !(*runFunctional) {
-		// Mock out tosi, don't try to access Docker Hub.
-		TOSI_PRG = "false"
-	}
-	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
-	assert.Nil(t, err)
-	defer tmpfile.Close()
-	defer os.Remove(tmpfile.Name())
-
-	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
-	assert.Nil(t, err)
-	srv := New(rootdir)
-	srv.getHandlers()
-
-	unit := fmt.Sprintf("alpine-%d", time.Now().UnixNano())
-
-	data := url.Values{}
-	data.Set("image", "library/this-container-image-does-not-exist:latest")
-	body := strings.NewReader(data.Encode())
-	req, err := http.NewRequest("POST", "/rest/v1/deploy/"+unit, body)
-	assert.Nil(t, err)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	srv.getHandlers()
-	rr := httptest.NewRecorder()
-	srv.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusInternalServerError, rr.Code)
-}
-
-func TestGetLogs(t *testing.T) {
-	command := "echo foobar"
-	path := "/rest/v1/start/echo"
-	data := url.Values{}
-	data.Set("command", command)
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	var lines []string
-	timeout := time.Now().Add(3 * time.Second)
-	for time.Now().Before(timeout) {
-		path = "/rest/v1/logs/echo"
-		rr = sendRequest(t, "GET", path, nil)
-		assert.Equal(t, rr.Code, http.StatusOK)
-		lines = strings.Split(rr.Body.String(), "\n")
-		if len(lines) >= 2 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	assert.True(t, 2 <= len(lines))
-	found := false
-	for _, line := range lines {
-		if strings.Contains(line, "foobar") {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found)
 }
 
 func TestGetFile(t *testing.T) {
@@ -379,30 +163,11 @@ func TestGetFile(t *testing.T) {
 	assert.Equal(t, "789\n0\n", responseBody)
 }
 
-func TestGetLogsLines(t *testing.T) {
-	command := "sh -c yes | head -n10"
-	path := "/rest/v1/start/yes"
-	data := url.Values{}
-	data.Set("command", command)
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	var lines []string
-	timeout := time.Now().Add(3 * time.Second)
-	for time.Now().Before(timeout) {
-		path = "/rest/v1/logs/yes?lines=3"
-		rr = sendRequest(t, "GET", path, nil)
-		assert.Equal(t, rr.Code, http.StatusOK)
-		lines = strings.Split(rr.Body.String(), "\n")
-		if len(lines) >= 4 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	assert.True(t, 4 <= len(lines))
-	for _, line := range lines[:len(lines)-1] {
-		assert.Equal(t, "y", line)
-	}
+func TestVersionHandler(t *testing.T) {
+	rr := sendRequest(t, "GET", "/rest/v1/version", nil)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.NotNil(t, rr.Body)
+	assert.NotEmpty(t, rr.Body.String())
 }
 
 func randStr(t *testing.T, n int) string {
@@ -424,230 +189,239 @@ func randStr(t *testing.T, n int) string {
 	return s
 }
 
-func TestStart(t *testing.T) {
-	rnd := randStr(t, 16)
-	command := fmt.Sprintf("echo %s", rnd)
-	path := fmt.Sprintf("/rest/v1/start/%s", rnd)
-	data := url.Values{}
-	data.Set("command", command)
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
+func createUnit(t *testing.T) *api.PodParameters {
+	units := make([]api.Unit, 1)
+	units[0] = api.Unit{
+		Name:    randStr(t, 16),
+		Image:   "library/alpine",
+		Command: "echo Hello Milpa",
+	}
+	params := api.PodParameters{
+		Spec: api.PodSpec{
+			Units:         units,
+			RestartPolicy: api.RestartPolicyAlways,
+		},
+	}
+	buf, err := json.Marshal(&params)
+	assert.NoError(t, err)
+	body := strings.NewReader(string(buf))
+	rr := sendRequest(t, "POST", "/rest/v1/updatepod", body)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	return &params
+}
+
+func updateUnit(t *testing.T, params *api.PodParameters) {
+	buf, err := json.Marshal(params)
+	assert.NoError(t, err)
+	body := strings.NewReader(string(buf))
+	rr := sendRequest(t, "POST", "/rest/v1/updatepod", body)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestUpdateHandler(t *testing.T) {
+	if !*runFunctional {
+		return
+	}
+	_ = createUnit(t)
+}
+
+func TestUpdateHandlerAddVolume(t *testing.T) {
+	if !*runFunctional {
+		return
+	}
+	params := createUnit(t)
+	volume := api.Volume{
+		Name: randStr(t, 8),
+		VolumeSource: api.VolumeSource{
+			EmptyDir: &api.EmptyDir{},
+		},
+	}
+	params.Spec.Volumes = []api.Volume{volume}
+	buf, err := json.Marshal(params)
+	assert.NoError(t, err)
+	body := strings.NewReader(string(buf))
+	rr := sendRequest(t, "POST", "/rest/v1/updatepod", body)
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestUpdateHandlerAddUnit(t *testing.T) {
+	if !*runFunctional {
+		return
+	}
+	params := createUnit(t)
+	unit := api.Unit{
+		Name:    randStr(t, 8),
+		Image:   "library/alpine",
+		Command: "echo Hello World",
+	}
+	params.Spec.Units = append(params.Spec.Units, unit)
+	buf, err := json.Marshal(params)
+	assert.NoError(t, err)
+	body := strings.NewReader(string(buf))
+	rr := sendRequest(t, "POST", "/rest/v1/updatepod", body)
+	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestStatusHandler(t *testing.T) {
-	rnd := randStr(t, 16)
-	command := fmt.Sprintf("echo %s", rnd)
-	path := fmt.Sprintf("/rest/v1/start/%s", rnd)
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "always")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	path = fmt.Sprintf("/rest/v1/status/%s", rnd)
-	data = url.Values{}
-	body = strings.NewReader(data.Encode())
-	status := ""
+	if !*runFunctional {
+		return
+	}
+	_ = createUnit(t)
+	path := "/rest/v1/status"
 	timeout := time.Now().Add(30 * time.Second)
+	var reply api.PodStatusReply
 	for time.Now().Before(timeout) {
-		rr = sendRequest(t, "GET", path, body)
-		assert.Equal(t, rr.Code, http.StatusOK)
-		status = rr.Body.String()
-		if status == "running" {
+		rr := sendRequest(t, "GET", path, nil)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		err := json.Unmarshal(rr.Body.Bytes(), &reply)
+		assert.NoError(t, err)
+		assert.Len(t, reply.UnitStatuses, 1)
+		if reply.UnitStatuses[0].State.Running != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	assert.Equal(t, "running", status)
-}
-
-func TestStatusHandlerStartFailed(t *testing.T) {
-	rnd := randStr(t, 16)
-	command := "/does_not_exist"
-	path := fmt.Sprintf("/rest/v1/start/%s", rnd)
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "never")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	path = fmt.Sprintf("/rest/v1/status/%s", rnd)
-	data = url.Values{}
-	body = strings.NewReader(data.Encode())
-	status := ""
-	timeout := time.Now().Add(30 * time.Second)
-	for time.Now().Before(timeout) {
-		rr = sendRequest(t, "GET", path, body)
-		assert.Equal(t, rr.Code, http.StatusOK)
-		status = rr.Body.String()
-		if status == "failed" {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	assert.Equal(t, "failed", status)
+	assert.NotNil(t, reply.UnitStatuses[0].State.Running)
 }
 
 func TestStatusHandlerFailed(t *testing.T) {
-	rnd := randStr(t, 16)
-	command := "cat /does_not_exist"
-	path := fmt.Sprintf("/rest/v1/start/%s", rnd)
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "never")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	path = fmt.Sprintf("/rest/v1/status/%s", rnd)
-	data = url.Values{}
-	body = strings.NewReader(data.Encode())
-	status := ""
+	if !*runFunctional {
+		return
+	}
+	params := createUnit(t)
+	params.Spec.Units = []api.Unit{
+		api.Unit{
+			Name:    params.Spec.Units[0].Name,
+			Command: "ls /does_not_exist",
+		},
+	}
+	params.Spec.RestartPolicy = api.RestartPolicyNever
+	updateUnit(t, params)
+	var reply api.PodStatusReply
 	timeout := time.Now().Add(30 * time.Second)
 	for time.Now().Before(timeout) {
-		rr = sendRequest(t, "GET", path, body)
-		assert.Equal(t, rr.Code, http.StatusOK)
-		status = rr.Body.String()
-		if status == "failed" {
+		rr := sendRequest(t, "GET", "/rest/v1/status", nil)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		err := json.Unmarshal(rr.Body.Bytes(), &reply)
+		assert.NoError(t, err)
+		assert.Len(t, reply.UnitStatuses, 1)
+		if reply.UnitStatuses[0].State.Terminated != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	assert.Equal(t, "failed", status)
+	assert.NotNil(t, reply.UnitStatuses[0].State.Terminated)
+	assert.NotZero(t, reply.UnitStatuses[0].State.Terminated.ExitCode)
+	assert.NotZero(t, reply.UnitStatuses[0].State.Terminated.FinishedAt)
+}
+
+func TestStatusHandlerLaunchFailure(t *testing.T) {
+	if !*runFunctional {
+		return
+	}
+	params := createUnit(t)
+	params.Spec.Units = []api.Unit{
+		api.Unit{
+			Name:    params.Spec.Units[0].Name,
+			Command: "/does_not_exist",
+		},
+	}
+	params.Spec.RestartPolicy = api.RestartPolicyNever
+	updateUnit(t, params)
+	var reply api.PodStatusReply
+	timeout := time.Now().Add(30 * time.Second)
+	for time.Now().Before(timeout) {
+		rr := sendRequest(t, "GET", "/rest/v1/status", nil)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		err := json.Unmarshal(rr.Body.Bytes(), &reply)
+		assert.NoError(t, err)
+		assert.Len(t, reply.UnitStatuses, 1)
+		if reply.UnitStatuses[0].State.Waiting != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.NotNil(t, reply.UnitStatuses[0].State.Waiting)
+	assert.True(t, reply.UnitStatuses[0].State.Waiting.LaunchFailure)
 }
 
 func TestStatusHandlerSucceeded(t *testing.T) {
-	rnd := randStr(t, 16)
-	command := fmt.Sprintf("echo %s", rnd)
-	path := fmt.Sprintf("/rest/v1/start/%s", rnd)
-	data := url.Values{}
-	data.Set("command", command)
-	data.Set("restartpolicy", "never")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "PUT", path, body)
-	assert.Equal(t, rr.Code, http.StatusOK)
-	pid, err := strconv.Atoi(rr.Body.String())
-	assert.Nil(t, err)
-	assert.True(t, pid > 0)
-	path = fmt.Sprintf("/rest/v1/status/%s", rnd)
-	data = url.Values{}
-	body = strings.NewReader(data.Encode())
-	status := ""
+	if !*runFunctional {
+		return
+	}
+	params := createUnit(t)
+	params.Spec.Units = []api.Unit{
+		api.Unit{
+			Name:    params.Spec.Units[0].Name,
+			Command: "/does_not_exist",
+		},
+	}
+	params.Spec.RestartPolicy = api.RestartPolicyNever
+	updateUnit(t, params)
+	var reply api.PodStatusReply
 	timeout := time.Now().Add(30 * time.Second)
 	for time.Now().Before(timeout) {
-		rr = sendRequest(t, "GET", path, body)
-		assert.Equal(t, rr.Code, http.StatusOK)
-		status = rr.Body.String()
-		if status == "succeeded" {
+		rr := sendRequest(t, "GET", "/rest/v1/status", nil)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		err := json.Unmarshal(rr.Body.Bytes(), &reply)
+		assert.NoError(t, err)
+		assert.Len(t, reply.UnitStatuses, 1)
+		if reply.UnitStatuses[0].State.Terminated != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	assert.Equal(t, "succeeded", status)
+	assert.NotNil(t, reply.UnitStatuses[0].State.Terminated)
+	assert.Zero(t, reply.UnitStatuses[0].State.Terminated.ExitCode)
+	assert.NotZero(t, reply.UnitStatuses[0].State.Terminated.FinishedAt)
 }
 
-func TestCreateMountHandler(t *testing.T) {
-	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
-	path := fmt.Sprintf("/rest/v1/mount")
-	vol := `{
-        "name": "test-mount",
-        "emptyDir": {}
-    }`
-	body := bytes.NewBuffer([]byte(vol))
-	rr := sendRequest(t, "POST", path, body)
+func TestGetLogs(t *testing.T) {
+	if !*runFunctional {
+		return
+	}
+	params := createUnit(t)
+	name := params.Spec.Units[0].Name
+	var lines []string
+	timeout := time.Now().Add(3 * time.Second)
+	for time.Now().Before(timeout) {
+		path := fmt.Sprintf("/rest/v1/logs/%s", name)
+		rr := sendRequest(t, "GET", path, nil)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		lines = strings.Split(rr.Body.String(), "\n")
+		if len(lines) >= 2 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.True(t, 2 <= len(lines))
+}
+
+func TestGetLogsLines(t *testing.T) {
+	if !*runFunctional {
+		return
+	}
+	params := createUnit(t)
+	params.Spec.Units[0].Command = "sh -c yes | head -n10"
+	buf, err := json.Marshal(params)
+	assert.NoError(t, err)
+	body := strings.NewReader(string(buf))
+	rr := sendRequest(t, "POST", "/rest/v1/updatepod", body)
 	assert.Equal(t, http.StatusOK, rr.Code)
-}
-
-func TestCreateMountHandlerFail(t *testing.T) {
-	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
-	// 	return fmt.Errorf("Test /mount failure")
-	// }
-	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
-	path := fmt.Sprintf("/rest/v1/mount")
-	vol := `{
-        "name": "test-mount",
-        "emptyDir": {
-            "medium": "Memory"
-        }
-    }`
-	body := bytes.NewBuffer([]byte(vol))
-	rr := sendRequest(t, "POST", path, body)
-	assert.Equal(t, http.StatusInternalServerError, rr.Code)
-}
-
-func TestCreateMountHandlerUserError(t *testing.T) {
-	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
-	path := fmt.Sprintf("/rest/v1/mount")
-	vol := ""
-	body := bytes.NewBuffer([]byte(vol))
-	rr := sendRequest(t, "POST", path, body)
-	assert.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestAttachMountHandler(t *testing.T) {
-	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
-	// 	return nil
-	// }
-	defer os.RemoveAll(s.installRootdir)
-	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
-	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
-	assert.Nil(t, err)
-	err = os.MkdirAll(filepath.Join(s.installRootdir, "../mounts", "my-mount"), 0755)
-	assert.Nil(t, err)
-	path := fmt.Sprintf("/rest/v1/mount/my-unit")
-	data := url.Values{}
-	data.Set("name", "my-mount")
-	data.Set("path", "/mount-target")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "POST", path, body)
-	assert.Equal(t, http.StatusOK, rr.Code)
-}
-
-func TestAttachMountHandlerFail(t *testing.T) {
-	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
-	// 	return fmt.Errorf("Testing mount attach failure")
-	// }
-	defer os.RemoveAll(s.installRootdir)
-	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
-	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
-	assert.Nil(t, err)
-	err = os.MkdirAll(filepath.Join(s.installRootdir, "../mounts", "my-mount"), 0755)
-	assert.Nil(t, err)
-	path := fmt.Sprintf("/rest/v1/mount/my-unit")
-	data := url.Values{}
-	data.Set("name", "my-mount")
-	data.Set("path", "/mount-target")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "POST", path, body)
-	assert.Equal(t, http.StatusInternalServerError, rr.Code)
-}
-
-func TestAttachMountHandlerMissingMount(t *testing.T) {
-	//mounter := func(source, target, fstype string, flags uintptr, data string) error {
-	// 	return nil
-	// }
-	defer os.RemoveAll(s.installRootdir)
-	defer os.RemoveAll(filepath.Join(s.installRootdir, "../mounts"))
-	err := os.MkdirAll(filepath.Join(s.installRootdir, "my-unit", "ROOTFS"), 0755)
-	assert.Nil(t, err)
-	os.RemoveAll(filepath.Join(s.installRootdir, "../mounts", "my-mount"))
-	path := fmt.Sprintf("/rest/v1/mount/my-unit")
-	data := url.Values{}
-	data.Set("name", "my-mount")
-	data.Set("path", "/mount-target")
-	body := strings.NewReader(data.Encode())
-	rr := sendRequest(t, "POST", path, body)
-	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	var lines []string
+	timeout := time.Now().Add(3 * time.Second)
+	for time.Now().Before(timeout) {
+		path := "/rest/v1/logs/yes?lines=3"
+		rr := sendRequest(t, "GET", path, nil)
+		assert.Equal(t, http.StatusOK, rr.Code)
+		lines = strings.Split(rr.Body.String(), "\n")
+		if len(lines) >= 4 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.True(t, 4 <= len(lines))
+	for _, line := range lines[:len(lines)-1] {
+		assert.Equal(t, "y", line)
+	}
 }
