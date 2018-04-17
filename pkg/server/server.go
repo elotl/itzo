@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/mount"
 	"github.com/golang/glog"
 )
 
@@ -42,10 +43,11 @@ func (pe *ParameterError) Error() string {
 }
 
 type Server struct {
-	env        EnvStore
-	httpServer *http.Server
-	mux        http.ServeMux
-	startTime  time.Time
+	env            EnvStore
+	httpServer     *http.Server
+	mux            http.ServeMux
+	startTime      time.Time
+	unitController *UnitController
 	// Packages will be installed under this directory (created if it does not
 	// exist).
 	installRootdir string
@@ -55,10 +57,13 @@ func New(rootdir string) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
+	mounter := mount.NewOSMounter(rootdir)
+	uc := NewUnitController(rootdir, mounter, nil)
 	return &Server{
 		env:            EnvStore{},
 		startTime:      time.Now().UTC(),
 		installRootdir: rootdir,
+		unitController: uc,
 	}
 }
 

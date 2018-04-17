@@ -17,9 +17,9 @@ type Puller interface {
 }
 
 type Mounter interface {
-	CreateMount(string, *api.Volume) error
-	DeleteMount(string, *api.Volume) error
-	AttachMount(basedir, unitname, src, dst string) error
+	CreateMount(*api.Volume) error
+	DeleteMount(*api.Volume) error
+	AttachMount(unitname, src, dst string) error
 }
 
 // Too bad there isn't a word for a creator AND destroyer
@@ -31,16 +31,25 @@ type UnitManager interface {
 
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
 type UnitController struct {
-	podStatus     *api.PodSpec
-	updateChan    chan *api.PodParameters
-	syncErrors    map[string]api.UnitStatus
 	baseDir       string
 	mountCtl      Mounter
 	unitMgr       UnitManager
 	imagePuller   Puller
+	podStatus     *api.PodSpec
+	updateChan    chan *api.PodParameters
+	syncErrors    map[string]api.UnitStatus
 	restartPolicy api.RestartPolicy
 }
 
+func NewUnitController(baseDir string, mounter Mounter, unitMgr UnitManager) *UnitController {
+	return &UnitController{
+		baseDir:     baseDir,
+		unitMgr:     unitMgr,
+		mountCtl:    mounter,
+		imagePuller: &ImagePuller{},
+		updateChan:  make(chan *api.PodParameters, specChanSize),
+	}
+}
 func (uc *UnitController) UpdatePod(params *api.PodParameters) error {
 	if len(uc.updateChan) == specChanSize {
 		return fmt.Errorf("Error updating pod spec: too many pending updates")
@@ -221,14 +230,14 @@ func (uc *UnitController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, a
 		}
 	}
 	for _, volume := range deleteVolumes {
-		err := uc.mountCtl.DeleteMount(uc.baseDir, &volume)
+		err := uc.mountCtl.DeleteMount(&volume)
 		if err != nil {
 			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
 		}
 	}
 	// do adds
 	for _, volume := range addVolumes {
-		err := uc.mountCtl.CreateMount(uc.baseDir, &volume)
+		err := uc.mountCtl.CreateMount(&volume)
 		if err != nil {
 			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
 		}
@@ -261,7 +270,7 @@ func (uc *UnitController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, a
 		mountFailure := false
 		for _, mount := range unit.VolumeMounts {
 			err := uc.mountCtl.AttachMount(
-				uc.baseDir, unit.Name, mount.Name, mount.MountPath)
+				unit.Name, mount.Name, mount.MountPath)
 			if err != nil {
 				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
 					mount.Name, unit.Name, err)

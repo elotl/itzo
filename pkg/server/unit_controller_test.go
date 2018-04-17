@@ -213,35 +213,35 @@ func TestDiffUnitsWithVolumeChange(t *testing.T) {
 }
 
 type MountMock struct {
-	Create func(string, *api.Volume) error
-	Delete func(string, *api.Volume) error
-	Attach func(basedir, unitname, src, dst string) error
+	Create func(*api.Volume) error
+	Delete func(*api.Volume) error
+	Attach func(unitname, src, dst string) error
 }
 
 func NewMountMock() *MountMock {
 	return &MountMock{
-		Create: func(name string, vol *api.Volume) error {
+		Create: func(vol *api.Volume) error {
 			return nil
 		},
-		Delete: func(name string, vol *api.Volume) error {
+		Delete: func(vol *api.Volume) error {
 			return nil
 		},
-		Attach: func(basedir, unitname, src, dst string) error {
+		Attach: func(unitname, src, dst string) error {
 			return nil
 		},
 	}
 }
 
-func (m *MountMock) CreateMount(name string, vol *api.Volume) error {
-	return m.Create(name, vol)
+func (m *MountMock) CreateMount(vol *api.Volume) error {
+	return m.Create(vol)
 }
 
-func (m *MountMock) DeleteMount(name string, vol *api.Volume) error {
-	return m.Delete(name, vol)
+func (m *MountMock) DeleteMount(vol *api.Volume) error {
+	return m.Delete(vol)
 }
 
-func (m *MountMock) AttachMount(basedir, unitname, src, dst string) error {
-	return m.Attach(basedir, unitname, src, dst)
+func (m *MountMock) AttachMount(unitname, src, dst string) error {
+	return m.Attach(unitname, src, dst)
 }
 
 type ImagePullMock struct {
@@ -348,7 +348,7 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			mod: func(uc *UnitController) {
 				m := uc.mountCtl.(*MountMock)
-				m.Delete = func(dir string, vol *api.Volume) error {
+				m.Delete = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
 				}
 			},
@@ -357,7 +357,7 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			mod: func(uc *UnitController) {
 				m := uc.mountCtl.(*MountMock)
-				m.Create = func(dir string, vol *api.Volume) error {
+				m.Create = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
 				}
 			},
@@ -386,7 +386,7 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			mod: func(uc *UnitController) {
 				m := uc.mountCtl.(*MountMock)
-				m.Attach = func(basedir, unitname, src, dst string) error {
+				m.Attach = func(unitname, src, dst string) error {
 					return fmt.Errorf("mounter failed")
 				}
 			},
