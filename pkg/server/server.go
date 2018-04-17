@@ -46,7 +46,6 @@ type Server struct {
 	httpServer *http.Server
 	mux        http.ServeMux
 	startTime  time.Time
-
 	// Packages will be installed under this directory (created if it does not
 	// exist).
 	installRootdir string
