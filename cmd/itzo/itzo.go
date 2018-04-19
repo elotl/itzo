@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
 	"github.com/golang/glog"
 	"github.com/google/shlex"
@@ -20,14 +21,14 @@ func main() {
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
 	var appunit = flag.String("unit", "", "Unit name")
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
-	var apprestartpolicy = flag.String("restartpolicy", "always", "Unit restart policy: always, never or onfailure")
+	var apprestartpolicy = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Unit restart policy: always, never or onfailure")
 	// todo, ability to log to a file instead of stdout
 
 	flag.Parse()
 	flag.Lookup("logtostderr").Value.Set("true")
 
 	if *appcmdline != "" {
-		policy := server.StringToRestartPolicy(*apprestartpolicy)
+		policy := api.RestartPolicy(*apprestartpolicy)
 		glog.Infof("Starting %s for %s; restart policy is %v",
 			*appcmdline, *appunit, policy)
 		cmdargs, err := shlex.Split(*appcmdline)

@@ -89,25 +89,6 @@ func TestStatus(t *testing.T) {
 	}
 }
 
-func TestStringToRestartPolicy(t *testing.T) {
-	policyStrs := []string{"always", "never", "onfailure"}
-	for _, pstr := range policyStrs {
-		assert.Equal(t, pstr, RestartPolicyToString(StringToRestartPolicy(pstr)))
-	}
-	assert.Equal(t, StringToRestartPolicy("foobar"), RESTART_POLICY_ALWAYS)
-}
-
-func TestRestartPolicyToString(t *testing.T) {
-	policies := []RestartPolicy{
-		RESTART_POLICY_ALWAYS,
-		RESTART_POLICY_NEVER,
-		RESTART_POLICY_ONFAILURE,
-	}
-	for _, p := range policies {
-		assert.Equal(t, p, StringToRestartPolicy(RestartPolicyToString(p)))
-	}
-}
-
 func TestUnitRestartPolicyAlways(t *testing.T) {
 	tmpfile, err := ioutil.TempFile("", "itzo-test")
 	assert.Nil(t, err)
@@ -122,7 +103,7 @@ func TestUnitRestartPolicyAlways(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, nil, nil, RESTART_POLICY_ALWAYS)
+			[]string{}, nil, nil, api.RestartPolicyAlways)
 		ch <- err
 	}()
 	pid := 0
@@ -171,7 +152,7 @@ func TestUnitRestartPolicyNever(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, nil, nil, RESTART_POLICY_NEVER)
+			[]string{}, nil, nil, api.RestartPolicyNever)
 		ch <- err
 	}()
 	select {
@@ -203,7 +184,7 @@ func TestUnitRestartPolicyOnFailureHappy(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 0", tmpfile.Name())},
-			[]string{}, nil, nil, RESTART_POLICY_ONFAILURE)
+			[]string{}, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
 	}()
 	select {
@@ -233,7 +214,7 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, nil, nil, RESTART_POLICY_ONFAILURE)
+			[]string{}, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
 	}()
 	pid := 0

@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/elotl/itzo/pkg/api"
@@ -261,24 +263,24 @@ func NewImagePullMock() *ImagePullMock {
 }
 
 type UnitMock struct {
-	Add    func(string, *api.Unit, []string, api.RestartPolicy) error
-	Delete func(string) error
+	Start func(string, string, []string, api.RestartPolicy) error
+	Stop  func(string) error
 }
 
-func (u *UnitMock) AddUnit(name string, unit *api.Unit, env []string, rp api.RestartPolicy) error {
-	return u.Add(name, unit, env, rp)
+func (u *UnitMock) StartUnit(name, command string, env []string, rp api.RestartPolicy) error {
+	return u.Start(name, command, env, rp)
 }
 
-func (u *UnitMock) DeleteUnit(name string) error {
-	return u.Delete(name)
+func (u *UnitMock) StopUnit(name string) error {
+	return u.Stop(name)
 }
 
 func NewUnitMock() *UnitMock {
 	return &UnitMock{
-		Add: func(name string, unit *api.Unit, env []string, rp api.RestartPolicy) error {
+		Start: func(name, command string, env []string, rp api.RestartPolicy) error {
 			return nil
 		},
-		Delete: func(name string) error {
+		Stop: func(name string) error {
 			return nil
 		},
 	}
@@ -336,17 +338,17 @@ func TestFullSyncErrors(t *testing.T) {
 	creds := make(map[string]api.RegistryCredentials)
 
 	testCases := []struct {
-		mod func(uc *UnitController)
+		mod func(uc *PodController)
 		// This isn't the most interesting assertion but we can't
 		// easily do a deep equal without recreating the exact errors
 		numFailures int
 	}{
 		{
-			mod:         func(uc *UnitController) {},
+			mod:         func(uc *PodController) {},
 			numFailures: 0,
 		},
 		{
-			mod: func(uc *UnitController) {
+			mod: func(uc *PodController) {
 				m := uc.mountCtl.(*MountMock)
 				m.Delete = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
@@ -355,7 +357,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
-			mod: func(uc *UnitController) {
+			mod: func(uc *PodController) {
 				m := uc.mountCtl.(*MountMock)
 				m.Create = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
@@ -364,9 +366,9 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
-			mod: func(uc *UnitController) {
+			mod: func(uc *PodController) {
 				m := uc.unitMgr.(*UnitMock)
-				m.Delete = func(name string) error {
+				m.Stop = func(name string) error {
 					return fmt.Errorf("unit add failed")
 				}
 			},
@@ -375,7 +377,7 @@ func TestFullSyncErrors(t *testing.T) {
 
 		// Expects failure
 		{
-			mod: func(uc *UnitController) {
+			mod: func(uc *PodController) {
 				puller := uc.imagePuller.(*ImagePullMock)
 				puller.Pull = func(name, image, server, username, password string) error {
 					return fmt.Errorf("Pull Failed")
@@ -384,7 +386,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 1,
 		},
 		{
-			mod: func(uc *UnitController) {
+			mod: func(uc *PodController) {
 				m := uc.mountCtl.(*MountMock)
 				m.Attach = func(unitname, src, dst string) error {
 					return fmt.Errorf("mounter failed")
@@ -393,9 +395,9 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 1,
 		},
 		{
-			mod: func(uc *UnitController) {
+			mod: func(uc *PodController) {
 				m := uc.unitMgr.(*UnitMock)
-				m.Add = func(name string, unit *api.Unit, env []string, rp api.RestartPolicy) error {
+				m.Start = func(name, command string, env []string, rp api.RestartPolicy) error {
 					return fmt.Errorf("unit add failed")
 				}
 			},
@@ -404,15 +406,99 @@ func TestFullSyncErrors(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		unitCtl := UnitController{
-			baseDir:       "/tmp/milpa",
+		podCtl := PodController{
+			rootDir:       "/tmp/milpa",
 			mountCtl:      NewMountMock(),
 			unitMgr:       NewUnitMock(),
 			imagePuller:   NewImagePullMock(),
 			restartPolicy: api.RestartPolicyAlways,
 		}
-		testCase.mod(&unitCtl)
-		failures := unitCtl.SyncPodUnits(&spec, &status, creds)
+		testCase.mod(&podCtl)
+		failures := podCtl.SyncPodUnits(&spec, &status, creds)
 		assert.Len(t, failures, testCase.numFailures)
 	}
+}
+
+func createTestUnit(name string) (string, *Unit, func()) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	if err != nil {
+		panic(err)
+	}
+	u, err := OpenUnit(tmpdir, name)
+	if err != nil {
+		panic(err)
+	}
+	closer := func() { u.Close(); os.RemoveAll(tmpdir) }
+	return tmpdir, u, closer
+}
+
+func assertStatusEqual(t *testing.T, expected, actual *api.UnitStatus) {
+	assert.Equal(t, expected.Name, actual.Name)
+	assert.Equal(t, expected.RestartCount, actual.RestartCount)
+	assert.Equal(t, expected.Image, actual.Image)
+	if expected.State.Waiting != nil && actual.State.Waiting != nil {
+		assert.Equal(t, expected.State, actual.State)
+		return
+	}
+	if expected.State.Running != nil && actual.State.Running != nil {
+		return
+	}
+	if expected.State.Terminated != nil && actual.State.Terminated != nil {
+
+		assert.Equal(t, expected.State.Terminated.ExitCode, actual.State.Terminated.ExitCode)
+		return
+	}
+	t.Errorf("Statuses are in different states:\nExpected: %+v\nActual: %+v", expected, actual)
+}
+
+func TestPodControllerStatus(t *testing.T) {
+	myUnit := api.Unit{
+		Name:    "foounit",
+		Image:   "elotl/foo",
+		Command: "runfoo",
+	}
+	rootDir, u, closer := createTestUnit(myUnit.Name)
+	status := api.PodSpec{
+		Units: []api.Unit{myUnit},
+	}
+
+	running := api.UnitState{
+		Running: &api.UnitStateRunning{
+			StartedAt: api.Now(),
+		},
+	}
+
+	defer closer()
+	err := u.SetImage(myUnit.Image)
+	assert.NoError(t, err)
+	err = u.SetState(running)
+	assert.NoError(t, err)
+	expected := api.UnitStatus{
+		Name:  myUnit.Name,
+		State: running,
+		Image: myUnit.Image,
+	}
+	us, _ := u.GetStatus()
+	assertStatusEqual(t, &expected, us)
+
+	podCtl := NewPodController(rootDir, nil, nil)
+	podCtl.podStatus = &status
+	s, err := podCtl.GetStatus()
+
+	assert.NoError(t, err)
+	assert.Len(t, s, 1)
+	assertStatusEqual(t, &expected, &s[0])
+
+	// now overwrite the status with a failure
+	// make sure it's overwritten in the status
+	expected.State = api.UnitState{
+		Waiting: &api.UnitStateWaiting{
+			LaunchFailure: true,
+		},
+	}
+	podCtl.syncErrors[myUnit.Name] = expected
+	s, err = podCtl.GetStatus()
+	assert.NoError(t, err)
+	assert.Len(t, s, 1)
+	assertStatusEqual(t, &expected, &s[0])
 }

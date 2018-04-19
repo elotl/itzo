@@ -92,10 +92,10 @@ func TestMain(m *testing.M) {
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var rootdir = flag.String("rootdir", DEFAULT_ROOTDIR, "Base dir for units")
 	var unit = flag.String("unit", "myunit", "Unit name")
-	var rp = flag.String("restartpolicy", "always", "Restart policy")
+	var rp = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Restart policy")
 	flag.Parse()
 	if *appcmdline != "" {
-		policy := StringToRestartPolicy(*rp)
+		policy := api.RestartPolicy(*rp)
 		StartUnit(*rootdir, *unit, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
@@ -268,7 +268,7 @@ func TestStatusHandler(t *testing.T) {
 	}
 	_ = createUnit(t)
 	path := "/rest/v1/status"
-	timeout := time.Now().Add(30 * time.Second)
+	timeout := time.Now().Add(5 * time.Second)
 	var reply api.PodStatusReply
 	for time.Now().Before(timeout) {
 		rr := sendRequest(t, "GET", path, nil)

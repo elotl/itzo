@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +22,17 @@ const (
 	MAX_BACKOFF_TIME = 5 * time.Minute
 )
 
+func makeStillCreatingStatus(name, image string) *api.UnitStatus {
+	return &api.UnitStatus{
+		Name: name,
+		State: api.UnitState{
+			Waiting: &api.UnitStateWaiting{},
+		},
+		RestartCount: 0,
+		Image:        image,
+	}
+}
+
 type Unit struct {
 	*LogPipe
 	Directory  string
@@ -30,14 +40,6 @@ type Unit struct {
 	Image      string
 	statusPath string
 }
-
-type RestartPolicy int
-
-const (
-	RESTART_POLICY_ALWAYS    RestartPolicy = iota
-	RESTART_POLICY_NEVER     RestartPolicy = iota
-	RESTART_POLICY_ONFAILURE RestartPolicy = iota
-)
 
 func IsUnitExist(rootdir, name string) bool {
 	if len(name) == 0 {
@@ -69,7 +71,33 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		Name:       name,
 		statusPath: filepath.Join(directory, "status"),
 	}
+	// We need to get the image, that's saved in the status
+	s, err := u.GetStatus()
+	if err != nil {
+		glog.Warningf("Error getting unit %s status: %v", name, err)
+	} else {
+		u.Image = s.Image
+	}
 	return &u, nil
+}
+
+func (u *Unit) SetImage(image string) error {
+	u.Image = image
+	status, err := u.GetStatus()
+	if err != nil {
+		return err
+	}
+	status.Image = u.Image
+	buf, err := json.Marshal(status)
+	if err != nil {
+		glog.Errorf("Error serializing status for %s\n", u.Name)
+		return err
+	}
+	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
+		glog.Errorf("Error updating statusfile for %s\n", u.Name)
+		return err
+	}
+	return nil
 }
 
 func (u *Unit) Close() {
@@ -78,7 +106,6 @@ func (u *Unit) Close() {
 
 func (u *Unit) Destroy() {
 	// you'll need to kill the child process before
-	//
 	u.LogPipe.Remove()
 	os.RemoveAll(u.Directory)
 }
@@ -92,7 +119,10 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 		glog.Warningf("Unit %s has already pulled image %s", u.Name, u.Image)
 	}
 	glog.Infof("Unit %s pulling image %s", u.Name, image)
-	u.Image = image
+	err := u.SetImage(image)
+	if err != nil {
+		return fmt.Errorf("Error setting image for unit: %v", err)
+	}
 	tp, err := exec.LookPath(TOSI_PRG)
 	if err != nil {
 		tp = "/tmp/tosiprg"
@@ -118,14 +148,7 @@ func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &api.UnitStatus{
-				Name: u.Name,
-				State: api.UnitState{
-					Waiting: &api.UnitStateWaiting{},
-				},
-				RestartCount: 0,
-				Image:        u.Image,
-			}, nil
+			return makeStillCreatingStatus(u.Name, u.Image), nil
 		}
 		glog.Errorf("Error reading statusfile for %s\n", u.Name)
 		return nil, err
@@ -171,8 +194,7 @@ func maybeBackOff(err error, command []string, backoff *time.Duration) {
 	time.Sleep(*backoff)
 }
 
-func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
-	policy RestartPolicy) (err error) {
+func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, policy api.RestartPolicy) (err error) {
 	backoff := 1 * time.Second
 	for {
 		start := time.Now()
@@ -231,13 +253,13 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 		})
 
 		switch policy {
-		case RESTART_POLICY_NEVER:
+		case api.RestartPolicyNever:
 			return err
-		case RESTART_POLICY_ONFAILURE:
+		case api.RestartPolicyOnFailure:
 			if err == nil {
 				return nil
 			}
-		case RESTART_POLICY_ALWAYS:
+		case api.RestartPolicyAlways:
 			// No-op.
 		}
 
@@ -245,36 +267,7 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 	}
 }
 
-func RestartPolicyToString(policy RestartPolicy) string {
-	pstr := ""
-	switch policy {
-	case RESTART_POLICY_ALWAYS:
-		pstr = "always"
-	case RESTART_POLICY_NEVER:
-		pstr = "never"
-	case RESTART_POLICY_ONFAILURE:
-		pstr = "onfailure"
-	}
-	return pstr
-}
-
-func StringToRestartPolicy(pstr string) RestartPolicy {
-	policy := RESTART_POLICY_ALWAYS
-	switch strings.ToLower(pstr) {
-	case "always":
-		policy = RESTART_POLICY_ALWAYS
-	case "never":
-		policy = RESTART_POLICY_NEVER
-	case "onfailure":
-		policy = RESTART_POLICY_ONFAILURE
-	default:
-		glog.Warningf("Invalid restart policy %s; using default 'always'\n",
-			pstr)
-	}
-	return policy
-}
-
-func (u *Unit) Run(command, env []string, policy RestartPolicy, mounter mount.Mounter) error {
+func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",

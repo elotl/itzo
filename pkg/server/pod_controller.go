@@ -24,16 +24,16 @@ type Mounter interface {
 
 // Too bad there isn't a word for a creator AND destroyer
 // Coulda gone with Shiva(er) but that's a bit imprecise...
-type UnitManager interface {
-	AddUnit(string, *api.Unit, []string, api.RestartPolicy) error
-	DeleteUnit(string) error
+type UnitRunner interface {
+	StartUnit(string, string, []string, api.RestartPolicy) error
+	StopUnit(string) error
 }
 
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
-type UnitController struct {
-	baseDir       string
+type PodController struct {
+	rootDir       string
 	mountCtl      Mounter
-	unitMgr       UnitManager
+	unitMgr       UnitRunner
 	imagePuller   Puller
 	podStatus     *api.PodSpec
 	updateChan    chan *api.PodParameters
@@ -41,16 +41,17 @@ type UnitController struct {
 	restartPolicy api.RestartPolicy
 }
 
-func NewUnitController(baseDir string, mounter Mounter, unitMgr UnitManager) *UnitController {
-	return &UnitController{
-		baseDir:     baseDir,
+func NewPodController(rootDir string, mounter Mounter, unitMgr UnitRunner) *PodController {
+	return &PodController{
+		rootDir:     rootDir,
 		unitMgr:     unitMgr,
 		mountCtl:    mounter,
 		imagePuller: &ImagePuller{},
 		updateChan:  make(chan *api.PodParameters, specChanSize),
+		syncErrors:  make(map[string]api.UnitStatus),
 	}
 }
-func (uc *UnitController) UpdatePod(params *api.PodParameters) error {
+func (uc *PodController) UpdatePod(params *api.PodParameters) error {
 	if len(uc.updateChan) == specChanSize {
 		return fmt.Errorf("Error updating pod spec: too many pending updates")
 	}
@@ -58,7 +59,7 @@ func (uc *UnitController) UpdatePod(params *api.PodParameters) error {
 	return nil
 }
 
-func (uc *UnitController) Start() {
+func (uc *PodController) Start() {
 	for {
 		podParams := <-uc.updateChan
 		spec := &podParams.Spec
@@ -217,14 +218,14 @@ func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.Strin
 	return addUnits, deleteUnits
 }
 
-func (uc *UnitController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) map[string]api.UnitStatus {
+func (uc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) map[string]api.UnitStatus {
 	// By this point, spec must have had the secrets merged into the env vars
 	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
 
 	// do deletes
 	for unitName, _ := range deleteUnits {
-		err := uc.unitMgr.DeleteUnit(unitName)
+		err := uc.unitMgr.StopUnit(unitName)
 		if err != nil {
 			glog.Errorf("Error deleting unit %s, trying to continue", unitName)
 		}
@@ -283,11 +284,8 @@ func (uc *UnitController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, a
 			continue
 		}
 
-		err = uc.unitMgr.AddUnit(
-			uc.baseDir, &unit, makeAppEnv(&unit), uc.restartPolicy)
-		// err = startUnitHelper(
-		// 	rootDir, unit, unit.Command, makeAppEnv(unit),
-		// 	RestartPolicy(pod.Spec.RestartPolicy))
+		err = uc.unitMgr.StartUnit(
+			unit.Name, unit.Command, makeAppEnv(&unit), uc.restartPolicy)
 		if err != nil {
 			msg := fmt.Sprintf("Error starting unit %s: %v",
 				unit.Name, err)
@@ -325,4 +323,36 @@ func (ip *ImagePuller) PullImage(name, image, server, username, password string)
 		return fmt.Errorf("pulling image %s: %v", image, err)
 	}
 	return nil
+}
+
+func (uc *PodController) GetStatus() ([]api.UnitStatus, error) {
+	// go through listed units in the spec, get their status
+	// go through syncErrors, merge those in
+	unitStatusMap := make(map[string]*api.UnitStatus)
+	for _, podUnit := range uc.podStatus.Units {
+		if !IsUnitExist(uc.rootDir, podUnit.Name) {
+			// Todo, create a status of Waiting
+			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(podUnit.Name, podUnit.Image)
+			continue
+		}
+		unit, err := OpenUnit(uc.rootDir, podUnit.Name)
+		if err != nil {
+			// Todo, handle error, see how we used to do this in
+			// master... do the same
+			continue
+		}
+		us, err := unit.GetStatus()
+		if err != nil {
+			// Todo
+		}
+		unitStatusMap[podUnit.Name] = us
+	}
+	for _, syncFailStatus := range uc.syncErrors {
+		unitStatusMap[syncFailStatus.Name] = &syncFailStatus
+	}
+	unitStatuses := make([]api.UnitStatus, 0, len(unitStatusMap))
+	for _, s := range unitStatusMap {
+		unitStatuses = append(unitStatuses, *s)
+	}
+	return unitStatuses, nil
 }
