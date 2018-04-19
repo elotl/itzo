@@ -16,8 +16,9 @@ while [[ -n "$1" ]]; do
             echo "    -o|--out <output path>: image output path, " \
                 "default is alpine.qcow2"
             echo "    -n|--no-ami: don't create AMI from qcow2 image"
+            echo "    -e|--environment <env>: environment for image (dev|prod), " \
             echo "Example:"
-            echo "    $0 -o my-alpine-image.qcow2 -s 2G"
+            echo "    $0 -o my-alpine-image.qcow2 -s 2G -e prod"
             exit 0
             ;;
         "-s"|"--size")
@@ -45,7 +46,7 @@ while [[ -n "$1" ]]; do
 	"-e"|"--environment")
 	    shift
 	    ENVIRONMENT="$1"
-            if [[ $ENVIRONMENT != "dev" ]] && [[ $ENVIRONMENT != "prod" ]]
+            if [[ $ENVIRONMENT != "dev" ]] && [[ $ENVIRONMENT != "prod" ]]; then
                 echo "Error, invalid environment specified."
                 exit 1
             fi
