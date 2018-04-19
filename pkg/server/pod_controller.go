@@ -13,7 +13,7 @@ import (
 var specChanSize = 100
 
 type Puller interface {
-	PullImage(name, image, server, username, password string) error
+	PullImage(rootDir, name, image, server, username, password string) error
 }
 
 type Mounter interface {
@@ -31,14 +31,13 @@ type UnitRunner interface {
 
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
 type PodController struct {
-	rootDir       string
-	mountCtl      Mounter
-	unitMgr       UnitRunner
-	imagePuller   Puller
-	podStatus     *api.PodSpec
-	updateChan    chan *api.PodParameters
-	syncErrors    map[string]api.UnitStatus
-	restartPolicy api.RestartPolicy
+	rootDir     string
+	mountCtl    Mounter
+	unitMgr     UnitRunner
+	imagePuller Puller
+	podStatus   *api.PodSpec
+	updateChan  chan *api.PodParameters
+	syncErrors  map[string]api.UnitStatus
 }
 
 func NewPodController(rootDir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -49,23 +48,32 @@ func NewPodController(rootDir string, mounter Mounter, unitMgr UnitRunner) *PodC
 		imagePuller: &ImagePuller{},
 		updateChan:  make(chan *api.PodParameters, specChanSize),
 		syncErrors:  make(map[string]api.UnitStatus),
+		podStatus: &api.PodSpec{
+			Phase:         api.PodRunning,
+			RestartPolicy: api.RestartPolicyAlways,
+		},
 	}
-}
-func (uc *PodController) UpdatePod(params *api.PodParameters) error {
-	if len(uc.updateChan) == specChanSize {
-		return fmt.Errorf("Error updating pod spec: too many pending updates")
-	}
-	uc.updateChan <- params
-	return nil
 }
 
-func (uc *PodController) Start() {
+func (pc *PodController) runUpdateLoop() {
 	for {
-		podParams := <-uc.updateChan
+		podParams := <-pc.updateChan
 		spec := &podParams.Spec
 		MergeSecretsIntoSpec(podParams.Secrets, spec)
-		uc.syncErrors = uc.SyncPodUnits(spec, uc.podStatus, podParams.Credentials)
+		pc.syncErrors = pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
+		pc.podStatus = spec
 	}
+}
+func (pc *PodController) Start() {
+	go pc.runUpdateLoop()
+}
+
+func (pc *PodController) UpdatePod(params *api.PodParameters) error {
+	if len(pc.updateChan) == specChanSize {
+		return fmt.Errorf("Error updating pod spec: too many pending updates")
+	}
+	pc.updateChan <- params
+	return nil
 }
 
 type MiniUnit struct {
@@ -218,27 +226,30 @@ func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.Strin
 	return addUnits, deleteUnits
 }
 
-func (uc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) map[string]api.UnitStatus {
+func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) map[string]api.UnitStatus {
 	// By this point, spec must have had the secrets merged into the env vars
+	//fmt.Printf("%#v\n", *spec)
+	//fmt.Printf("%#v\n", *status)
 	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
 
 	// do deletes
 	for unitName, _ := range deleteUnits {
-		err := uc.unitMgr.StopUnit(unitName)
+		glog.Infoln("Stopping unit", unitName)
+		err := pc.unitMgr.StopUnit(unitName)
 		if err != nil {
 			glog.Errorf("Error deleting unit %s, trying to continue", unitName)
 		}
 	}
 	for _, volume := range deleteVolumes {
-		err := uc.mountCtl.DeleteMount(&volume)
+		err := pc.mountCtl.DeleteMount(&volume)
 		if err != nil {
 			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
 		}
 	}
 	// do adds
 	for _, volume := range addVolumes {
-		err := uc.mountCtl.CreateMount(&volume)
+		err := pc.mountCtl.CreateMount(&volume)
 		if err != nil {
 			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
 		}
@@ -259,7 +270,7 @@ func (uc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			continue
 		}
 		creds := allCreds[server]
-		err = uc.imagePuller.PullImage(unit.Name, imageRepo, server, creds.Username, creds.Password)
+		err = pc.imagePuller.PullImage(pc.rootDir, unit.Name, imageRepo, server, creds.Username, creds.Password)
 		if err != nil {
 			msg := fmt.Sprintf("Error pulling image for unit %s: %v",
 				unit.Name, err)
@@ -270,7 +281,7 @@ func (uc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		// attach mounts
 		mountFailure := false
 		for _, mount := range unit.VolumeMounts {
-			err := uc.mountCtl.AttachMount(
+			err := pc.mountCtl.AttachMount(
 				unit.Name, mount.Name, mount.MountPath)
 			if err != nil {
 				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
@@ -284,8 +295,9 @@ func (uc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			continue
 		}
 
-		err = uc.unitMgr.StartUnit(
-			unit.Name, unit.Command, makeAppEnv(&unit), uc.restartPolicy)
+		glog.Infoln("Starting unit", unit.Name)
+		err = pc.unitMgr.StartUnit(
+			unit.Name, unit.Command, makeAppEnv(&unit), spec.RestartPolicy)
 		if err != nil {
 			msg := fmt.Sprintf("Error starting unit %s: %v",
 				unit.Name, err)
@@ -307,13 +319,12 @@ func makeAppEnv(unit *api.Unit) []string {
 type ImagePuller struct {
 }
 
-func (ip *ImagePuller) PullImage(name, image, server, username, password string) error {
-	installRootDir := "/tmp/itzo"
+func (ip *ImagePuller) PullImage(rootDir, name, image, server, username, password string) error {
 	if server != "" && !strings.HasPrefix(server, "http") {
 		server = "https://" + server
 	}
-	glog.Infof("Creating new unit '%s' in %s\n", name, installRootDir)
-	u, err := OpenUnit(installRootDir, name)
+	glog.Infof("Creating new unit '%s' in %s\n", name, rootDir)
+	u, err := OpenUnit(rootDir, name)
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
@@ -325,17 +336,17 @@ func (ip *ImagePuller) PullImage(name, image, server, username, password string)
 	return nil
 }
 
-func (uc *PodController) GetStatus() ([]api.UnitStatus, error) {
+func (pc *PodController) GetStatus() ([]api.UnitStatus, error) {
 	// go through listed units in the spec, get their status
 	// go through syncErrors, merge those in
 	unitStatusMap := make(map[string]*api.UnitStatus)
-	for _, podUnit := range uc.podStatus.Units {
-		if !IsUnitExist(uc.rootDir, podUnit.Name) {
+	for _, podUnit := range pc.podStatus.Units {
+		if !IsUnitExist(pc.rootDir, podUnit.Name) {
 			// Todo, create a status of Waiting
 			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(podUnit.Name, podUnit.Image)
 			continue
 		}
-		unit, err := OpenUnit(uc.rootDir, podUnit.Name)
+		unit, err := OpenUnit(pc.rootDir, podUnit.Name)
 		if err != nil {
 			// Todo, handle error, see how we used to do this in
 			// master... do the same
@@ -347,7 +358,7 @@ func (uc *PodController) GetStatus() ([]api.UnitStatus, error) {
 		}
 		unitStatusMap[podUnit.Name] = us
 	}
-	for _, syncFailStatus := range uc.syncErrors {
+	for _, syncFailStatus := range pc.syncErrors {
 		unitStatusMap[syncFailStatus.Name] = &syncFailStatus
 	}
 	unitStatuses := make([]api.UnitStatus, 0, len(unitStatusMap))

@@ -268,7 +268,7 @@ func TestStatusHandler(t *testing.T) {
 	}
 	_ = createUnit(t)
 	path := "/rest/v1/status"
-	timeout := time.Now().Add(5 * time.Second)
+	timeout := time.Now().Add(30 * time.Second)
 	var reply api.PodStatusReply
 	for time.Now().Before(timeout) {
 		rr := sendRequest(t, "GET", path, nil)

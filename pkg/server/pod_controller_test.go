@@ -247,16 +247,16 @@ func (m *MountMock) AttachMount(unitname, src, dst string) error {
 }
 
 type ImagePullMock struct {
-	Pull func(name, image, server, username, password string) error
+	Pull func(rootDir, name, image, server, username, password string) error
 }
 
-func (p *ImagePullMock) PullImage(name, image, server, username, password string) error {
-	return p.Pull(name, image, server, username, password)
+func (p *ImagePullMock) PullImage(rootDir, name, image, server, username, password string) error {
+	return p.Pull(rootDir, name, image, server, username, password)
 }
 
 func NewImagePullMock() *ImagePullMock {
 	return &ImagePullMock{
-		Pull: func(name, image, server, username, password string) error {
+		Pull: func(rootdir, name, image, server, username, password string) error {
 			return nil
 		},
 	}
@@ -338,18 +338,18 @@ func TestFullSyncErrors(t *testing.T) {
 	creds := make(map[string]api.RegistryCredentials)
 
 	testCases := []struct {
-		mod func(uc *PodController)
+		mod func(pc *PodController)
 		// This isn't the most interesting assertion but we can't
 		// easily do a deep equal without recreating the exact errors
 		numFailures int
 	}{
 		{
-			mod:         func(uc *PodController) {},
+			mod:         func(pc *PodController) {},
 			numFailures: 0,
 		},
 		{
-			mod: func(uc *PodController) {
-				m := uc.mountCtl.(*MountMock)
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
 				m.Delete = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
 				}
@@ -357,8 +357,8 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
-			mod: func(uc *PodController) {
-				m := uc.mountCtl.(*MountMock)
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
 				m.Create = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
 				}
@@ -366,8 +366,8 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
-			mod: func(uc *PodController) {
-				m := uc.unitMgr.(*UnitMock)
+			mod: func(pc *PodController) {
+				m := pc.unitMgr.(*UnitMock)
 				m.Stop = func(name string) error {
 					return fmt.Errorf("unit add failed")
 				}
@@ -377,17 +377,17 @@ func TestFullSyncErrors(t *testing.T) {
 
 		// Expects failure
 		{
-			mod: func(uc *PodController) {
-				puller := uc.imagePuller.(*ImagePullMock)
-				puller.Pull = func(name, image, server, username, password string) error {
+			mod: func(pc *PodController) {
+				puller := pc.imagePuller.(*ImagePullMock)
+				puller.Pull = func(rootDir, name, image, server, username, password string) error {
 					return fmt.Errorf("Pull Failed")
 				}
 			},
 			numFailures: 1,
 		},
 		{
-			mod: func(uc *PodController) {
-				m := uc.mountCtl.(*MountMock)
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
 				m.Attach = func(unitname, src, dst string) error {
 					return fmt.Errorf("mounter failed")
 				}
@@ -395,8 +395,8 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 1,
 		},
 		{
-			mod: func(uc *PodController) {
-				m := uc.unitMgr.(*UnitMock)
+			mod: func(pc *PodController) {
+				m := pc.unitMgr.(*UnitMock)
 				m.Start = func(name, command string, env []string, rp api.RestartPolicy) error {
 					return fmt.Errorf("unit add failed")
 				}
@@ -407,11 +407,10 @@ func TestFullSyncErrors(t *testing.T) {
 
 	for _, testCase := range testCases {
 		podCtl := PodController{
-			rootDir:       "/tmp/milpa",
-			mountCtl:      NewMountMock(),
-			unitMgr:       NewUnitMock(),
-			imagePuller:   NewImagePullMock(),
-			restartPolicy: api.RestartPolicyAlways,
+			rootDir:     "/tmp/milpa/units",
+			mountCtl:    NewMountMock(),
+			unitMgr:     NewUnitMock(),
+			imagePuller: NewImagePullMock(),
 		}
 		testCase.mod(&podCtl)
 		failures := podCtl.SyncPodUnits(&spec, &status, creds)

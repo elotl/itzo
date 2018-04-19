@@ -25,7 +25,7 @@ type PodSpec struct {
 	//   environment: production
 	//   version: 1.2.3
 	// ```
-	BootImageTags map[string]string `json:"bootImageTagso"`
+	BootImageTags map[string]string `json:"bootImageTags"`
 	// Restart policy for all units in this pod. It can be "always",
 	// "onFailure" or "never". Default is "always".
 	RestartPolicy RestartPolicy `json:"restartPolicy"`

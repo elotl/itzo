@@ -32,8 +32,9 @@ type UnitManager struct {
 	logLock      sync.Mutex
 }
 
-func NewUnitManager() *UnitManager {
+func NewUnitManager(rootDir string) *UnitManager {
 	return &UnitManager{
+		rootDir:      rootDir,
 		runningUnits: make(map[string]*os.Process),
 		logbuf:       make(map[string]*LogBuffer),
 		logLock:      sync.Mutex{},

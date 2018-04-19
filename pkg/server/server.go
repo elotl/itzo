@@ -59,9 +59,9 @@ func New(rootdir string) *Server {
 		rootdir = DEFAULT_ROOTDIR
 	}
 	mounter := mount.NewOSMounter(rootdir)
-	um := NewUnitManager()
+	um := NewUnitManager(rootdir)
 	pc := NewPodController(rootdir, mounter, um)
-	//uc := NewUnitController(rootdir, mounter, nil)
+	pc.Start()
 	return &Server{
 		env:            EnvStore{},
 		startTime:      time.Now().UTC(),

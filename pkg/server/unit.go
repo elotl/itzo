@@ -215,13 +215,18 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 			})
 			glog.Errorf("Start() %v: %v", command, err)
 			maybeBackOff(err, command, &backoff)
+			continue
 		}
 		u.SetState(api.UnitState{
 			Running: &api.UnitStateRunning{
 				StartedAt: api.Now(),
 			},
 		})
-		glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+		if cmd.Process != nil {
+			glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+		} else {
+			glog.Warningf("cmd has nil process: %#v", cmd)
+		}
 
 		exitCode := 0
 
