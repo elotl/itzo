@@ -4,6 +4,7 @@
 IMAGE="alpine.qcow2"
 IMAGE_SIZE="2G"
 NO_AMI=false
+ENVIRONMENT="dev"
 
 while [[ -n "$1" ]]; do
     case "$1" in
@@ -40,6 +41,15 @@ while [[ -n "$1" ]]; do
         "-n"|"--no-ami")
             shift
             NO_AMI=true
+            ;;
+	"-e"|"--environment")
+	    shift
+	    ENVIRONMENT="$1"
+            if [[ $ENVIRONMENT != "dev" ]] && [[ $ENVIRONMENT != "prod" ]]
+                echo "Error, invalid environment specified."
+                exit 1
+            fi
+            shift
             ;;
         *)
             echo "Error, invalid argument $1"
@@ -97,7 +107,7 @@ git clean -fdx
 #
 #     kvm -m 512 -net nic,model=virtio -net user,hostfwd=tcp:127.0.0.1:9222-:22 -drive file=alpine.qcow2,if=virtio
 #
-./alpine-make-vm-image --kernel-flavor vanilla --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$(cat ../elotl/packages)" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh
+./alpine-make-vm-image --kernel-flavor vanilla --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$(cat ../elotl/packages)" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh --environment $ENVIRONMENT
 
 popd > /dev/null
 
@@ -105,4 +115,8 @@ if $NO_AMI; then
     exit 0
 fi
 
-python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name alpine-$(date +%s)
+AMI_NAME=alpine-$(date +%s)
+if [ $ENVIRONMENT != "prod" ]; then
+    AMI_NAME=$AMI_NAME-$ENVIRONMENT
+fi
+python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $AMI_NAME

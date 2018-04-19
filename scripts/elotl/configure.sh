@@ -6,6 +6,19 @@ step() {
 	printf '\n\033[1;36m%d) %s\033[0m\n' $_step_counter "$@" >&2  # bold cyan
 }
 
+ENVIRONMENT="dev"
+while [[ -n "$1" ]]; do
+    case "$1" in
+	"-e"|"--environment")
+	    shift
+	    ENVIRONMENT="$1"
+            shift
+            ;;
+        *)
+	    echo "Unknown argument $1"
+	    ;;
+    esac
+done
 
 step 'Set up timezone'
 setup-timezone -z US/Pacific
@@ -30,20 +43,23 @@ step 'Create ld-linux-x86-64.so.2 link'
 mkdir -p /lib64
 ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
-step 'Install ssh authorized keys'
-mkdir -p /root/.ssh
-chmod 0700 /root/.ssh
-cat > /root/.ssh/authorized_keys <<-EOF
+
+if [ $ENVIRONMENT == "dev" ]; then
+    step 'Install ssh authorized keys'
+    mkdir -p /root/.ssh
+    chmod 0700 /root/.ssh
+    cat > /root/.ssh/authorized_keys <<-EOF
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDPU7h8CaYA1VH/CwY3Ahw0s0wPbB/8t7A96GX/6qS2a8n79nGjywThZJP15L7NnTdTrdV59NEC1QvS0ym/JhlpokXwgMWURsYOAP5Y2lmK7wvAZ65bDn0iPiXXgyWPtEWQqCTV0U9HfZ81m+JMzfcED+L3w0iZAHSeRlupPZRtea3izx91A19RRn0NyVtmrwF4h3g537p+0O3DvaktxZddnwa3vPbY3CE6Eijiqsy9HOrx49YJS3SdBMvGNx91pynVLPWTCziBmYZCt8ioTGNvF8YWLVRf6VCj6M9zTG2NkCbXydAxpfRByTa+4yyKE44hmAehDM15pQGlmcg0O4HlepTqOvPZVyWAvkO3aD1xycrWSTKu68IgRzm9Ve064h3OUqVcWx1tybEAGyioC/H/vdJ4BGKH1wfQQvRbWrO8gCAr8LGS8JUIWWDPOCBtFobsyMo2opck9t8iM8lAiscueMNTJeRuIeK6692m0OsXL9+g8lHJkTD97VF963liCeRhaIG3kIaYXTyOhQdKbDQShT/r4yC8eMWDR/I6ab+2ir/qew46XwHJ98c/Ux0zII5v252D5Q/A4Wf6HJGOjAoMx4iQJ8Q5LYpLnIcX1WqznJQx1zPpaI9WpFe4ELK/mBAv53Emp3HjfacI74/RM6Zt/EHYcKV3Cr5VMaxgLaReaw== bcox@elotl.co
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC/ywpZThNo+8665ftf8Se5hDfPewxsqvUiT2MifeBSHCHf0VSWKKDa9BG0o/gKVjEYsxrHBzR14SsPbhn2khP1jTKU1JPrSymqv2Zt5StGwadAWwXMn748zAu7mnIbioNn5pZ70K2eq/Q4LskQe0Sl9xpj92sPfLTEt3eAsPolIgvacy+qmlGmF7Zm+sFmmj+AvFyEFlhbsv8s92iwlGCNMXO2BkRTzYsTaLUVcf+xXbdxrxhTp15TnxzbMvBYTGSCnnCzK619zwDlY4MK33QWr3tEGVZalFXFX1NqRZbo1W8mfVHCG4bP/nMZZrROMTPmjl/KsMTC+4xRdzBlUO+7Fwd0qBEWyMe/90dtZajvXE20quLj7Dbbbx1UVuAXQXeiw5vTwPcwTBFqrbJ9dTyUqedQ2I/H8UeeQFkpTn3BC5yuccbpnVJg0yOBB4F4nUUdBSXCTTyz6I4EsBjhz12pyhGPljTgkcXJWmiv5bybD0EQQ+zZ4a077Ev9HTYo65xsCHr+Vh6KEy5TykV71lePgnfKpFTcsR5okuN9me8wRVpuytAZevnDwUhYblpBOl4GJo1yTZeQ+vPWKM3FJ7DvBY8w4TOdYsubcZwLcVIxEfMwTntohOOtATDQs8UlvLvhLPqtACDkpdHokb2YoDZFnewXwplReoe3hw7XlOb3cw== vilmos@x1
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCLoV/djnLOJt7gRprssm36m3kn2kwSYbjyh93A2/oHNcPM1rvONdeKQ2qAK/DbRVjGIIdcskDQWCAxTOsN4OEBkIOHsWlfE3TJ8f+IqGYyG1Ly+I66GIulWqZQfRb8H+4xKxVZ9C5g8eM58tYOAsToDFa/IX7RX2Ayu0BNc92+cUV8w92mL2c76MCwbKviipK7T6lDVn6IINxtJHVHwFZYonIiBYKn/30zGrL17sMbOVVd27lYPI/To61ui5PFSym7d/BOEkKRQKRgnHfpwm+VhXUuOGCv1FIeBZSs95JVhbIzynld8NBY3SjIGWi3m22HXR8yYlXRNZwB+BSrcWKL madhuri@elotl.co
 EOF
-chmod 0600 /root/.ssh/authorized_keys
-cat /root/.ssh/authorized_keys
+    chmod 0600 /root/.ssh/authorized_keys
+    cat /root/.ssh/authorized_keys
 
-step 'Enable ssh login for root'
-echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-cat /etc/ssh/sshd_config
+    step 'Enable ssh login for root'
+    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+    cat /etc/ssh/sshd_config
+fi
 
 PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
 step "Setting root password to '$PW'"
@@ -74,17 +90,22 @@ EOF
 chmod 755 /etc/init.d/itzo
 cat /etc/init.d/itzo
 
+
 step 'Add itzo downloader-launcher'
+s3_bucket="itzo-download"
+if [ $ENVIRONMENT = "dev" ]; then
+    s3_bucket="itzo-dev-download"
+fi
 cat > /usr/local/bin/itzo_download.sh <<-EOF
 #!/bin/sh
 
 # upload file with cli:
-# aws s3 cp itzo s3://itzo-download/ --acl public-read
+# aws s3 cp itzo s3://${s3_bucket}/ --acl public-read
 
-s3_bucket="http://itzo-download.s3.amazonaws.com"
+s3_url="http://${s3_bucket}.s3.amazonaws.com"
 app_dir=/usr/local/bin
 for app in cloud-init itzo; do
-    s3_path="\${s3_bucket}/\$app"
+    s3_path="\${s3_url}/\$app"
     app_path="\${app_dir}/\$app"
     rm -f \$app_path
     while true; do
