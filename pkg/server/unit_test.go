@@ -66,7 +66,7 @@ func TestStatus(t *testing.T) {
 		},
 	}
 	for _, s := range []api.UnitState{waiting, running, terminated} {
-		err = u.SetState(s)
+		err = u.SetState(s, nil)
 		assert.NoError(t, err)
 		status, err := u.GetStatus()
 		assert.NoError(t, err)

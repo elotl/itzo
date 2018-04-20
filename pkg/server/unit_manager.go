@@ -89,6 +89,7 @@ func (um *UnitManager) StopUnit(name string) error {
 	if err != nil {
 		return fmt.Errorf("Error terminating %s: %v", unit, err)
 	}
+	delete(um.runningUnits, name)
 	return nil
 }
 

@@ -158,9 +158,10 @@ func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	return &status, err
 }
 
-func (u *Unit) SetState(state api.UnitState) error {
+func (u *Unit) SetState(state api.UnitState, restarts *int) error {
 	// Check current status, and update status.State. Name and Image are
 	// immutable, and RestartCount is kept up to date automatically here.
+	// pass in a nil pointer to restarts to not update that value
 	status, err := u.GetStatus()
 	if err != nil {
 		glog.Errorf("Error getting current status for %s\n", u.Name)
@@ -168,6 +169,9 @@ func (u *Unit) SetState(state api.UnitState) error {
 	}
 	glog.Infof("Updating state of unit '%s' to %v\n", u.Name, state)
 	status.State = state
+	if restarts != nil && *restarts >= 0 {
+		status.RestartCount = int32(*restarts)
+	}
 	buf, err := json.Marshal(status)
 	if err != nil {
 		glog.Errorf("Error serializing status for %s\n", u.Name)
@@ -196,7 +200,9 @@ func maybeBackOff(err error, command []string, backoff *time.Duration) {
 
 func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, policy api.RestartPolicy) (err error) {
 	backoff := 1 * time.Second
+	restarts := -1
 	for {
+		restarts++
 		start := time.Now()
 		cmd := exec.Command(command[0], command[1:]...)
 		cmd.Env = env
@@ -212,7 +218,7 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 					LaunchFailure: true,
 					Reason:        err.Error(),
 				},
-			})
+			}, &restarts)
 			glog.Errorf("Start() %v: %v", command, err)
 			maybeBackOff(err, command, &backoff)
 			continue
@@ -221,7 +227,7 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 			Running: &api.UnitStateRunning{
 				StartedAt: api.Now(),
 			},
-		})
+		}, &restarts)
 		if cmd.Process != nil {
 			glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
 		} else {
@@ -230,11 +236,13 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 
 		exitCode := 0
 
-		err = cmd.Wait()
+		procErr := cmd.Wait()
 		d := time.Since(start)
-		if err != nil {
+		failure := false
+		if procErr != nil {
 			foundRc := false
-			if exiterr, ok := err.(*exec.ExitError); ok {
+			failure = true
+			if exiterr, ok := procErr.(*exec.ExitError); ok {
 				if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 					foundRc = true
 					exitCode = ws.ExitStatus()
@@ -244,31 +252,36 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 			}
 			if !foundRc {
 				glog.Infof("Command %v pid %d exited with %v after %.2fs",
-					command, cmd.Process.Pid, err, d.Seconds())
+					command, cmd.Process.Pid, procErr, d.Seconds())
 			}
 		} else {
 			glog.Infof("Command %v pid %d exited with 0 after %.2fs",
 				command, cmd.Process.Pid, d.Seconds())
 		}
-		u.SetState(api.UnitState{
-			Terminated: &api.UnitStateTerminated{
-				ExitCode:   int32(exitCode),
-				FinishedAt: api.Now(),
-			},
-		})
 
-		switch policy {
-		case api.RestartPolicyNever:
-			return err
-		case api.RestartPolicyOnFailure:
-			if err == nil {
-				return nil
-			}
-		case api.RestartPolicyAlways:
-			// No-op.
+		if policy == api.RestartPolicyAlways ||
+			(policy == api.RestartPolicyOnFailure && failure) {
+			// We never mark a unit as terminated in this state,
+			// we just return it to waiting and wait for it to
+			// be run again
+			u.SetState(api.UnitState{
+				Waiting: &api.UnitStateWaiting{
+					Reason: fmt.Sprintf(
+						"Waiting for unit restart, last exit code: %d",
+						exitCode),
+				},
+			}, &restarts)
+		} else {
+			// Game over, man!
+			u.SetState(api.UnitState{
+				Terminated: &api.UnitStateTerminated{
+					ExitCode:   int32(exitCode),
+					FinishedAt: api.Now(),
+				},
+			}, &restarts)
+			return procErr
 		}
-
-		maybeBackOff(err, command, &backoff)
+		maybeBackOff(procErr, command, &backoff)
 	}
 }
 
@@ -277,7 +290,7 @@ func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter moun
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",
 		},
-	})
+	}, nil)
 
 	rootfs := u.GetRootfs()
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {

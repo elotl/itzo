@@ -470,7 +470,7 @@ func TestPodControllerStatus(t *testing.T) {
 	defer closer()
 	err := u.SetImage(myUnit.Image)
 	assert.NoError(t, err)
-	err = u.SetState(running)
+	err = u.SetState(running, nil)
 	assert.NoError(t, err)
 	expected := api.UnitStatus{
 		Name:  myUnit.Name,
