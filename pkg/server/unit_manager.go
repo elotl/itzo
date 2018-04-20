@@ -12,15 +12,14 @@ import (
 	"github.com/golang/glog"
 )
 
-// Todo: figure out where to put this one...  Called by spawned itzo
-// process that's in charge of launching the unit in chroot and
-// monitoring the process
 func StartUnit(rootdir, name string, command []string, policy api.RestartPolicy) error {
+	// todo: should this be rootdir or basedir?
 	glog.Infof("Starting %v for %s in basedir %s", command, name, rootdir)
 	unit, err := OpenUnit(rootdir, name)
 	if err != nil {
 		return err
 	}
+	// TODO: should this be rootdir or basedir?
 	mounter := mount.NewOSMounter(rootdir)
 	return unit.Run(command, os.Environ(), policy, mounter)
 }

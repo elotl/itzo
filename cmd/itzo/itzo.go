@@ -16,7 +16,7 @@ var buildDate string
 func main() {
 	//  go build -ldflags "-X main.buildDate=`date -u +.%Y%m%d.%H%M%S`"
 	var printBuild = flag.Bool("build", false, "display build date")
-	var insecure = flag.Bool("insecure", false, "don't use tls")
+	var disableTLS = flag.Bool("disable-tls", false, "don't use tls")
 	var port = flag.Int("port", 8000, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
 	var appunit = flag.String("unit", "", "Unit name")
@@ -53,5 +53,5 @@ func main() {
 	glog.Info("Starting up agent")
 	server := server.New(*rootdir)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
-	server.ListenAndServe(endpoint, *insecure)
+	server.ListenAndServe(endpoint, *disableTLS)
 }

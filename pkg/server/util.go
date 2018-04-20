@@ -5,14 +5,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/elotl/itzo/pkg/api"
 	"github.com/golang/glog"
 )
 
@@ -258,51 +256,4 @@ func tailFile(path string, lines int, maxBytes int64) (string, error) {
 	} else {
 		return tailBytes(f, maxBytes, fileSize)
 	}
-}
-
-func listUnits(rootdir string) ([]string, error) {
-	fis, err := ioutil.ReadDir(rootdir)
-	if err != nil {
-		return nil, err
-	}
-	units := make([]string, 0)
-	for _, fi := range fis {
-		if !fi.IsDir() {
-			glog.Warningf("Found non-directory entry in unit rootdir: %v", fi)
-			continue
-		}
-		unit, err := OpenUnit(rootdir, fi.Name())
-		if err != nil {
-			glog.Warningf("Failed to open unit %s in rootdir %s: %v",
-				fi.Name(), rootdir, err)
-			continue
-		}
-		defer unit.Close()
-		units = append(units, unit.Name)
-	}
-	return units, nil
-}
-
-func getStatus(rootdir string) ([]api.UnitStatus, error) {
-	units, err := listUnits(rootdir)
-	if err != nil {
-		return nil, err
-	}
-	statuses := make([]api.UnitStatus, 0)
-	for _, u := range units {
-		unit, err := OpenUnit(rootdir, u)
-		if err != nil {
-			glog.Warningf("Failed to open unit %s in rootdir %s: %v",
-				u, rootdir, err)
-			continue
-		}
-		status, err := unit.GetStatus()
-		if err != nil {
-			glog.Warningf("Failed to get status of unit %s in rootdir %s: %v",
-				u, rootdir, err)
-			continue
-		}
-		statuses = append(statuses, *status)
-	}
-	return statuses, nil
 }

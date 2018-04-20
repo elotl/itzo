@@ -71,63 +71,6 @@ func New(rootdir string) *Server {
 	}
 }
 
-// func (s *Server) makeAppEnv(unit string) []string {
-// 	// I don't think we should pull in the environ from itzo...
-// 	//e := os.Environ()
-// 	e := []string{}
-// 	for _, d := range s.env.Items(unit) {
-// 		e = append(e, fmt.Sprintf("%s=%s", d[0], d[1]))
-// 	}
-// 	return e
-// }
-
-// func (s *Server) startHandler(w http.ResponseWriter, r *http.Request) {
-// 	switch r.Method {
-// 	case "PUT":
-// 		if err := r.ParseForm(); err != nil {
-// 			fmt.Fprintf(w, "appHandler ParseForm() err: %v", err)
-// 			return
-// 		}
-// 		path := strings.TrimPrefix(r.URL.Path, "/")
-// 		parts := strings.Split(path, "/")
-// 		unit := ""
-// 		if len(parts) > 3 {
-// 			unit = strings.Join(parts[3:], "/")
-// 		}
-// 		command := r.FormValue("command")
-// 		if command == "" {
-// 			badRequest(w, "No command specified")
-// 			return
-// 		}
-// 		policy := RESTART_POLICY_ALWAYS
-// 		for k, v := range r.Form {
-// 			if strings.ToLower(k) != "restartpolicy" {
-// 				continue
-// 			}
-// 			for _, val := range v {
-// 				switch strings.ToLower(val) {
-// 				case "always":
-// 					policy = RESTART_POLICY_ALWAYS
-// 				case "never":
-// 					policy = RESTART_POLICY_NEVER
-// 				case "onfailure":
-// 					policy = RESTART_POLICY_ONFAILURE
-// 				}
-// 			}
-// 		}
-// 		proc, err := startUnitHelper(s.installRootdir, unit, command,
-// 			s.makeAppEnv(unit), policy)
-
-// 		if err != nil {
-// 			serverError(w, err)
-// 			return
-// 		}
-// 		fmt.Fprintf(w, "%d", proc.Pid)
-// 	default:
-// 		http.NotFound(w, r)
-// 	}
-// }
-
 func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -302,10 +245,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-func (s *Server) ListenAndServe(addr string, insecure bool) {
+func (s *Server) ListenAndServe(addr string, disableTLS bool) {
 	s.getHandlers()
 
-	if insecure {
+	if disableTLS {
 		s.httpServer = &http.Server{Addr: addr, Handler: s}
 		glog.Fatalln(s.httpServer.ListenAndServe())
 		return

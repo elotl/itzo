@@ -240,8 +240,8 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 		d := time.Since(start)
 		failure := false
 		if procErr != nil {
-			foundRc := false
 			failure = true
+			foundRc := false
 			if exiterr, ok := procErr.(*exec.ExitError); ok {
 				if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 					foundRc = true
