@@ -44,15 +44,25 @@ func NewUnitManager(rootDir string) *UnitManager {
 func (um *UnitManager) GetLogBuffer(unit string, n int) ([]LogEntry, error) {
 	um.logLock.Lock()
 	defer um.logLock.Unlock()
-	if len(um.logbuf) > 1 && unit == "" {
-		return nil, fmt.Errorf("A unit name is required when getting logs from a pod with multiple units")
-	}
-	if unit == "" && len(um.logbuf) == 1 {
-		// Logs from the first unit in the map, if there's any.
-		for _, v := range um.logbuf {
-			return v.Read(n), nil
+	if unit == "" {
+		if len(um.logbuf) == 0 {
+			return nil, fmt.Errorf("Unable to get logs, no units found")
 		}
-		return nil, fmt.Errorf("No logs found")
+		if len(um.logbuf) == 1 {
+			for _, lb := range um.logbuf {
+				return lb.Read(n), nil
+			}
+		} else if len(um.runningUnits) == 1 {
+			// we keep old logs around after a unit stops so
+			// grab the logs from the only running unit if we can
+			for name, _ := range um.runningUnits {
+				lb, exists := um.logbuf[name]
+				if exists {
+					return lb.Read(n), nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("Multiple unit logfiles found, please specify a unit name")
 	}
 	lb, exists := um.logbuf[unit]
 	if !exists {
