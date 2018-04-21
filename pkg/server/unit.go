@@ -22,11 +22,13 @@ const (
 	MAX_BACKOFF_TIME = 5 * time.Minute
 )
 
-func makeStillCreatingStatus(name, image string) *api.UnitStatus {
+func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 	return &api.UnitStatus{
 		Name: name,
 		State: api.UnitState{
-			Waiting: &api.UnitStateWaiting{},
+			Waiting: &api.UnitStateWaiting{
+				Reason: reason,
+			},
 		},
 		RestartCount: 0,
 		Image:        image,
@@ -148,7 +150,7 @@ func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return makeStillCreatingStatus(u.Name, u.Image), nil
+			return makeStillCreatingStatus(u.Name, u.Image, "Unit creating"), nil
 		}
 		glog.Errorf("Error reading statusfile for %s\n", u.Name)
 		return nil, err

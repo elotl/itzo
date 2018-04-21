@@ -13,7 +13,7 @@ import (
 var specChanSize = 100
 
 type Puller interface {
-	PullImage(rootDir, name, image, server, username, password string) error
+	PullImage(rootdir, name, image, server, username, password string) error
 }
 
 type Mounter interface {
@@ -31,7 +31,7 @@ type UnitRunner interface {
 
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
 type PodController struct {
-	rootDir     string
+	rootdir     string
 	mountCtl    Mounter
 	unitMgr     UnitRunner
 	imagePuller Puller
@@ -40,9 +40,9 @@ type PodController struct {
 	syncErrors  map[string]api.UnitStatus
 }
 
-func NewPodController(rootDir string, mounter Mounter, unitMgr UnitRunner) *PodController {
+func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
 	return &PodController{
-		rootDir:     rootDir,
+		rootdir:     rootdir,
 		unitMgr:     unitMgr,
 		mountCtl:    mounter,
 		imagePuller: &ImagePuller{},
@@ -57,6 +57,12 @@ func NewPodController(rootDir string, mounter Mounter, unitMgr UnitRunner) *PodC
 
 func (pc *PodController) runUpdateLoop() {
 	for {
+		// pull updates off until we have no more updates since we
+		// only care about the latest update
+		if len(pc.updateChan) > 1 {
+			<-pc.updateChan
+			continue
+		}
 		podParams := <-pc.updateChan
 		spec := &podParams.Spec
 		MergeSecretsIntoSpec(podParams.Secrets, spec)
@@ -64,11 +70,15 @@ func (pc *PodController) runUpdateLoop() {
 		pc.podStatus = spec
 	}
 }
+
 func (pc *PodController) Start() {
 	go pc.runUpdateLoop()
 }
 
 func (pc *PodController) UpdatePod(params *api.PodParameters) error {
+	// If something goes horribly wrong, don't block the rest client,
+	// just return an error for the update and kick the problem back
+	// to the milpa server
 	if len(pc.updateChan) == specChanSize {
 		return fmt.Errorf("Error updating pod spec: too many pending updates")
 	}
@@ -76,6 +86,7 @@ func (pc *PodController) UpdatePod(params *api.PodParameters) error {
 	return nil
 }
 
+// Only diff the parts of the unit we care about
 type MiniUnit struct {
 	Name         string
 	Image        string
@@ -259,7 +270,6 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	// collect the units that failed and pass them back to the caller
 	// so that we can update the unit's status and bubble up the data
 	// to milpa.
-
 	erroredUnits := make(map[string]api.UnitStatus)
 	for _, unit := range addUnits {
 		// pull image
@@ -270,7 +280,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			continue
 		}
 		creds := allCreds[server]
-		err = pc.imagePuller.PullImage(pc.rootDir, unit.Name, imageRepo, server, creds.Username, creds.Password)
+		err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, creds.Username, creds.Password)
 		if err != nil {
 			msg := fmt.Sprintf("Error pulling image for unit %s: %v",
 				unit.Name, err)
@@ -319,12 +329,12 @@ func makeAppEnv(unit *api.Unit) []string {
 type ImagePuller struct {
 }
 
-func (ip *ImagePuller) PullImage(rootDir, name, image, server, username, password string) error {
+func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string) error {
 	if server != "" && !strings.HasPrefix(server, "http") {
 		server = "https://" + server
 	}
-	glog.Infof("Creating new unit '%s' in %s\n", name, rootDir)
-	u, err := OpenUnit(rootDir, name)
+	glog.Infof("Creating new unit '%s' in %s\n", name, rootdir)
+	u, err := OpenUnit(rootdir, name)
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
@@ -341,20 +351,26 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, error) {
 	// go through syncErrors, merge those in
 	unitStatusMap := make(map[string]*api.UnitStatus)
 	for _, podUnit := range pc.podStatus.Units {
-		if !IsUnitExist(pc.rootDir, podUnit.Name) {
-			// Todo, create a status of Waiting
-			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(podUnit.Name, podUnit.Image)
+		// when errors opening the
+		if !IsUnitExist(pc.rootdir, podUnit.Name) {
+			reason := "Unit waiting"
+			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
+				podUnit.Name, podUnit.Image, reason)
 			continue
 		}
-		unit, err := OpenUnit(pc.rootDir, podUnit.Name)
+		unit, err := OpenUnit(pc.rootdir, podUnit.Name)
 		if err != nil {
-			// Todo, handle error, see how we used to do this in
-			// master... do the same
+			reason := "Constructing unit"
+			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
+				podUnit.Name, podUnit.Image, reason)
 			continue
 		}
 		us, err := unit.GetStatus()
 		if err != nil {
-			// Todo
+			reason := "Constructing unit, no status yet"
+			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
+				podUnit.Name, podUnit.Image, reason)
+			continue
 		}
 		unitStatusMap[podUnit.Name] = us
 	}

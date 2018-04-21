@@ -12,8 +12,6 @@ import (
 )
 
 func TestMergeSecretsIntoSpec(t *testing.T) {
-	// create secrets
-	// create spec
 	spec := &api.PodSpec{
 		Units: []api.Unit{
 			{
@@ -247,11 +245,11 @@ func (m *MountMock) AttachMount(unitname, src, dst string) error {
 }
 
 type ImagePullMock struct {
-	Pull func(rootDir, name, image, server, username, password string) error
+	Pull func(rootdir, name, image, server, username, password string) error
 }
 
-func (p *ImagePullMock) PullImage(rootDir, name, image, server, username, password string) error {
-	return p.Pull(rootDir, name, image, server, username, password)
+func (p *ImagePullMock) PullImage(rootdir, name, image, server, username, password string) error {
+	return p.Pull(rootdir, name, image, server, username, password)
 }
 
 func NewImagePullMock() *ImagePullMock {
@@ -286,11 +284,10 @@ func NewUnitMock() *UnitMock {
 	}
 }
 
+// Here we're testing 1. that we do the diffs somewhat correctly
+// and that we generate the correct number of errors when things
+// fail.
 func TestFullSyncErrors(t *testing.T) {
-	// pod spec and status
-	// -- make something that requires volumes to change
-	// and it requires units to change
-
 	// Only the volume size has chagned
 	spec := api.PodSpec{
 		Units: []api.Unit{{
@@ -379,7 +376,7 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			mod: func(pc *PodController) {
 				puller := pc.imagePuller.(*ImagePullMock)
-				puller.Pull = func(rootDir, name, image, server, username, password string) error {
+				puller.Pull = func(rootdir, name, image, server, username, password string) error {
 					return fmt.Errorf("Pull Failed")
 				}
 			},
@@ -407,7 +404,7 @@ func TestFullSyncErrors(t *testing.T) {
 
 	for _, testCase := range testCases {
 		podCtl := PodController{
-			rootDir:     "/tmp/milpa/units",
+			rootdir:     "/tmp/milpa/units",
 			mountCtl:    NewMountMock(),
 			unitMgr:     NewUnitMock(),
 			imagePuller: NewImagePullMock(),
@@ -456,7 +453,7 @@ func TestPodControllerStatus(t *testing.T) {
 		Image:   "elotl/foo",
 		Command: "runfoo",
 	}
-	rootDir, u, closer := createTestUnit(myUnit.Name)
+	rootdir, u, closer := createTestUnit(myUnit.Name)
 	status := api.PodSpec{
 		Units: []api.Unit{myUnit},
 	}
@@ -480,7 +477,7 @@ func TestPodControllerStatus(t *testing.T) {
 	us, _ := u.GetStatus()
 	assertStatusEqual(t, &expected, us)
 
-	podCtl := NewPodController(rootDir, nil, nil)
+	podCtl := NewPodController(rootdir, nil, nil)
 	podCtl.podStatus = &status
 	s, err := podCtl.GetStatus()
 
