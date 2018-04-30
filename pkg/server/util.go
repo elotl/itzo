@@ -176,28 +176,6 @@ func runTosi(tp string, args ...string) error {
 	return err
 }
 
-func pullAndExtractImage(image, rootfs, url, username, password string) error {
-	tp, err := exec.LookPath(TOSI_PRG)
-	if err != nil {
-		tp = "/tmp/tosiprg"
-		err = downloadTosi(tp)
-	}
-	if err != nil {
-		return err
-	}
-	args := []string{"-image", image, "-extractto", rootfs}
-	if username != "" {
-		args = append(args, []string{"-username", username}...)
-	}
-	if password != "" {
-		args = append(args, []string{"-password", password}...)
-	}
-	if url != "" {
-		args = append(args, []string{"-url", url}...)
-	}
-	return runTosi(tp, args...)
-}
-
 // I have no idea why I wrote this...  I mean, the host tail
 // doesn't quite work right but, for now we're just getting itzo logs
 // If nothing else, it was kinda fun.

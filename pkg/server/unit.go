@@ -3,16 +3,18 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
+	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/mount"
 	"github.com/golang/glog"
 )
 
@@ -20,30 +22,26 @@ const (
 	MAX_BACKOFF_TIME = 5 * time.Minute
 )
 
+func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
+	return &api.UnitStatus{
+		Name: name,
+		State: api.UnitState{
+			Waiting: &api.UnitStateWaiting{
+				Reason: reason,
+			},
+		},
+		RestartCount: 0,
+		Image:        image,
+	}
+}
+
 type Unit struct {
 	*LogPipe
 	Directory  string
 	Name       string
+	Image      string
 	statusPath string
 }
-
-type UnitStatus string
-
-const (
-	UnitStatusUnknown   = ""
-	UnitStatusCreated   = "created"
-	UnitStatusRunning   = "running"
-	UnitStatusFailed    = "failed"
-	UnitStatusSucceeded = "succeeded"
-)
-
-type RestartPolicy int
-
-const (
-	RESTART_POLICY_ALWAYS    RestartPolicy = iota
-	RESTART_POLICY_NEVER     RestartPolicy = iota
-	RESTART_POLICY_ONFAILURE RestartPolicy = iota
-)
 
 func IsUnitExist(rootdir, name string) bool {
 	if len(name) == 0 {
@@ -75,48 +73,28 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		Name:       name,
 		statusPath: filepath.Join(directory, "status"),
 	}
+	// We need to get the image, that's saved in the status
+	s, err := u.GetStatus()
+	if err != nil {
+		glog.Warningf("Error getting unit %s status: %v", name, err)
+	} else {
+		u.Image = s.Image
+	}
 	return &u, nil
 }
 
-func (u *Unit) Close() {
-	// No-op for now.
-}
-
-func (u *Unit) GetRootfs() string {
-	return filepath.Join(u.Directory, "ROOTFS")
-}
-
-func (u *Unit) GetStatus() (UnitStatus, error) {
-	buf, err := ioutil.ReadFile(u.statusPath)
+func (u *Unit) SetImage(image string) error {
+	u.Image = image
+	status, err := u.GetStatus()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return UnitStatusUnknown, nil
-		}
-		glog.Errorf("Error reading statusfile for %s\n", u.Name)
-		return UnitStatusUnknown, err
+		return err
 	}
-	err = nil
-	var status UnitStatus
-	switch string(buf) {
-	case string(UnitStatusCreated):
-		status = UnitStatusCreated
-	case string(UnitStatusRunning):
-		status = UnitStatusRunning
-	case string(UnitStatusFailed):
-		status = UnitStatusFailed
-	case string(UnitStatusSucceeded):
-		status = UnitStatusSucceeded
-	default:
-		status = UnitStatusUnknown
-		err := fmt.Errorf("Invalid status for %s: '%v'\n", u.Name, buf)
-		glog.Error(err)
+	status.Image = u.Image
+	buf, err := json.Marshal(status)
+	if err != nil {
+		glog.Errorf("Error serializing status for %s\n", u.Name)
+		return err
 	}
-	return status, err
-}
-
-func (u *Unit) SetStatus(status UnitStatus) error {
-	glog.Infof("Updating status of unit '%s' to %s\n", u.Name, status)
-	buf := []byte(status)
 	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
 		glog.Errorf("Error updating statusfile for %s\n", u.Name)
 		return err
@@ -124,11 +102,109 @@ func (u *Unit) SetStatus(status UnitStatus) error {
 	return nil
 }
 
-func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
-	policy RestartPolicy) (err error) {
-	u.SetStatus(UnitStatusRunning)
+func (u *Unit) Close() {
+	// No-op for now.
+}
+
+func (u *Unit) Destroy() {
+	// you'll need to kill the child process before
+	u.LogPipe.Remove()
+	os.RemoveAll(u.Directory)
+}
+
+func (u *Unit) GetRootfs() string {
+	return filepath.Join(u.Directory, "ROOTFS")
+}
+
+func (u *Unit) PullAndExtractImage(image, url, username, password string) error {
+	if u.Image != "" {
+		glog.Warningf("Unit %s has already pulled image %s", u.Name, u.Image)
+	}
+	glog.Infof("Unit %s pulling image %s", u.Name, image)
+	err := u.SetImage(image)
+	if err != nil {
+		return fmt.Errorf("Error setting image for unit: %v", err)
+	}
+	tp, err := exec.LookPath(TOSI_PRG)
+	if err != nil {
+		tp = "/tmp/tosiprg"
+		err = downloadTosi(tp)
+	}
+	if err != nil {
+		return err
+	}
+	args := []string{"-image", image, "-extractto", u.GetRootfs()}
+	if username != "" {
+		args = append(args, []string{"-username", username}...)
+	}
+	if password != "" {
+		args = append(args, []string{"-password", password}...)
+	}
+	if url != "" {
+		args = append(args, []string{"-url", url}...)
+	}
+	return runTosi(tp, args...)
+}
+
+func (u *Unit) GetStatus() (*api.UnitStatus, error) {
+	buf, err := ioutil.ReadFile(u.statusPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return makeStillCreatingStatus(u.Name, u.Image, "Unit creating"), nil
+		}
+		glog.Errorf("Error reading statusfile for %s\n", u.Name)
+		return nil, err
+	}
+	var status api.UnitStatus
+	err = json.Unmarshal(buf, &status)
+	return &status, err
+}
+
+func (u *Unit) SetState(state api.UnitState, restarts *int) error {
+	// Check current status, and update status.State. Name and Image are
+	// immutable, and RestartCount is kept up to date automatically here.
+	// pass in a nil pointer to restarts to not update that value
+	status, err := u.GetStatus()
+	if err != nil {
+		glog.Errorf("Error getting current status for %s\n", u.Name)
+		return err
+	}
+	glog.Infof("Updating state of unit '%s' to %v\n", u.Name, state)
+	status.State = state
+	if restarts != nil && *restarts >= 0 {
+		status.RestartCount = int32(*restarts)
+	}
+	buf, err := json.Marshal(status)
+	if err != nil {
+		glog.Errorf("Error serializing status for %s\n", u.Name)
+		return err
+	}
+	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
+		glog.Errorf("Error updating statusfile for %s\n", u.Name)
+		return err
+	}
+	return nil
+}
+
+func maybeBackOff(err error, command []string, backoff *time.Duration) {
+	if err != nil {
+		*backoff *= 2
+		if *backoff > MAX_BACKOFF_TIME {
+			*backoff = MAX_BACKOFF_TIME
+		}
+	} else {
+		// Reset backoff.
+		*backoff = 1 * time.Second
+	}
+	glog.Infof("Waiting for %v before starting %v again", *backoff, command)
+	time.Sleep(*backoff)
+}
+
+func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, policy api.RestartPolicy) (err error) {
 	backoff := 1 * time.Second
+	restarts := -1
 	for {
+		restarts++
 		start := time.Now()
 		cmd := exec.Command(command[0], command[1:]...)
 		cmd.Env = env
@@ -139,94 +215,84 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File,
 		if err != nil {
 			// Start() failed, it is either an error looking up the executable,
 			// or a resource allocation problem.
-			u.SetStatus(UnitStatusFailed)
+			u.SetState(api.UnitState{
+				Waiting: &api.UnitStateWaiting{
+					LaunchFailure: true,
+					Reason:        err.Error(),
+				},
+			}, &restarts)
 			glog.Errorf("Start() %v: %v", command, err)
-			return err
+			maybeBackOff(err, command, &backoff)
+			continue
 		}
-		glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+		u.SetState(api.UnitState{
+			Running: &api.UnitStateRunning{
+				StartedAt: api.Now(),
+			},
+		}, &restarts)
+		if cmd.Process != nil {
+			glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+		} else {
+			glog.Warningf("cmd has nil process: %#v", cmd)
+		}
 
-		err = cmd.Wait()
+		exitCode := 0
+
+		procErr := cmd.Wait()
 		d := time.Since(start)
-		if err != nil {
+		failure := false
+		if procErr != nil {
+			failure = true
 			foundRc := false
-			if exiterr, ok := err.(*exec.ExitError); ok {
+			if exiterr, ok := procErr.(*exec.ExitError); ok {
 				if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 					foundRc = true
+					exitCode = ws.ExitStatus()
 					glog.Infof("Command %v pid %d exited with %d after %.2fs",
-						command, cmd.Process.Pid, ws.ExitStatus(), d.Seconds())
+						command, cmd.Process.Pid, exitCode, d.Seconds())
 				}
 			}
 			if !foundRc {
 				glog.Infof("Command %v pid %d exited with %v after %.2fs",
-					command, cmd.Process.Pid, err, d.Seconds())
+					command, cmd.Process.Pid, procErr, d.Seconds())
 			}
 		} else {
 			glog.Infof("Command %v pid %d exited with 0 after %.2fs",
 				command, cmd.Process.Pid, d.Seconds())
 		}
 
-		switch policy {
-		case RESTART_POLICY_NEVER:
-			if err != nil {
-				u.SetStatus(UnitStatusFailed)
-			} else {
-				u.SetStatus(UnitStatusSucceeded)
-			}
-			return err
-		case RESTART_POLICY_ONFAILURE:
-			if err == nil {
-				u.SetStatus(UnitStatusSucceeded)
-				return nil
-			}
-		case RESTART_POLICY_ALWAYS:
-			// Fallthrough.
-		}
-
-		if err != nil {
-			backoff *= 2
-			if backoff > MAX_BACKOFF_TIME {
-				backoff = MAX_BACKOFF_TIME
-			}
+		if policy == api.RestartPolicyAlways ||
+			(policy == api.RestartPolicyOnFailure && failure) {
+			// We never mark a unit as terminated in this state,
+			// we just return it to waiting and wait for it to
+			// be run again
+			u.SetState(api.UnitState{
+				Waiting: &api.UnitStateWaiting{
+					Reason: fmt.Sprintf(
+						"Waiting for unit restart, last exit code: %d",
+						exitCode),
+				},
+			}, &restarts)
 		} else {
-			// Reset backoff.
-			backoff = 1 * time.Second
+			// Game over, man!
+			u.SetState(api.UnitState{
+				Terminated: &api.UnitStateTerminated{
+					ExitCode:   int32(exitCode),
+					FinishedAt: api.Now(),
+				},
+			}, &restarts)
+			return procErr
 		}
-		glog.Infof("Waiting for %v before starting %v again", backoff, command)
-		time.Sleep(backoff)
+		maybeBackOff(procErr, command, &backoff)
 	}
 }
 
-func RestartPolicyToString(policy RestartPolicy) string {
-	pstr := ""
-	switch policy {
-	case RESTART_POLICY_ALWAYS:
-		pstr = "always"
-	case RESTART_POLICY_NEVER:
-		pstr = "never"
-	case RESTART_POLICY_ONFAILURE:
-		pstr = "onfailure"
-	}
-	return pstr
-}
-
-func StringToRestartPolicy(pstr string) RestartPolicy {
-	policy := RESTART_POLICY_ALWAYS
-	switch strings.ToLower(pstr) {
-	case "always":
-		policy = RESTART_POLICY_ALWAYS
-	case "never":
-		policy = RESTART_POLICY_NEVER
-	case "onfailure":
-		policy = RESTART_POLICY_ONFAILURE
-	default:
-		glog.Warningf("Invalid restart policy %s; using default 'always'\n",
-			pstr)
-	}
-	return policy
-}
-
-func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
-	u.SetStatus(UnitStatusCreated)
+func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter mount.Mounter) error {
+	u.SetState(api.UnitState{
+		Waiting: &api.UnitStateWaiting{
+			Reason: "starting",
+		},
+	}, nil)
 
 	rootfs := u.GetRootfs()
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
@@ -269,17 +335,24 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			return err
 		}
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
-		if err := syscall.Mount(rootfs, rootfs, "", syscall.MS_BIND, ""); err != nil {
+
+		if err := mounter.BindMount(rootfs, rootfs); err != nil {
 			glog.Errorf("Mount() %s: %v", rootfs, err)
 			return err
 		}
 		// Bind mount statusfile into the chroot. Note: both the source and the
 		// destination files need to exist, otherwise the bind mount will fail.
 		statussrc := filepath.Join(u.statusPath)
-		ensureFileExists(statussrc)
+		err = ensureFileExists(statussrc)
+		if err != nil {
+			glog.Errorln("error creating status file #1")
+		}
 		statusdst := filepath.Join(u.GetRootfs(), "status")
-		ensureFileExists(statusdst)
-		if err := syscall.Mount(statussrc, statusdst, "", syscall.MS_BIND, ""); err != nil {
+		err = ensureFileExists(statusdst)
+		if err != nil {
+			glog.Errorln("error creating status file #2")
+		}
+		if err := mounter.BindMount(statussrc, statusdst); err != nil {
 			glog.Errorf("Mount() statusfile: %v", err)
 			return err
 		}
@@ -287,7 +360,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			glog.Errorf("MkdirAll() %s: %v", oldrootfs, err)
 			return err
 		}
-		if err := syscall.PivotRoot(rootfs, oldrootfs); err != nil {
+		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
 			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
 			return err
 		}
@@ -295,13 +368,13 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 			glog.Errorf("Chdir() /: %v", err)
 			return err
 		}
-		if err := syscall.Unmount("/.oldrootfs", syscall.MNT_DETACH); err != nil {
+		if err := mounter.Unmount("/.oldrootfs"); err != nil {
 			glog.Errorf("Unmount() %s: %v", oldrootfs, err)
 			return err
 		}
 		os.Remove("/.oldrootfs")
-		if err := mountSpecial(); err != nil {
-			glog.Errorf("mountSpecial(): %v", rootfs, err)
+		if err := mounter.MountSpecial(); err != nil {
+			glog.Errorf("mountSpecial(): %v", err)
 			return err
 		}
 		u.statusPath = "/status"
@@ -310,7 +383,7 @@ func (u *Unit) Run(command, env []string, policy RestartPolicy) error {
 	err = u.runUnitLoop(command, env, unitout, uniterr, policy)
 
 	if rootfs != "" {
-		unmountSpecial()
+		mounter.UnmountSpecial()
 	}
 
 	return err
