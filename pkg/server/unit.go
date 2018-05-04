@@ -357,6 +357,7 @@ func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter moun
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
 		// No chroot package has been deployed for the unit.
 		rootfs = ""
+		glog.Errorf("No rootfs found for %s; not chrooting", u.Name)
 	}
 
 	// Open log pipes _before_ chrooting, since the named pipes are outside of
