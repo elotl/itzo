@@ -8,7 +8,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
 	"github.com/golang/glog"
-	"github.com/google/shlex"
+	quote "github.com/kballard/go-shellquote"
 )
 
 var buildDate string
@@ -31,7 +31,7 @@ func main() {
 		policy := api.RestartPolicy(*apprestartpolicy)
 		glog.Infof("Starting %s for %s; restart policy is %v",
 			*appcmdline, *appunit, policy)
-		cmdargs, err := shlex.Split(*appcmdline)
+		cmdargs, err := quote.Split(*appcmdline)
 		if err != nil {
 			glog.Fatalf("Invalid command '%s' for unit %s: %v",
 				*appcmdline, *appunit, err)

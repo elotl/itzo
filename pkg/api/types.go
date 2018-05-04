@@ -112,8 +112,12 @@ type Unit struct {
 	// - `myregistry.local:5000/testing/test-image`
 	//
 	Image string `json:"image"`
-	// The command that will be run to start the unit.
-	Command string `json:"command"`
+	// The command that will be run to start the unit. If empty, the entrypoint
+	// of the image will be used. See
+	// https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+	Command []string `json:"command"`
+	// Arguments to the command. If empty, the cmd from the image will be used.
+	Args []string `json:"args"`
 	// List of environment variables that will be exported inside the unit
 	// before start the application.
 	Env []EnvVar `json:"env"`
