@@ -107,13 +107,13 @@ func (u *Unit) getMetadataFromFile(filename string, i interface{}) interface{} {
 func (u *Unit) getEntryPoint() []string {
 	var ep []string
 	result := u.getMetadataFromFile("entrypoint", &ep)
-	return result.([]string)
+	return *result.(*[]string)
 }
 
 func (u *Unit) getCmd() []string {
 	var cmd []string
 	result := u.getMetadataFromFile("cmd", &cmd)
-	return result.([]string)
+	return *result.(*[]string)
 }
 
 func (u *Unit) CreateCommand(command []string, args []string) []string {
