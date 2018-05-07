@@ -322,8 +322,16 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 
 func makeAppEnv(unit *api.Unit) []string {
 	e := []string{}
+	path := ""
 	for _, ev := range unit.Env {
 		e = append(e, fmt.Sprintf("%s=%s", ev.Name, ev.Value))
+		if ev.Name == "PATH" {
+			path = ev.Value
+		}
+	}
+	if path == "" {
+		// If PATH is not specified, set it to a reasonable default.
+		e = append(e, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin/:/usr/local/sbin")
 	}
 	return e
 }
