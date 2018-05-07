@@ -123,29 +123,29 @@ func TestDiffUnits(t *testing.T) {
 		{
 			Name:    "u1",
 			Image:   "elotl/nginx",
-			Command: "nginx",
+			Command: []string{"nginx"},
 		},
 		{
 			Name:    "u2",
 			Image:   "elotl/haproxy:1.4",
-			Command: "haproxy",
+			Command: []string{"haproxy"},
 		},
 		{
 			Name:    "u3",
 			Image:   "elotl/useless",
-			Command: "deleteme",
+			Command: []string{"deleteme"},
 		},
 	}
 	spec := []api.Unit{
 		{
 			Name:    "u1",
 			Image:   "elotl/nginx",
-			Command: "nginx",
+			Command: []string{"nginx"},
 		},
 		{
 			Name:    "u2",
 			Image:   "elotl/haproxy:1.5",
-			Command: "haproxy",
+			Command: []string{"haproxy"},
 		},
 	}
 	a, d := DiffUnits(spec, status, sets.NewString())
@@ -165,12 +165,12 @@ func TestDiffUnitsWithVolumeChange(t *testing.T) {
 		{
 			Name:    "u1",
 			Image:   "elotl/nginx",
-			Command: "nginx",
+			Command: []string{"nginx"},
 		},
 		{
 			Name:    "u2",
 			Image:   "elotl/haproxy:1.4",
-			Command: "haproxy",
+			Command: []string{"haproxy"},
 			VolumeMounts: []api.VolumeMount{
 				{
 					Name: "v1",
@@ -185,12 +185,12 @@ func TestDiffUnitsWithVolumeChange(t *testing.T) {
 		{
 			Name:    "u1",
 			Image:   "elotl/nginx",
-			Command: "nginx",
+			Command: []string{"nginx"},
 		},
 		{
 			Name:    "u2",
 			Image:   "elotl/haproxy:1.4",
-			Command: "haproxy",
+			Command: []string{"haproxy"},
 			VolumeMounts: []api.VolumeMount{
 				{
 					Name: "v1",
@@ -261,12 +261,12 @@ func NewImagePullMock() *ImagePullMock {
 }
 
 type UnitMock struct {
-	Start func(string, string, []string, api.RestartPolicy) error
+	Start func(string, []string, []string, []string, api.RestartPolicy) error
 	Stop  func(string) error
 }
 
-func (u *UnitMock) StartUnit(name, command string, env []string, rp api.RestartPolicy) error {
-	return u.Start(name, command, env, rp)
+func (u *UnitMock) StartUnit(name string, command, args, env []string, rp api.RestartPolicy) error {
+	return u.Start(name, command, args, env, rp)
 }
 
 func (u *UnitMock) StopUnit(name string) error {
@@ -275,7 +275,7 @@ func (u *UnitMock) StopUnit(name string) error {
 
 func NewUnitMock() *UnitMock {
 	return &UnitMock{
-		Start: func(name, command string, env []string, rp api.RestartPolicy) error {
+		Start: func(name string, command, args, env []string, rp api.RestartPolicy) error {
 			return nil
 		},
 		Stop: func(name string) error {
@@ -293,7 +293,7 @@ func TestFullSyncErrors(t *testing.T) {
 		Units: []api.Unit{{
 			Name:    "u",
 			Image:   "elotl/hello",
-			Command: "hello",
+			Command: []string{"hello"},
 			VolumeMounts: []api.VolumeMount{
 				{
 					Name: "v1",
@@ -315,7 +315,7 @@ func TestFullSyncErrors(t *testing.T) {
 		Units: []api.Unit{{
 			Name:    "u",
 			Image:   "elotl/hello",
-			Command: "hello",
+			Command: []string{"hello"},
 			VolumeMounts: []api.VolumeMount{
 				{
 					Name: "v1",
@@ -394,7 +394,7 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			mod: func(pc *PodController) {
 				m := pc.unitMgr.(*UnitMock)
-				m.Start = func(name, command string, env []string, rp api.RestartPolicy) error {
+				m.Start = func(name string, command, args, env []string, rp api.RestartPolicy) error {
 					return fmt.Errorf("unit add failed")
 				}
 			},
@@ -451,7 +451,7 @@ func TestPodControllerStatus(t *testing.T) {
 	myUnit := api.Unit{
 		Name:    "foounit",
 		Image:   "elotl/foo",
-		Command: "runfoo",
+		Command: []string{"runfoo"},
 	}
 	rootdir, u, closer := createTestUnit(myUnit.Name)
 	status := api.PodSpec{

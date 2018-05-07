@@ -194,7 +194,7 @@ func createUnit(t *testing.T) *api.PodParameters {
 	units[0] = api.Unit{
 		Name:    randStr(t, 16),
 		Image:   "library/alpine",
-		Command: "echo Hello Milpa",
+		Command: []string{"echo", "Hello Milpa"},
 	}
 	params := api.PodParameters{
 		Spec: api.PodSpec{
@@ -252,7 +252,7 @@ func TestUpdateHandlerAddUnit(t *testing.T) {
 	unit := api.Unit{
 		Name:    randStr(t, 8),
 		Image:   "library/alpine",
-		Command: "echo Hello World",
+		Command: []string{"echo", "Hello World"},
 	}
 	params.Spec.Units = append(params.Spec.Units, unit)
 	buf, err := json.Marshal(params)
@@ -292,7 +292,7 @@ func TestStatusHandlerFailed(t *testing.T) {
 	params.Spec.Units = []api.Unit{
 		api.Unit{
 			Name:    params.Spec.Units[0].Name,
-			Command: "ls /does_not_exist",
+			Command: []string{"ls", "/does_not_exist"},
 		},
 	}
 	params.Spec.RestartPolicy = api.RestartPolicyNever
@@ -323,7 +323,7 @@ func TestStatusHandlerLaunchFailure(t *testing.T) {
 	params.Spec.Units = []api.Unit{
 		api.Unit{
 			Name:    params.Spec.Units[0].Name,
-			Command: "/does_not_exist",
+			Command: []string{"/does_not_exist"},
 		},
 	}
 	params.Spec.RestartPolicy = api.RestartPolicyNever
@@ -353,7 +353,7 @@ func TestStatusHandlerSucceeded(t *testing.T) {
 	params.Spec.Units = []api.Unit{
 		api.Unit{
 			Name:    params.Spec.Units[0].Name,
-			Command: "/does_not_exist",
+			Command: []string{"/does_not_exist"},
 		},
 	}
 	params.Spec.RestartPolicy = api.RestartPolicyNever
@@ -402,7 +402,7 @@ func TestGetLogsLines(t *testing.T) {
 		return
 	}
 	params := createUnit(t)
-	params.Spec.Units[0].Command = "sh -c yes | head -n10"
+	params.Spec.Units[0].Command = []string{"sh", "-c", "yes | head -n10"}
 	buf, err := json.Marshal(params)
 	assert.NoError(t, err)
 	body := strings.NewReader(string(buf))
