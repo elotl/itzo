@@ -2,7 +2,9 @@ package mount
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 
@@ -11,16 +13,18 @@ import (
 )
 
 type (
-	mountFunc   func(source string, target string, fstype string, flags uintptr, data string) error
-	unmountFunc func(target string, flags int) error
-	pivoterFunc func(rootfs, oldrootfs string) error
+	sshMountFunc func(source, target, key string, readonly bool) error
+	mountFunc    func(source string, target string, fstype string, flags uintptr, data string) error
+	unmountFunc  func(target string, flags int) error
+	pivoterFunc  func(rootfs, oldrootfs string) error
 )
 
 var (
 	// Allow mocking out these syscalls in tests.
-	mounter   mountFunc   = syscall.Mount
-	unmounter unmountFunc = syscall.Unmount
-	pivoter   pivoterFunc = syscall.PivotRoot
+	sshmounter sshMountFunc = mountSshFs
+	mounter    mountFunc    = syscall.Mount
+	unmounter  unmountFunc  = syscall.Unmount
+	pivoter    pivoterFunc  = syscall.PivotRoot
 )
 
 type Mounter interface {
@@ -74,6 +78,38 @@ var Mounts = []Mount{
 		Fs:     "sysfs",
 		Flags:  syscall.MS_NOSUID | syscall.MS_NODEV | syscall.MS_NOEXEC | syscall.MS_RELATIME,
 	},
+}
+
+func mountSshFs(source, target, key string, readonly bool) error {
+	keyfile, err := ioutil.TempFile("", "itzo-key")
+	if err != nil {
+		glog.Errorf("Error creating file for sshfs key: %v", err)
+		return err
+	}
+	defer keyfile.Close()
+	n, err := keyfile.WriteString(key)
+	if err != nil {
+		glog.Errorf("Error writing to file for sshfs key: %v", err)
+		return err
+	}
+	if n != len(key) {
+		err = fmt.Errorf("Short write for sshfs key: %d != %d", n, len(key))
+		glog.Errorf("%v", err)
+		return err
+	}
+	opts := fmt.Sprintf("IdentityFile=%s", keyfile.Name())
+	if readonly {
+		opts = fmt.Sprintf("%s,ro", opts)
+	}
+	args := []string{"-o", opts, source, target}
+	cmd := exec.Command("sshfs", args...)
+	err = cmd.Start()
+	if err != nil {
+		glog.Errorf("Error starting sshfs")
+		return err
+	}
+	glog.Infof("sshfs running as pid %d", cmd.Process.Pid)
+	return nil
 }
 
 func NewOSMounter(basedir string) Mounter {
@@ -145,11 +181,25 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 	found := false
 	if volume.EmptyDir != nil {
 		found = true
-		err = createEmptydir(mdir, volume.EmptyDir)
+		if err = createEmptydir(mdir, volume.EmptyDir); err != nil {
+			return err
+		}
+	}
+	if volume.SshFs != nil {
+		if found {
+			err = fmt.Errorf("Error, multiple volumes in %v", volume)
+			glog.Errorf("%v", err)
+			return err
+		}
+		found = true
+		if err = createSshFs(mdir, volume.SshFs); err != nil {
+			return err
+		}
 	}
 	if !found {
 		err = fmt.Errorf("No volume specified in %v", volume)
 		glog.Errorf("%v", err)
+		return err
 	}
 	return err
 }
@@ -208,6 +258,10 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 		return err
 	}
 	return nil
+}
+
+func createSshFs(mdir string, sshfs *api.SshFs) error {
+	return mountSshFs(sshfs.Source, mdir, sshfs.Key, sshfs.ReadOnly)
 }
 
 // Size is the amount of RAM in MB.

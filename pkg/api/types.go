@@ -52,6 +52,17 @@ type Volume struct {
 type VolumeSource struct {
 	// If specified, an emptyDir will be created to back this volume.
 	EmptyDir *EmptyDir `json:"emptyDir,omitempty"`
+	// Sshfs volume.
+	SshFs *SshFs `json:"sshFs,omitempty"`
+}
+
+type SshFs struct {
+	// This is something like "user@10.20.30.40:/path/to/dir".
+	Source string `json:"source"`
+	// SSH key for connecting.
+	Key string `json:"key"`
+	// Mount the file or directory read-only.
+	ReadOnly bool `json:"readOnly"`
 }
 
 // Backing storage for volumes.
