@@ -10,6 +10,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/golang/glog"
+	quote "github.com/kballard/go-shellquote"
 )
 
 func StartUnit(rootdir, name string, command []string, policy api.RestartPolicy) error {
@@ -95,16 +96,17 @@ func (um *UnitManager) StopUnit(name string) error {
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func (um *UnitManager) StartUnit(name, command string, appenv []string, policy api.RestartPolicy) error {
+func (um *UnitManager) StartUnit(name string, command, args, appenv []string, policy api.RestartPolicy) error {
 	unit, err := OpenUnit(um.rootDir, name)
 	if err != nil {
 		return err
 	}
 	unitrootfs := unit.GetRootfs()
 
-	cmdline := []string{
-		"--exec",
-		command,
+	unitcmd := unit.CreateCommand(command, args)
+	quotedcmd := quote.Join(unitcmd...)
+	cmdline := []string{"--exec",
+		quotedcmd,
 		"--restartpolicy",
 		string(policy),
 		"--unit",
@@ -159,9 +161,9 @@ func (um *UnitManager) StartUnit(name, command string, appenv []string, policy a
 	go func() {
 		err = cmd.Wait()
 		if err == nil {
-			glog.Infof("Unit %s (helper pid %d) exited", command, pid)
+			glog.Infof("Unit %v (helper pid %d) exited", command, pid)
 		} else {
-			glog.Errorf("Unit %s (helper pid %d) exited with error %v", command, pid, err)
+			glog.Errorf("Unit %v (helper pid %d) exited with error %v", command, pid, err)
 		}
 		lp.Remove()
 		unit.Close()

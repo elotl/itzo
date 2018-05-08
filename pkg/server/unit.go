@@ -41,6 +41,8 @@ type Unit struct {
 	Name       string
 	Image      string
 	statusPath string
+	entryPoint []string
+	cmd        []string
 }
 
 func IsUnitExist(rootdir, name string) bool {
@@ -73,6 +75,8 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		Name:       name,
 		statusPath: filepath.Join(directory, "status"),
 	}
+	u.entryPoint = u.getEntryPoint()
+	u.cmd = u.getCmd()
 	// We need to get the image, that's saved in the status
 	s, err := u.GetStatus()
 	if err != nil {
@@ -81,6 +85,52 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		u.Image = s.Image
 	}
 	return &u, nil
+}
+
+func (u *Unit) getMetadataFromFile(filename string, i interface{}) interface{} {
+	path := filepath.Join(u.Directory, filename)
+	buf, err := ioutil.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			glog.Errorf("Error reading metadata %s for %s\n", filename, u.Name)
+		}
+		return i
+	}
+	err = json.Unmarshal(buf, i)
+	if err != nil {
+		glog.Errorf("Error deserializing metadata '%v' for %s: %v\n",
+			buf, u.Name, err)
+	}
+	return i
+}
+
+func (u *Unit) getEntryPoint() []string {
+	var ep []string
+	result := u.getMetadataFromFile("entrypoint", &ep)
+	return *result.(*[]string)
+}
+
+func (u *Unit) getCmd() []string {
+	var cmd []string
+	result := u.getMetadataFromFile("cmd", &cmd)
+	return *result.(*[]string)
+}
+
+func (u *Unit) CreateCommand(command []string, args []string) []string {
+	// See
+	// https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
+	// for more information on the possible interactions between k8s
+	// command/args and docker entrypoint/cmd.
+	if len(command) == 0 {
+		command = u.entryPoint
+		if len(args) == 0 {
+			args = u.cmd
+		}
+	}
+	if len(command) == 0 {
+		glog.Warningf("No command or entrypoint for unit %s", u.Name)
+	}
+	return append(command, args...)
 }
 
 func (u *Unit) SetImage(image string) error {
@@ -133,7 +183,16 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	if err != nil {
 		return err
 	}
-	args := []string{"-image", image, "-extractto", u.GetRootfs()}
+	args := []string{
+		"-image",
+		image,
+		"-extractto",
+		u.GetRootfs(),
+		"-saveentrypoint",
+		filepath.Join(u.Directory, "entrypoint"),
+		"-savecmd",
+		filepath.Join(u.Directory, "cmd"),
+	}
 	if username != "" {
 		args = append(args, []string{"-username", username}...)
 	}
@@ -298,6 +357,7 @@ func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter moun
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
 		// No chroot package has been deployed for the unit.
 		rootfs = ""
+		glog.Errorf("No rootfs found for %s; not chrooting", u.Name)
 	}
 
 	// Open log pipes _before_ chrooting, since the named pipes are outside of

@@ -25,7 +25,7 @@ type Mounter interface {
 // Too bad there isn't a word for a creator AND destroyer
 // Coulda gone with Shiva(er) but that's a bit imprecise...
 type UnitRunner interface {
-	StartUnit(string, string, []string, api.RestartPolicy) error
+	StartUnit(string, []string, []string, []string, api.RestartPolicy) error
 	StopUnit(string) error
 }
 
@@ -90,7 +90,8 @@ func (pc *PodController) UpdatePod(params *api.PodParameters) error {
 type MiniUnit struct {
 	Name         string
 	Image        string
-	Command      string
+	Command      []string
+	Args         []string
 	VolumeMounts []api.VolumeMount
 	Env          []api.EnvVar
 }
@@ -100,6 +101,7 @@ func makeMiniUnit(u *api.Unit) MiniUnit {
 		Name:         u.Name,
 		Image:        u.Image,
 		Command:      u.Command,
+		Args:         u.Args,
 		VolumeMounts: u.VolumeMounts,
 	}
 }
@@ -307,7 +309,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 
 		glog.Infoln("Starting unit", unit.Name)
 		err = pc.unitMgr.StartUnit(
-			unit.Name, unit.Command, makeAppEnv(&unit), spec.RestartPolicy)
+			unit.Name, unit.Command, unit.Args, makeAppEnv(&unit), spec.RestartPolicy)
 		if err != nil {
 			msg := fmt.Sprintf("Error starting unit %s: %v",
 				unit.Name, err)
@@ -320,8 +322,16 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 
 func makeAppEnv(unit *api.Unit) []string {
 	e := []string{}
+	path := ""
 	for _, ev := range unit.Env {
 		e = append(e, fmt.Sprintf("%s=%s", ev.Name, ev.Value))
+		if ev.Name == "PATH" {
+			path = ev.Value
+		}
+	}
+	if path == "" {
+		// If PATH is not specified, set it to a reasonable default.
+		e = append(e, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin/:/usr/local/sbin")
 	}
 	return e
 }
