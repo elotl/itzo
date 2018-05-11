@@ -273,7 +273,6 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		defer os.Remove(pkgfile)
 		glog.Infof("package for %s/%s saved as: %s (%d bytes)",
 			pod, unit, pkgfile, n)
 		u, err := OpenUnit(s.installRootdir, unit)
@@ -283,9 +282,8 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer u.Close()
-		if err = u.DeployPackage(pkgfile); err != nil {
-			glog.Errorf("extracting and installing package for %s/%s: %v",
-				pod, unit, err)
+		if err = u.AddPackage(pkgfile); err != nil {
+			glog.Errorf("adding package for %s/%s: %v", pod, unit, err)
 			serverError(w, err)
 			return
 		}

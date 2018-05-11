@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,12 +38,13 @@ func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 
 type Unit struct {
 	*LogPipe
-	Directory  string
-	Name       string
-	Image      string
-	statusPath string
-	entryPoint []string
-	cmd        []string
+	Directory   string
+	Name        string
+	Image       string
+	statusPath  string
+	pkginfoPath string
+	entryPoint  []string
+	cmd         []string
 }
 
 func IsUnitExist(rootdir, name string) bool {
@@ -70,10 +72,11 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		return nil, err
 	}
 	u := Unit{
-		LogPipe:    lp,
-		Directory:  directory,
-		Name:       name,
-		statusPath: filepath.Join(directory, "status"),
+		LogPipe:     lp,
+		Directory:   directory,
+		Name:        name,
+		statusPath:  filepath.Join(directory, "status"),
+		pkginfoPath: filepath.Join(directory, "pkginfo"),
 	}
 	u.entryPoint = u.getEntryPoint()
 	u.cmd = u.getCmd()
@@ -346,6 +349,35 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 	}
 }
 
+func (u *Unit) DeployPackages() error {
+	pkginfo, err := ioutil.ReadFile(u.pkginfoPath)
+	if err != nil {
+		glog.Infof("Error reading package info file %s: %v",
+			u.pkginfoPath, err)
+		return err
+	}
+	packages := strings.Split(string(pkginfo), "\n")
+	if len(packages) == 0 {
+		glog.Infof("No packages to deploy for %s", u.Name)
+		return nil
+	}
+	packages = packages[0 : len(packages)-1]
+	for i := range packages {
+		pkg := packages[i]
+		if pkg == "" {
+			glog.Warningf("Empty package filename in %s (#%d)",
+				u.pkginfoPath, i)
+			continue
+		}
+		err = u.deployPackage(pkg)
+		if err != nil {
+			return err
+		}
+		os.Remove(pkg)
+	}
+	return nil
+}
+
 func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -449,6 +481,21 @@ func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter moun
 	return err
 }
 
+func (u *Unit) AddPackage(filename string) error {
+	f, err := os.OpenFile(
+		u.pkginfoPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		glog.Errorf("Error opening %s: %v", u.pkginfoPath, err)
+		return err
+	}
+	defer f.Close()
+	if _, err = f.WriteString(filename + "\n"); err != nil {
+		glog.Errorf("Error writing to %s: %v", u.pkginfoPath, err)
+		return err
+	}
+	return nil
+}
+
 type Link struct {
 	dst      string
 	src      string
@@ -458,7 +505,9 @@ type Link struct {
 	gid      int
 }
 
-func (u *Unit) DeployPackage(filename string) (err error) {
+func (u *Unit) deployPackage(filename string) (err error) {
+	glog.Infof("Deploying package from %s", filename)
+
 	rootfs := u.GetRootfs()
 	err = os.MkdirAll(rootfs, 0700)
 	if err != nil {
@@ -502,6 +551,11 @@ func (u *Unit) DeployPackage(filename string) (err error) {
 			continue
 		}
 		name = filepath.Join(rootfs, name[7:])
+
+		dirname := filepath.Dir(name)
+		if _, err = os.Stat(dirname); os.IsNotExist(err) {
+			os.MkdirAll(dirname, 0755)
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir: // directory
