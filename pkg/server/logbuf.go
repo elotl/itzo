@@ -41,6 +41,32 @@ func (lb *LogBuffer) Length() int {
 	return int(minint64(lb.capacity, lb.offset))
 }
 
+func (lb *LogBuffer) Read(nn int) []LogEntry {
+	offset := lb.offset
+	n := int64(nn)
+	if n > lb.capacity || n > lb.offset {
+		n = 0
+	}
+	if n < 0 {
+		return nil
+	}
+	if n == 0 {
+		n = minint64(lb.capacity, lb.offset)
+	}
+	entries := make([]LogEntry, n)
+	// Xibit: Yo dawg, I heard you like off-by-one-errors so I put an
+	// off-by one-error in your off-by-one-error so you can fuck up
+	// while your're fucking up, while you're fucking up, while you're
+	// fucking up.
+	//
+	// I did test this on paper...
+	for i, j := int64(1), n-1; i <= n; i, j = i+1, j-1 {
+		bufLoc := (offset - i) % lb.capacity
+		entries[j] = lb.buf[bufLoc]
+	}
+	return entries
+}
+
 // Useful for following logs via a polling strategy
 // Polling is easier to implement than an event system because
 // we don't need to worry about creating a pumper to fan out
@@ -58,7 +84,8 @@ func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64, int64) {
 	// if i is so far in the past that we're more than logBufSize
 	// behind then skip forward until we're caught up with the current
 	// buffer
-	for ; i+lb.capacity < offset; i += lb.capacity {
+	if i+lb.capacity < offset {
+		i = offset - lb.capacity
 	}
 
 	// entries can wrap around to the start of the buffer so skipt the
@@ -74,29 +101,7 @@ func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64, int64) {
 	return entries, nRead, offset
 }
 
-func (lb *LogBuffer) Read(n int64) []LogEntry {
-	offset := lb.offset
-	if n > lb.capacity || n > lb.offset {
-		n = 0
-	}
-	if n < 0 {
-		return nil
-	}
-	if n == 0 {
-		n = minint64(lb.capacity, lb.offset)
-	}
-	entries := make([]LogEntry, n, n)
-	// Xibit: I heard you like off-by-one-errors! We put some off-by
-	// one-errors in your off-by-one-errors so you can fuck up while
-	// your're fucking up, while you're fucking up, while you're
-	// fucking up.
-	for i, j := int64(1), n-1; i <= n; i, j = i+1, j-1 {
-		bufLoc := (offset - i) % lb.capacity
-		entries[j] = lb.buf[bufLoc]
-	}
-	return entries
-}
-
 func (lb *LogBuffer) flush() {
 	lb.buf = make([]LogEntry, lb.capacity)
+	lb.offset = 0
 }
