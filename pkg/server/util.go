@@ -257,3 +257,10 @@ func tailFile(path string, lines int, maxBytes int64) (string, error) {
 		return tailBytes(f, maxBytes, fileSize)
 	}
 }
+
+func minint64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}

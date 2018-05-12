@@ -99,6 +99,6 @@ func TestLogBufferFlush(t *testing.T) {
 		lb.Write(fmt.Sprintf("src %d", i+1), fmt.Sprintf("line %d", i+1))
 	}
 	assert.Equal(t, 5, lb.Length())
-	lb.Flush()
+	lb.flush()
 	assert.Equal(t, 0, lb.Length())
 }

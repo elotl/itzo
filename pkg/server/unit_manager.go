@@ -53,8 +53,8 @@ func (um *UnitManager) GetLogBuffer(unit string, n int) ([]LogEntry, error) {
 				return lb.Read(n), nil
 			}
 		} else if len(um.runningUnits) == 1 {
-			// we keep old logs around after a unit stops so
-			// grab the logs from the only running unit if we can
+			// we keep old logs around after a unit stops so grab the
+			// logs from the only running unit if we can
 			for name, _ := range um.runningUnits {
 				lb, exists := um.logbuf[name]
 				if exists {
