@@ -23,11 +23,11 @@ import (
 )
 
 const (
-	MULTIPART_PKG_NAME = "package"
-	CERTS_DIR          = "/tmp/milpa"
-	DEFAULT_ROOTDIR    = "/tmp/milpa/units"
-	ITZO_VERSION       = "1.0"
-	FILE_BYTES_LIMIT   = 4096
+	MULTIPART_PACKAGE = "package"
+	CERTS_DIR         = "/tmp/milpa"
+	DEFAULT_ROOTDIR   = "/tmp/milpa/units"
+	ITZO_VERSION      = "1.0"
+	FILE_BYTES_LIMIT  = 4096
 )
 
 // Some kind of invalid input from the user. Useful here to decide when to
@@ -249,7 +249,7 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.Split(path, "/")
 		pod := ""
-		unit := ""
+		name := ""
 		if len(parts) != 5 {
 			err := fmt.Errorf("invalid deploy path %s", r.URL.Path)
 			glog.Errorf("%v", err)
@@ -257,11 +257,11 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		pod = parts[3]
-		unit = parts[4]
-		formFile, _, err := r.FormFile(MULTIPART_PKG_NAME)
+		name = parts[4]
+		formFile, _, err := r.FormFile(MULTIPART_PACKAGE)
 		if err != nil {
 			glog.Errorf("parsing form for package %s/%s deploy: %v",
-				pod, unit, err)
+				pod, name, err)
 			serverError(w, err)
 			return
 		}
@@ -269,24 +269,19 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 		pkgfile, n, err := saveFile(formFile)
 		if err != nil {
 			glog.Errorf("saving file for package %s/%s deploy: %v",
-				pod, unit, err)
+				pod, name, err)
 			serverError(w, err)
 			return
 		}
+		defer os.Remove(pkgfile)
 		glog.Infof("package for %s/%s saved as: %s (%d bytes)",
-			pod, unit, pkgfile, n)
-		u, err := OpenUnit(s.installRootdir, unit)
-		if err != nil {
-			glog.Errorf("opening unit %s for package deploy: %v", unit, err)
+			pod, name, pkgfile, n)
+		if err = DeployPackage(pkgfile, s.installRootdir, name); err != nil {
+			glog.Errorf("deploying package %s: %v", name, err)
 			serverError(w, err)
 			return
 		}
-		defer u.Close()
-		if err = u.AddPackage(pkgfile); err != nil {
-			glog.Errorf("adding package for %s/%s: %v", pod, unit, err)
-			serverError(w, err)
-			return
-		}
+		glog.Infof("deployed package from file %s (%d bytes)", pkgfile, n)
 	default:
 		http.NotFound(w, r)
 	}

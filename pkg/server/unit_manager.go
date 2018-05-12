@@ -103,8 +103,6 @@ func (um *UnitManager) StartUnit(name string, command, args, appenv []string, po
 	}
 	unitrootfs := unit.GetRootfs()
 
-	unit.DeployPackages()
-
 	unitcmd := unit.CreateCommand(command, args)
 	quotedcmd := quote.Join(unitcmd...)
 	cmdline := []string{"--exec",

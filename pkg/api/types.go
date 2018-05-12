@@ -52,6 +52,9 @@ type Volume struct {
 type VolumeSource struct {
 	// If specified, an emptyDir will be created to back this volume.
 	EmptyDir *EmptyDir `json:"emptyDir,omitempty"`
+	// This is a file or directory that will be mapped into the rootfs of a
+	// unit.
+	HostPath *HostPath `json:"hostPath,omitempty"`
 }
 
 // Backing storage for volumes.
@@ -76,6 +79,13 @@ type EmptyDir struct {
 	// SizeLimit is only meaningful for tmpfs. It is the size of the tmpfs
 	// volume.
 	SizeLimit int64 `json:"sizeLimit,omitempty"`
+}
+
+// Source for a file or directory that will be mapped into the rootfs of a
+// unit.
+type HostPath struct {
+	// Path of the directory or file on the host.
+	Path string `json:"path"`
 }
 
 // ResourceSpec is used to specify resource requirements for the node

@@ -1,16 +1,12 @@
 package server
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -38,13 +34,12 @@ func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 
 type Unit struct {
 	*LogPipe
-	Directory   string
-	Name        string
-	Image       string
-	statusPath  string
-	pkginfoPath string
-	entryPoint  []string
-	cmd         []string
+	Directory  string
+	Name       string
+	Image      string
+	statusPath string
+	entryPoint []string
+	cmd        []string
 }
 
 func IsUnitExist(rootdir, name string) bool {
@@ -72,11 +67,10 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		return nil, err
 	}
 	u := Unit{
-		LogPipe:     lp,
-		Directory:   directory,
-		Name:        name,
-		statusPath:  filepath.Join(directory, "status"),
-		pkginfoPath: filepath.Join(directory, "pkginfo"),
+		LogPipe:    lp,
+		Directory:  directory,
+		Name:       name,
+		statusPath: filepath.Join(directory, "status"),
 	}
 	u.entryPoint = u.getEntryPoint()
 	u.cmd = u.getCmd()
@@ -349,35 +343,6 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 	}
 }
 
-func (u *Unit) DeployPackages() error {
-	pkginfo, err := ioutil.ReadFile(u.pkginfoPath)
-	if err != nil {
-		glog.Infof("Error reading package info file %s: %v",
-			u.pkginfoPath, err)
-		return err
-	}
-	packages := strings.Split(string(pkginfo), "\n")
-	if len(packages) == 0 {
-		glog.Infof("No packages to deploy for %s", u.Name)
-		return nil
-	}
-	packages = packages[0 : len(packages)-1]
-	for i := range packages {
-		pkg := packages[i]
-		if pkg == "" {
-			glog.Warningf("Empty package filename in %s (#%d)",
-				u.pkginfoPath, i)
-			continue
-		}
-		err = u.deployPackage(pkg)
-		if err != nil {
-			return err
-		}
-		os.Remove(pkg)
-	}
-	return nil
-}
-
 func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -479,156 +444,4 @@ func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter moun
 	}
 
 	return err
-}
-
-func (u *Unit) AddPackage(filename string) error {
-	f, err := os.OpenFile(
-		u.pkginfoPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		glog.Errorf("Error opening %s: %v", u.pkginfoPath, err)
-		return err
-	}
-	defer f.Close()
-	if _, err = f.WriteString(filename + "\n"); err != nil {
-		glog.Errorf("Error writing to %s: %v", u.pkginfoPath, err)
-		return err
-	}
-	return nil
-}
-
-type Link struct {
-	dst      string
-	src      string
-	linktype byte
-	mode     os.FileMode
-	uid      int
-	gid      int
-}
-
-func (u *Unit) deployPackage(filename string) (err error) {
-	glog.Infof("Deploying package from %s", filename)
-
-	rootfs := u.GetRootfs()
-	err = os.MkdirAll(rootfs, 0700)
-	if err != nil {
-		glog.Errorln("creating rootfs", rootfs, ":", err)
-		return err
-	}
-
-	f, err := os.Open(filename)
-	if err != nil {
-		glog.Errorln("opening package file:", err)
-		return err
-	}
-	defer f.Close()
-
-	gzr, err := gzip.NewReader(f)
-	if err != nil {
-		glog.Errorln("uncompressing package:", err)
-		return err
-	}
-	defer gzr.Close()
-
-	var links []Link
-
-	tr := tar.NewReader(gzr)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			glog.Errorln("extracting package:", err)
-			return err
-		}
-
-		name := header.Name
-		if name == "ROOTFS" {
-			continue
-		}
-		if len(name) < 7 || name[:7] != "ROOTFS/" {
-			glog.Warningln("file outside of ROOTFS in package:", name)
-			continue
-		}
-		name = filepath.Join(rootfs, name[7:])
-
-		dirname := filepath.Dir(name)
-		if _, err = os.Stat(dirname); os.IsNotExist(err) {
-			os.MkdirAll(dirname, 0755)
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir: // directory
-			glog.Infoln("d", name)
-			os.Mkdir(name, os.FileMode(header.Mode))
-		case tar.TypeReg: // regular file
-			glog.Infoln("f", name)
-			data := make([]byte, header.Size)
-			read_so_far := int64(0)
-			for read_so_far < header.Size {
-				n, err := tr.Read(data[read_so_far:])
-				if err != nil && err != io.EOF {
-					glog.Errorln("extracting", name, ":", err)
-					return err
-				}
-				read_so_far += int64(n)
-			}
-			if read_so_far != header.Size {
-				glog.Errorf("f %s error: read %d bytes, but size is %d bytes", name, read_so_far, header.Size)
-			}
-			ioutil.WriteFile(name, data, os.FileMode(header.Mode))
-		case tar.TypeLink, tar.TypeSymlink:
-			linkname := header.Linkname
-			if len(linkname) >= 7 && linkname[:7] == "ROOTFS/" {
-				linkname = filepath.Join(rootfs, linkname[7:])
-			}
-			// Links might point to files or directories that have not been
-			// extracted from the tarball yet. Create them after going through
-			// all entries in the tarball.
-			links = append(links, Link{linkname, name, header.Typeflag, os.FileMode(header.Mode), header.Uid, header.Gid})
-			continue
-		default:
-			glog.Warningf("unknown type while untaring: %d", header.Typeflag)
-			continue
-		}
-		err = os.Chown(name, header.Uid, header.Gid)
-		if err != nil {
-			glog.Warningf("warning: chown %s type %d uid %d gid %d: %v", name, header.Typeflag, header.Uid, header.Gid, err)
-		}
-	}
-
-	for _, link := range links {
-		os.Remove(link.src) // Remove link in case it exists.
-		if link.linktype == tar.TypeSymlink {
-			glog.Infoln("s", link.src)
-			err = os.Symlink(link.dst, link.src)
-			if err != nil {
-				glog.Errorf("creating symlink %s -> %s: %v", link.src, link.dst, err)
-				return err
-			}
-			err = os.Lchown(link.src, link.uid, link.gid)
-			if err != nil {
-				glog.Warningf("warning: chown symlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
-			}
-		}
-		if link.linktype == tar.TypeLink {
-			glog.Infoln("h", link.src)
-			err = os.Link(link.dst, link.src)
-			if err != nil {
-				glog.Errorf("creating hardlink %s -> %s: %v", link.src, link.dst, err)
-				return err
-			}
-			err = os.Chmod(link.src, link.mode)
-			if err != nil {
-				glog.Errorf("chmod hardlink %s %d: %v", link.src, link.mode, err)
-				return err
-			}
-			err = os.Chown(link.src, link.uid, link.gid)
-			if err != nil {
-				glog.Warningf("warning: chown hardlink %s uid %d gid %d: %v", link.src, link.uid, link.gid, err)
-			}
-		}
-	}
-
-	return nil
 }
