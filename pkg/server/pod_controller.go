@@ -20,6 +20,7 @@ type Mounter interface {
 	CreateMount(*api.Volume) error
 	DeleteMount(*api.Volume) error
 	AttachMount(unitname, src, dst string) error
+	DetachMount(unitname, dst string) error
 }
 
 // Too bad there isn't a word for a creator AND destroyer
@@ -247,11 +248,19 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
 
 	// do deletes
-	for unitName, _ := range deleteUnits {
+	for unitName, unit := range deleteUnits {
 		glog.Infoln("Stopping unit", unitName)
 		err := pc.unitMgr.StopUnit(unitName)
 		if err != nil {
 			glog.Errorf("Error deleting unit %s, trying to continue", unitName)
+		}
+		for _, mount := range unit.VolumeMounts {
+			err := pc.mountCtl.DetachMount(unit.Name, mount.MountPath)
+			if err != nil {
+				glog.Errorf(
+					"Error detaching mount %s from %s: %v, trying to continue",
+					mount.Name, unit.Name, err)
+			}
 		}
 	}
 	for _, volume := range deleteVolumes {

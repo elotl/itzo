@@ -27,6 +27,7 @@ type Mounter interface {
 	CreateMount(volume *api.Volume) error
 	DeleteMount(volume *api.Volume) error
 	AttachMount(unitname, src, dst string) error
+	DetachMount(unitname, dst string) error
 	MountSpecial() error
 	UnmountSpecial()
 	BindMount(src, dst string) error
@@ -170,8 +171,6 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 	return nil
 }
 
-// TODO: we also need a DetachMount(MountVolume) function that should be called
-// when a unit is removed.
 func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 	mountpath := filepath.Join(om.basedir, "..", "mounts", volume.Name)
 	_, err := os.Stat(mountpath)
@@ -252,6 +251,15 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 	err = mounter(source, target, "", uintptr(syscall.MS_BIND), "")
 	if err != nil {
 		glog.Errorf("Error mounting %s->%s: %v", source, target, err)
+		return err
+	}
+	return nil
+}
+
+func (om *OSMounter) DetachMount(unit, dst string) error {
+	target := filepath.Join(om.basedir, unit, "ROOTFS", dst)
+	if err := unmounter(target, syscall.MNT_DETACH); err != nil {
+		glog.Errorf("Error unmounting %s: %v", target, err)
 		return err
 	}
 	return nil
