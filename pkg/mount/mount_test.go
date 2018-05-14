@@ -2,6 +2,7 @@ package mount
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -62,6 +63,12 @@ func TestUnmountSpecial(t *testing.T) {
 	assert.Equal(t, 4, len(unmounts))
 }
 
+func createTmpDir(t *testing.T) string {
+	dir, err := ioutil.TempDir("", "itzo-tmpdir-")
+	assert.NoError(t, err)
+	return dir
+}
+
 func TestAttachMount(t *testing.T) {
 	mountSrc := ""
 	mountDst := ""
@@ -70,12 +77,11 @@ func TestAttachMount(t *testing.T) {
 		mountDst = target
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/mounts/mountSrc", 0755)
 	assert.Nil(t, err)
-	err = os.MkdirAll("/tmp/itzo-test-mount/mounts/mountSrc", 0755)
-	assert.Nil(t, err)
-	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	m := NewOSMounter(tmpdir + "/units")
 	err = m.AttachMount("unit123", "mountSrc", "/mountDst")
 	assert.Nil(t, err)
 	assert.True(t, strings.Contains(mountSrc, "/mountSrc"))
@@ -87,12 +93,13 @@ func TestAttachMountFail(t *testing.T) {
 	mounter = func(source, target, fstype string, flags uintptr, data string) error {
 		return fmt.Errorf("Testing attachMount() error")
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/units", 0755)
 	assert.Nil(t, err)
-	err = os.MkdirAll("/tmp/itzo-test-mount/mounts/mountSrc", 0755)
+	err = os.MkdirAll(tmpdir+"/mounts/mountSrc", 0755)
 	assert.Nil(t, err)
-	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	m := NewOSMounter(tmpdir + "/units")
 	err = m.AttachMount("unit123", "mountSrc", "/mountDst")
 	assert.NotNil(t, err)
 }
@@ -103,10 +110,11 @@ func TestCreateMountEmptyDirDisk(t *testing.T) {
 		mountCalled = true
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/units", 0755)
 	assert.Nil(t, err)
-	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
+	err = os.MkdirAll(tmpdir+"/mounts", 0755)
 	assert.Nil(t, err)
 	vol := api.Volume{
 		Name: "test-mount-name",
@@ -114,7 +122,7 @@ func TestCreateMountEmptyDirDisk(t *testing.T) {
 			EmptyDir: &api.EmptyDir{},
 		},
 	}
-	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	m := NewOSMounter(tmpdir + "/units")
 	err = m.CreateMount(&vol)
 	assert.Nil(t, err)
 	assert.False(t, mountCalled)
@@ -134,10 +142,11 @@ func TestCreateMountEmptyDirTmpfs(t *testing.T) {
 		mountData = data
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/units", 0755)
 	assert.Nil(t, err)
-	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
+	err = os.MkdirAll(tmpdir+"/mounts", 0755)
 	assert.Nil(t, err)
 	vol := api.Volume{
 		Name: "test-mount-name",
@@ -148,7 +157,7 @@ func TestCreateMountEmptyDirTmpfs(t *testing.T) {
 			},
 		},
 	}
-	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	m := NewOSMounter(tmpdir + "/units")
 	err = m.CreateMount(&vol)
 	assert.Nil(t, err)
 	assert.True(t, mountCalled)
@@ -172,15 +181,14 @@ func TestCreateTmpfs(t *testing.T) {
 		mountData = data
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
-	assert.Nil(t, err)
-	err = createTmpfs("/tmp/itzo-test-mount", 128)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := createTmpfs(tmpdir, 128)
 	assert.Nil(t, err)
 	assert.True(t, mountCalled)
 	assert.Equal(t, "tmpfs", mountSrc)
 	assert.Equal(t, "tmpfs", mountFstype)
-	assert.True(t, strings.Contains(mountDst, "/itzo-test-mount"))
+	assert.True(t, strings.Contains(mountDst, tmpdir))
 	assert.True(t, strings.Contains(mountData, "128m"))
 }
 
@@ -198,15 +206,14 @@ func TestCreateTmpfsFail(t *testing.T) {
 		mountData = data
 		return fmt.Errorf("Testing createTmpfs() failure")
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
-	assert.Nil(t, err)
-	err = createTmpfs("/tmp/itzo-test-mount", 128)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := createTmpfs(tmpdir, 128)
 	assert.NotNil(t, err)
 	assert.True(t, mountCalled)
 	assert.Equal(t, "tmpfs", mountSrc)
 	assert.Equal(t, "tmpfs", mountFstype)
-	assert.True(t, strings.Contains(mountDst, "/itzo-test-mount"))
+	assert.True(t, strings.Contains(mountDst, tmpdir))
 	assert.True(t, strings.Contains(mountData, "128m"))
 }
 
@@ -216,10 +223,10 @@ func TestCreateEmptydirDisk(t *testing.T) {
 		mountCalled = true
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
-	assert.Nil(t, err)
-	err = createEmptydir("/tmp/itzo-test-mount", &api.EmptyDir{})
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := createEmptydir(tmpdir, &api.EmptyDir{})
+	fmt.Printf("createEmptydir(): %v\n", err)
 	assert.Nil(t, err)
 	assert.False(t, mountCalled)
 }
@@ -238,10 +245,9 @@ func TestCreateEmptydirTmpfs(t *testing.T) {
 		mountData = data
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
-	assert.Nil(t, err)
-	err = createEmptydir("/tmp/itzo-test-mount", &api.EmptyDir{
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := createEmptydir(tmpdir, &api.EmptyDir{
 		Medium:    "Memory",
 		SizeLimit: 128,
 	})
@@ -249,7 +255,7 @@ func TestCreateEmptydirTmpfs(t *testing.T) {
 	assert.True(t, mountCalled)
 	assert.Equal(t, "tmpfs", mountSrc)
 	assert.Equal(t, "tmpfs", mountFstype)
-	assert.True(t, strings.Contains(mountDst, "/itzo-test-mount"))
+	assert.True(t, strings.Contains(mountDst, tmpdir))
 	assert.True(t, strings.Contains(mountData, "128m"))
 }
 
@@ -259,10 +265,9 @@ func TestCreateEmptydirTmpfsFail(t *testing.T) {
 		mountCalled = true
 		return fmt.Errorf("Testing createEmptydir() failure")
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount", 0755)
-	assert.Nil(t, err)
-	err = createEmptydir("/tmp/itzo-test-mount", &api.EmptyDir{
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := createEmptydir(tmpdir, &api.EmptyDir{
 		Medium:    "Memory",
 		SizeLimit: 128,
 	})
@@ -276,10 +281,9 @@ func TestDeleteDiskBackedEmptyDirMount(t *testing.T) {
 		unmountCalled = true
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
-	assert.Nil(t, err)
-	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/mounts", 0755)
 	assert.Nil(t, err)
 	vol := api.Volume{
 		Name: "test-mount-name",
@@ -287,7 +291,7 @@ func TestDeleteDiskBackedEmptyDirMount(t *testing.T) {
 			EmptyDir: &api.EmptyDir{},
 		},
 	}
-	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	m := NewOSMounter(tmpdir + "/units")
 	err = m.DeleteMount(&vol)
 	assert.Nil(t, err)
 	assert.False(t, unmountCalled)
@@ -299,10 +303,9 @@ func TestDeleteMemoryBackedEmptyDirMount(t *testing.T) {
 		unmountCalled = true
 		return nil
 	}
-	defer os.RemoveAll("/tmp/itzo-test-mount")
-	err := os.MkdirAll("/tmp/itzo-test-mount/units", 0755)
-	assert.Nil(t, err)
-	err = os.MkdirAll("/tmp/itzo-test-mount/mounts", 0755)
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/mounts", 0755)
 	assert.Nil(t, err)
 	vol := api.Volume{
 		Name: "test-mount-name",
@@ -313,7 +316,7 @@ func TestDeleteMemoryBackedEmptyDirMount(t *testing.T) {
 			},
 		},
 	}
-	m := NewOSMounter("/tmp/itzo-test-mount/units")
+	m := NewOSMounter(tmpdir + "/units")
 	err = m.DeleteMount(&vol)
 	assert.Nil(t, err)
 	assert.True(t, unmountCalled)

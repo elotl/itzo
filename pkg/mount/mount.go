@@ -279,7 +279,7 @@ func createTmpfs(dir string, size int64) error {
 
 func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
 	err := os.Mkdir(dir, 0755)
-	if err != nil {
+	if err != nil && !os.IsExist(err) {
 		glog.Errorf("Error creating emptyDir mount point %s: %v", dir, err)
 		return err
 	}
