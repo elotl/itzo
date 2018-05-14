@@ -1,4 +1,4 @@
-package server
+package logbuf
 
 import (
 	"fmt"
@@ -98,20 +98,17 @@ func TestLogBufferReadSince(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		lb.Write(fmt.Sprintf("src %d", i+1), fmt.Sprintf("line %d", i+1))
 	}
-	entries, _, _ := lb.ReadSince(25)
+	entries, _ := lb.ReadSince(25)
 	assert.Len(t, entries, 0)
-	entries, _, _ = lb.ReadSince(15)
+	entries, _ = lb.ReadSince(15)
 	assert.Len(t, entries, 0)
-	entries, n, offset := lb.ReadSince(14)
+	entries, offset := lb.ReadSince(14)
 	assert.Len(t, entries, 1)
-	assert.Equal(t, int64(1), n)
 	assert.Equal(t, int64(15), offset)
 
-	entries, n, offset = lb.ReadSince(2)
+	entries, offset = lb.ReadSince(2)
 	assert.Len(t, entries, 10)
-	assert.Equal(t, int64(10), n)
 	assert.Equal(t, int64(15), offset)
-
 	for i, j := 5, 0; i < 15; i, j = i+1, j+1 {
 		line := fmt.Sprintf("line %d", i+1)
 		assert.Equal(t, entries[j].Line, line)

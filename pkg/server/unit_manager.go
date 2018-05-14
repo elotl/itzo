@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sync"
 	"syscall"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/itzo/pkg/util/conmap"
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
 )
@@ -20,62 +21,82 @@ func StartUnit(rootdir, name string, command []string, policy api.RestartPolicy)
 	if err != nil {
 		return err
 	}
-	// TODO: should this be rootdir or basedir?
 	mounter := mount.NewOSMounter(rootdir)
 	return unit.Run(command, os.Environ(), policy, mounter)
 }
 
 type UnitManager struct {
 	rootDir      string
-	runningUnits map[string]*os.Process
-	logbuf       map[string]*LogBuffer
-	logLock      sync.Mutex
+	runningUnits *conmap.StringOsProcess
+	logbuf       *conmap.StringLogbufLogBuffer
 }
 
 func NewUnitManager(rootDir string) *UnitManager {
 	return &UnitManager{
 		rootDir:      rootDir,
-		runningUnits: make(map[string]*os.Process),
-		logbuf:       make(map[string]*LogBuffer),
-		logLock:      sync.Mutex{},
+		runningUnits: conmap.NewStringOsProcess(),
+		logbuf:       conmap.NewStringLogbufLogBuffer(),
 	}
 }
 
-func (um *UnitManager) GetLogBuffer(unit string, n int) ([]LogEntry, error) {
-	um.logLock.Lock()
-	defer um.logLock.Unlock()
+// Unit name might be an emptystring so figure out what unit the user
+// might want.
+func (um *UnitManager) CleanUnitName(unit string) (string, error) {
 	if unit == "" {
-		if len(um.logbuf) == 0 {
-			return nil, fmt.Errorf("Unable to get logs, no units found")
+		if um.logbuf.Len() == 0 {
+			return "", fmt.Errorf("Unable to get logs, no units found")
 		}
-		if len(um.logbuf) == 1 {
-			for _, lb := range um.logbuf {
-				return lb.Read(n), nil
+		if um.logbuf.Len() == 1 {
+			for _, node := range um.logbuf.Items() {
+				return node.Key, nil
 			}
-		} else if len(um.runningUnits) == 1 {
-			// we keep old logs around after a unit stops so grab the
-			// logs from the only running unit if we can
-			for name, _ := range um.runningUnits {
-				lb, exists := um.logbuf[name]
-				if exists {
-					return lb.Read(n), nil
-				}
+		} else if um.runningUnits.Len() == 1 {
+			// we might have multiple logbuffers but only one running
+			// unit so get the name of the unit from the list of running
+			// units
+			for _, node := range um.runningUnits.Items() {
+				return node.Key, nil
 			}
 		}
-		return nil, fmt.Errorf("Multiple unit logfiles found, please specify a unit name")
+		return "", fmt.Errorf("Multiple unit logfiles found, please specify a unit name")
 	}
-	lb, exists := um.logbuf[unit]
+	return unit, nil
+}
+
+func (um *UnitManager) GetLogBuffer(unit string) (*logbuf.LogBuffer, error) {
+	unit, err := um.CleanUnitName(unit)
+	if err != nil {
+		return nil, err
+	}
+	lb, exists := um.logbuf.GetOK(unit)
+	if !exists {
+		return nil, fmt.Errorf("Could not find logs for unit named %s", unit)
+	}
+	return lb, nil
+}
+
+func (um *UnitManager) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
+	unit, err := um.CleanUnitName(unit)
+	if err != nil {
+		return nil, err
+	}
+	lb, exists := um.logbuf.GetOK(unit)
 	if !exists {
 		return nil, fmt.Errorf("Could not find logs for unit named %s", unit)
 	}
 	return lb.Read(n), nil
 }
 
+func (um *UnitManager) UnitRunning(unit string) bool {
+	_, exists := um.runningUnits.GetOK(unit)
+	return exists
+}
+
 // It's possible we need to set up some communication with the waiting
 // process that it doesn't need to clean up everything.  Lets see how
 // the logging works out...
 func (um *UnitManager) StopUnit(name string) error {
-	proc, exists := um.runningUnits[name]
+	proc, exists := um.runningUnits.GetOK(name)
 	if !exists {
 		return fmt.Errorf("Could not stop unit %s: Unit does not exist", name)
 	}
@@ -89,7 +110,7 @@ func (um *UnitManager) StopUnit(name string) error {
 	if err != nil {
 		return fmt.Errorf("Error terminating %s: %v", unit, err)
 	}
-	delete(um.runningUnits, name)
+	um.runningUnits.Delete(name)
 	return nil
 }
 
@@ -133,30 +154,22 @@ func (um *UnitManager) StartUnit(name string, command, args, appenv []string, po
 
 	lp := unit.LogPipe
 	// XXX: Make number of log lines retained configurable.
-	um.logLock.Lock()
-	um.logbuf[name] = NewLogBuffer(1000)
-	um.logLock.Unlock()
+	um.logbuf.Set(name, logbuf.NewLogBuffer(1000))
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		um.logLock.Lock()
-		um.logbuf[name].Write(fmt.Sprintf("[%s stdout]", name), line)
-		um.logLock.Unlock()
+		um.logbuf.Get(name).Write(fmt.Sprintf("[%s stdout]", name), line)
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		um.logLock.Lock()
-		um.logbuf[name].Write(fmt.Sprintf("[%s stderr]", name), line)
-		um.logLock.Unlock()
+		um.logbuf.Get(name).Write(fmt.Sprintf("[%s stderr]", name), line)
 	})
 	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-		um.logLock.Lock()
-		um.logbuf[name].Write(fmt.Sprintf("[%s helper]", name), line)
-		um.logLock.Unlock()
+		um.logbuf.Get(name).Write(fmt.Sprintf("[%s helper]", name), line)
 	})
 
 	if err = cmd.Start(); err != nil {
 		lp.Remove()
 		return err
 	}
-	um.runningUnits[name] = cmd.Process
+	um.runningUnits.Set(name, cmd.Process)
 	pid := cmd.Process.Pid
 	go func() {
 		err = cmd.Wait()

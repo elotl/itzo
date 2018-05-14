@@ -1,4 +1,4 @@
-package server
+package logbuf
 
 import (
 	"time"
@@ -24,6 +24,17 @@ func NewLogBuffer(capacity int) *LogBuffer {
 		capacity: int64(capacity),
 	}
 	return &lb
+}
+
+func minint64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (lb *LogBuffer) GetOffset() int64 {
+	return lb.offset
 }
 
 func (lb *LogBuffer) Write(source, line string) {
@@ -71,14 +82,14 @@ func (lb *LogBuffer) Read(nn int) []LogEntry {
 // Polling is easier to implement than an event system because
 // we don't need to worry about creating a pumper to fan out
 // entries
-func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64, int64) {
+func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64) {
 	offset := lb.offset
 	nRead := int64(0)
 	entries := []LogEntry{}
 	if i > offset {
-		return entries, nRead, offset
+		return entries, offset
 	} else if i == offset {
-		return entries, nRead, offset
+		return entries, offset
 	}
 
 	// if i is so far in the past that we're more than logBufSize
@@ -98,7 +109,7 @@ func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64, int64) {
 	}
 
 	// returns string, lines read, current offset
-	return entries, nRead, offset
+	return entries, offset
 }
 
 func (lb *LogBuffer) flush() {
