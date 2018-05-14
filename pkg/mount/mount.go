@@ -141,6 +141,10 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 	if volume.EmptyDir != nil {
 		found = true
 		err = createEmptydir(mountpath, volume.EmptyDir)
+		if err != nil {
+			glog.Errorf("Error creating emptyDir %s: %v", mountpath, err)
+			return err
+		}
 	}
 	if volume.HostPath != nil {
 		if found {
