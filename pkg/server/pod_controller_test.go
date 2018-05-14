@@ -216,6 +216,7 @@ type MountMock struct {
 	Create func(*api.Volume) error
 	Delete func(*api.Volume) error
 	Attach func(unitname, src, dst string) error
+	Detach func(unitname, dst string) error
 }
 
 func NewMountMock() *MountMock {
@@ -227,6 +228,9 @@ func NewMountMock() *MountMock {
 			return nil
 		},
 		Attach: func(unitname, src, dst string) error {
+			return nil
+		},
+		Detach: func(unitname, dst string) error {
 			return nil
 		},
 	}
@@ -242,6 +246,10 @@ func (m *MountMock) DeleteMount(vol *api.Volume) error {
 
 func (m *MountMock) AttachMount(unitname, src, dst string) error {
 	return m.Attach(unitname, src, dst)
+}
+
+func (m *MountMock) DetachMount(unitname, dst string) error {
+	return m.Detach(unitname, dst)
 }
 
 type ImagePullMock struct {
@@ -261,8 +269,9 @@ func NewImagePullMock() *ImagePullMock {
 }
 
 type UnitMock struct {
-	Start func(string, []string, []string, []string, api.RestartPolicy) error
-	Stop  func(string) error
+	Start  func(string, []string, []string, []string, api.RestartPolicy) error
+	Stop   func(string) error
+	Remove func(string) error
 }
 
 func (u *UnitMock) StartUnit(name string, command, args, env []string, rp api.RestartPolicy) error {
@@ -273,12 +282,19 @@ func (u *UnitMock) StopUnit(name string) error {
 	return u.Stop(name)
 }
 
+func (u *UnitMock) RemoveUnit(name string) error {
+	return u.Remove(name)
+}
+
 func NewUnitMock() *UnitMock {
 	return &UnitMock{
 		Start: func(name string, command, args, env []string, rp api.RestartPolicy) error {
 			return nil
 		},
 		Stop: func(name string) error {
+			return nil
+		},
+		Remove: func(name string) error {
 			return nil
 		},
 	}
