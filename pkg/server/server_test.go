@@ -1,16 +1,21 @@
 package server
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -424,4 +429,122 @@ func TestGetLogsLines(t *testing.T) {
 	for _, line := range lines[:len(lines)-1] {
 		assert.Equal(t, "y", line)
 	}
+}
+
+func createTarGzBuf(t *testing.T) []byte {
+	var uid int = os.Geteuid()
+	var gid int = os.Getegid()
+	var entries = []struct {
+		Name       string
+		Type       byte
+		Body       string
+		LinkTarget string
+		Mode       int64
+		Uid        int
+		Gid        int
+	}{
+		{"ROOTFS/", tar.TypeDir, "", "", 0755, uid, gid},
+		{"ROOTFS/bin", tar.TypeDir, "", "", 0700, uid, gid},
+		{"ROOTFS/readme.link", tar.TypeSymlink, "", "./readme.txt", 0000, uid, gid},
+		{"ROOTFS/readme.txt", tar.TypeReg, "This is a textfile.", "", 0640, uid, gid},
+		{"ROOTFS/bin/data.bin", tar.TypeReg, string([]byte{0x11, 0x22, 0x33, 0x44}), "", 0600, uid, gid},
+	}
+
+	// Create a tar buffer in memory.
+	tarbuf := new(bytes.Buffer)
+	tw := tar.NewWriter(tarbuf)
+	for _, entry := range entries {
+		hdr := &tar.Header{
+			Name:     entry.Name,
+			Mode:     entry.Mode,
+			Size:     int64(len(entry.Body)),
+			Typeflag: entry.Type,
+			Linkname: entry.LinkTarget,
+			Uid:      entry.Uid,
+			Gid:      entry.Gid,
+		}
+		err := tw.WriteHeader(hdr)
+		assert.Nil(t, err)
+		_, err = tw.Write([]byte(entry.Body))
+		assert.Nil(t, err)
+	}
+	err := tw.Close()
+	assert.Nil(t, err)
+
+	// Create our gzip buffer, effectively a .tar.gz in memory.
+	var gzbuf bytes.Buffer
+	zw := gzip.NewWriter(&gzbuf)
+	_, err = zw.Write(tarbuf.Bytes())
+	assert.Nil(t, err)
+	zw.Close()
+	assert.Nil(t, err)
+
+	return gzbuf.Bytes()
+}
+
+func TestDeployPackage(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
+	assert.Nil(t, err)
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+
+	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
+	assert.Nil(t, err)
+
+	srv := New(rootdir)
+	srv.getHandlers()
+
+	content := createTarGzBuf(t)
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile(MULTIPART_PACKAGE, tmpfile.Name())
+	assert.Nil(t, err)
+	_, err = part.Write(content)
+	assert.Nil(t, err)
+	err = writer.Close()
+	assert.Nil(t, err)
+
+	path := "/rest/v1/deploy/mypod/pkg111"
+	req, err := http.NewRequest("POST", path, body)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	err = filepath.Walk(rootdir, func(path string, info os.FileInfo, e error) error {
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Uid, uint32(os.Geteuid()))
+		assert.Equal(t, info.Sys().(*syscall.Stat_t).Gid, uint32(os.Getegid()))
+		return nil
+	})
+	assert.Equal(t, err, nil)
+}
+
+func TestDeployInvalidPackage(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
+	assert.Nil(t, err)
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+
+	// Create an invalid .tar.gz file.
+	content := []byte{0xde, 0xad, 0xbe, 0xef}
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile(MULTIPART_PACKAGE, tmpfile.Name())
+	assert.Nil(t, err)
+	_, err = part.Write(content)
+	assert.Nil(t, err)
+	err = writer.Close()
+	assert.Nil(t, err)
+
+	req, err := http.NewRequest("POST", "/rest/v1/deploy/mypod/pkg222", body)
+	assert.Nil(t, err)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+	srv := New("/tmp/itzo-pkg-test")
+	srv.getHandlers()
+	srv.ServeHTTP(rr, req)
+
+	assert.NotEqual(t, http.StatusOK, rr.Code)
 }
