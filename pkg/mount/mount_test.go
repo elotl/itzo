@@ -136,6 +136,74 @@ func TestDetachMountFail(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func testCreateMount(t *testing.T, vol *api.Volume) {
+	mountCalled := false
+	mounter = func(source, target, fstype string, flags uintptr, data string) error {
+		mountCalled = true
+		return nil
+	}
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/units", 0755)
+	assert.Nil(t, err)
+	err = os.MkdirAll(tmpdir+"/mounts", 0755)
+	assert.Nil(t, err)
+	m := NewOSMounter(tmpdir + "/units")
+	err = m.CreateMount(vol)
+	assert.Error(t, err)
+	assert.False(t, mountCalled)
+}
+
+func TestCreateMountNoVolume(t *testing.T) {
+	testCreateMount(t, &api.Volume{})
+}
+
+func TestCreateMountMultipleVolumes(t *testing.T) {
+	vol := api.Volume{
+		Name: "test-createmount",
+		VolumeSource: api.VolumeSource{
+			EmptyDir: &api.EmptyDir{},
+			HostPath: &api.HostPath{
+				Path: "/a/b/c",
+			},
+		},
+	}
+	testCreateMount(t, &vol)
+}
+
+func testDeleteMount(t *testing.T, vol *api.Volume) {
+	unmountCalled := false
+	unmounter = func(target string, flags int) error {
+		unmountCalled = true
+		return nil
+	}
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/mounts", 0755)
+	assert.NoError(t, err)
+	m := NewOSMounter(tmpdir + "/units")
+	err = m.DeleteMount(vol)
+	assert.Error(t, err)
+	assert.False(t, unmountCalled)
+}
+
+func TestDeleteMountNoVolume(t *testing.T) {
+	testDeleteMount(t, &api.Volume{})
+}
+
+func TestDeleteMountMultipleVolumes(t *testing.T) {
+	vol := api.Volume{
+		Name: "test-deletemount",
+		VolumeSource: api.VolumeSource{
+			EmptyDir: &api.EmptyDir{},
+			HostPath: &api.HostPath{
+				Path: "/a/b/c",
+			},
+		},
+	}
+	testDeleteMount(t, &vol)
+}
+
 func TestCreateMountEmptyDirDisk(t *testing.T) {
 	mountCalled := false
 	mounter = func(source, target, fstype string, flags uintptr, data string) error {

@@ -191,14 +191,14 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 			err = os.RemoveAll(mountpath)
 			if err != nil {
 				glog.Errorf("Error removing emptyDir %s: %v", mountpath, err)
+				return err
 			}
-			return err
 		case api.StorageMediumMemory:
 			err = unmounter(mountpath, syscall.MNT_DETACH)
 			if err != nil {
 				glog.Errorf("Error unmounting tmpfs %s: %v", mountpath, err)
+				return err
 			}
-			return err
 		}
 	}
 	if volume.HostPath != nil {
@@ -211,14 +211,15 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 		err = os.RemoveAll(mountpath)
 		if err != nil {
 			glog.Errorf("Error removing hostPath %s: %v", mountpath, err)
+			return err
 		}
-		return err
 	}
 	if !found {
 		err = fmt.Errorf("No volume specified in %v", volume)
 		glog.Errorf("%v", err)
+		return err
 	}
-	return err
+	return nil
 }
 
 func (om *OSMounter) AttachMount(unit, src, dst string) error {
