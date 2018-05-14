@@ -154,7 +154,7 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 		}
 		found = true
 		packagepath := filepath.Join(
-			om.basedir, "packages", volume.Name, volume.HostPath.Path)
+			om.basedir, "..", "packages", volume.Name, volume.HostPath.Path)
 		_, err = os.Stat(packagepath)
 		if err != nil {
 			glog.Errorf("Error checking mount source %s: %v", packagepath, err)

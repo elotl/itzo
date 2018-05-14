@@ -272,7 +272,7 @@ type Link struct {
 }
 
 func DeployPackage(filename, rootdir, pkgname string) (err error) {
-	destdir := filepath.Join(rootdir, "packages", pkgname)
+	destdir := filepath.Join(rootdir, "..", "packages", pkgname)
 	glog.Infof("Deploying package %s to %s", filename, destdir)
 
 	err = os.MkdirAll(destdir, 0700)
