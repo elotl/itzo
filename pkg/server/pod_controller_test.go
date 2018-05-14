@@ -382,7 +382,25 @@ func TestFullSyncErrors(t *testing.T) {
 			mod: func(pc *PodController) {
 				m := pc.unitMgr.(*UnitMock)
 				m.Stop = func(name string) error {
-					return fmt.Errorf("unit add failed")
+					return fmt.Errorf("unit stop failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
+				m.Detach = func(name, dst string) error {
+					return fmt.Errorf("mounter detach failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			mod: func(pc *PodController) {
+				m := pc.unitMgr.(*UnitMock)
+				m.Remove = func(name string) error {
+					return fmt.Errorf("unit removal failed")
 				}
 			},
 			numFailures: 0,
