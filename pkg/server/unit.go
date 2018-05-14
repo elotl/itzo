@@ -153,10 +153,10 @@ func (u *Unit) Close() {
 	// No-op for now.
 }
 
-func (u *Unit) Destroy() {
-	// you'll need to kill the child process before
+func (u *Unit) Destroy() error {
+	// You'll need to kill the child process before.
 	u.LogPipe.Remove()
-	os.RemoveAll(u.Directory)
+	return os.RemoveAll(u.Directory)
 }
 
 func (u *Unit) GetRootfs() string {
