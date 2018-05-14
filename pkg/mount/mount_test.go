@@ -104,6 +104,38 @@ func TestAttachMountFail(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestDetachMount(t *testing.T) {
+	mountDst := ""
+	unmounter = func(target string, flags int) error {
+		mountDst = target
+		return nil
+	}
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/mounts/mountSrc", 0755)
+	assert.NoError(t, err)
+	m := NewOSMounter(tmpdir + "/units")
+	err = m.DetachMount("unit123", "/mountDst")
+	assert.NoError(t, err)
+	assert.True(t, strings.Contains(mountDst, "/unit123"))
+	assert.True(t, strings.Contains(mountDst, "/mountDst"))
+}
+
+func TestDetachMountFail(t *testing.T) {
+	unmounter = func(target string, flags int) error {
+		return fmt.Errorf("Testing DetachMount() error")
+	}
+	tmpdir := createTmpDir(t)
+	defer os.RemoveAll(tmpdir)
+	err := os.MkdirAll(tmpdir+"/units", 0755)
+	assert.NoError(t, err)
+	err = os.MkdirAll(tmpdir+"/mounts/mountSrc", 0755)
+	assert.NoError(t, err)
+	m := NewOSMounter(tmpdir + "/units")
+	err = m.DetachMount("unit123", "/mountDst")
+	assert.Error(t, err)
+}
+
 func TestCreateMountEmptyDirDisk(t *testing.T) {
 	mountCalled := false
 	mounter = func(source, target, fstype string, flags uintptr, data string) error {
