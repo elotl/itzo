@@ -203,6 +203,9 @@ EOF
 chmod 755 /etc/init.d/nvidia
 cat /etc/init.d/nvidia
 
+Step 'Load iptables modules at boot'
+echo 'iptable_nat' >> /etc/modules
+
 step 'Enable services'
 rc-update add acpid default
 rc-update add chronyd default

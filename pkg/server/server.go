@@ -8,8 +8,10 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,12 +23,11 @@ import (
 )
 
 const (
-	MULTIPART_FILE_NAME = "file"
-	MULTIPART_PKG_NAME  = "pkg"
-	CERTS_DIR           = "/tmp/milpa"
-	DEFAULT_ROOTDIR     = "/tmp/milpa/units"
-	ITZO_VERSION        = "1.0"
-	FILE_BYTES_LIMIT    = 4096
+	MULTIPART_PACKAGE = "package"
+	CERTS_DIR         = "/tmp/milpa"
+	DEFAULT_ROOTDIR   = "/tmp/milpa/units"
+	ITZO_VERSION      = "1.0"
+	FILE_BYTES_LIMIT  = 4096
 )
 
 // Some kind of invalid input from the user. Useful here to decide when to
@@ -212,7 +213,6 @@ func (s *Server) fileHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
-
 }
 
 func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
@@ -228,8 +228,68 @@ func (s *Server) resizevolumeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func saveFile(r io.Reader) (filename string, n int64, err error) {
+	tmpfile, err := ioutil.TempFile("", "milpa-pkg-")
+	if err != nil {
+		return "", 0, err
+	}
+	defer tmpfile.Close()
+	filename = tmpfile.Name()
+	written, err := io.Copy(tmpfile, r)
+	if err != nil {
+		os.Remove(filename)
+		filename = ""
+	}
+	return filename, written, err
+}
+
+func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "POST":
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		pod := ""
+		name := ""
+		if len(parts) != 5 {
+			err := fmt.Errorf("invalid deploy path %s", r.URL.Path)
+			glog.Errorf("%v", err)
+			serverError(w, err)
+			return
+		}
+		pod = parts[3]
+		name = parts[4]
+		formFile, _, err := r.FormFile(MULTIPART_PACKAGE)
+		if err != nil {
+			glog.Errorf("parsing form for package %s/%s deploy: %v",
+				pod, name, err)
+			serverError(w, err)
+			return
+		}
+		defer formFile.Close()
+		pkgfile, n, err := saveFile(formFile)
+		if err != nil {
+			glog.Errorf("saving file for package %s/%s deploy: %v",
+				pod, name, err)
+			serverError(w, err)
+			return
+		}
+		defer os.Remove(pkgfile)
+		glog.Infof("package for %s/%s saved as: %s (%d bytes)",
+			pod, name, pkgfile, n)
+		if err = DeployPackage(pkgfile, s.installRootdir, name); err != nil {
+			glog.Errorf("deploying package %s: %v", name, err)
+			serverError(w, err)
+			return
+		}
+		glog.Infof("deployed package from file %s (%d bytes)", pkgfile, n)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
 func (s *Server) getHandlers() {
 	s.mux = http.ServeMux{}
+	s.mux.HandleFunc("/rest/v1/deploy/", s.deployHandler)
 	s.mux.HandleFunc("/rest/v1/logs/", s.logsHandler)
 	s.mux.HandleFunc("/rest/v1/file/", s.fileHandler)
 	// The updatepod endpoint is used to send in a full PodParameters struct.

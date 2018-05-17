@@ -27,6 +27,7 @@ type Mounter interface {
 	CreateMount(volume *api.Volume) error
 	DeleteMount(volume *api.Volume) error
 	AttachMount(unitname, src, dst string) error
+	DetachMount(unitname, dst string) error
 	MountSpecial() error
 	UnmountSpecial()
 	BindMount(src, dst string) error
@@ -110,7 +111,7 @@ func (om *OSMounter) MountSpecial() error {
 }
 
 func (om *OSMounter) BindMount(src, dst string) error {
-	return mounter(src, dst, "", syscall.MS_BIND, "")
+	return mounter(src, dst, "", syscall.MS_BIND|syscall.MS_REC, "")
 }
 
 func (om *OSMounter) Unmount(dir string) error {
@@ -129,36 +130,56 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 			mountsdir, err)
 		return err
 	}
-	mdir := filepath.Join(mountsdir, volume.Name)
-	_, err = os.Stat(mdir)
+	mountpath := filepath.Join(mountsdir, volume.Name)
+	_, err = os.Stat(mountpath)
 	if err != nil && !os.IsNotExist(err) {
-		glog.Errorf("Error checking mount point %s: %v", mdir, err)
+		glog.Errorf("Error checking mount point %s: %v", mountpath, err)
 		return err
 	}
-	err = os.Mkdir(mdir, 0755)
-	if err != nil {
-		glog.Errorf("Error creating mount point %s: %v", mdir, err)
-		return err
-	}
-	// For now, we only support EmptyDir. Later on we will need to check if
-	// only one volume is in volspec.
+	// For now, we only support EmptyDir and HostPath volumes.
 	found := false
 	if volume.EmptyDir != nil {
 		found = true
-		err = createEmptydir(mdir, volume.EmptyDir)
+		err = createEmptydir(mountpath, volume.EmptyDir)
+		if err != nil {
+			glog.Errorf("Error creating emptyDir %s: %v", mountpath, err)
+			return err
+		}
+	}
+	if volume.HostPath != nil {
+		if found {
+			err = fmt.Errorf("Multiple volumes are specified in %v", volume)
+			glog.Errorf("%v", err)
+			return err
+		}
+		found = true
+		packagepath := filepath.Join(
+			om.basedir, "..", "packages", volume.Name, volume.HostPath.Path)
+		_, err = os.Stat(packagepath)
+		if err != nil {
+			glog.Errorf("Error checking mount source %s: %v", packagepath, err)
+			return err
+		}
+		err = os.Symlink(packagepath, mountpath)
+		if err != nil {
+			glog.Errorf("Error creating link %s->%s: %v",
+				packagepath, mountpath, err)
+			return err
+		}
 	}
 	if !found {
 		err = fmt.Errorf("No volume specified in %v", volume)
 		glog.Errorf("%v", err)
+		return err
 	}
-	return err
+	return nil
 }
 
 func (om *OSMounter) DeleteMount(volume *api.Volume) error {
-	mdir := filepath.Join(om.basedir, "..", "mounts", volume.Name)
-	_, err := os.Stat(mdir)
+	mountpath := filepath.Join(om.basedir, "..", "mounts", volume.Name)
+	_, err := os.Stat(mountpath)
 	if err != nil {
-		glog.Errorf("Error accessing mount %s: %v", mdir, err)
+		glog.Errorf("Error accessing mount %s: %v", mountpath, err)
 	}
 	// For now, we only support EmptyDir. Later on we will need to check if
 	// only one volume is in volspec.
@@ -167,44 +188,83 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 		found = true
 		switch volume.EmptyDir.Medium {
 		case api.StorageMediumDefault:
-			err = os.RemoveAll(mdir)
+			err = os.RemoveAll(mountpath)
 			if err != nil {
-				glog.Errorf("Error removing emptyDir %s: %v", mdir, err)
+				glog.Errorf("Error removing emptyDir %s: %v", mountpath, err)
+				return err
 			}
-			return err
 		case api.StorageMediumMemory:
-			err = unmounter(mdir, syscall.MNT_DETACH)
+			err = unmounter(mountpath, syscall.MNT_DETACH)
 			if err != nil {
-				glog.Errorf("Error unmounting tmpfs %s: %v", mdir, err)
+				glog.Errorf("Error unmounting tmpfs %s: %v", mountpath, err)
+				return err
 			}
+		}
+	}
+	if volume.HostPath != nil {
+		if found {
+			err = fmt.Errorf("Multiple volumes are specified in %v", volume)
+			glog.Errorf("%v", err)
+			return err
+		}
+		found = true
+		err = os.RemoveAll(mountpath)
+		if err != nil {
+			glog.Errorf("Error removing hostPath %s: %v", mountpath, err)
 			return err
 		}
 	}
 	if !found {
 		err = fmt.Errorf("No volume specified in %v", volume)
 		glog.Errorf("%v", err)
+		return err
 	}
-	return err
+	return nil
 }
 
 func (om *OSMounter) AttachMount(unit, src, dst string) error {
 	source := filepath.Join(om.basedir, "../mounts", src)
 	target := filepath.Join(om.basedir, unit, "ROOTFS", dst)
-	err := os.MkdirAll(target, 0755)
+	// Create directory for target if necessary.
+	dir := target
+	fi, err := os.Stat(source)
 	if err != nil {
-		glog.Errorf("Error creating mount target directory %s: %v",
-			target, err)
+		glog.Errorf("Error checking mount source %s: %v", source, err)
 		return err
 	}
-	_, err = os.Stat(source)
+	if !fi.IsDir() {
+		dir = filepath.Clean(filepath.Join(target, ".."))
+		glog.Infof("Mount source %s is a file, creating dir at %s", source, dir)
+	} else {
+		glog.Infof("Mount source %s is a directory, creating dir at %s", source, dir)
+	}
+	err = os.MkdirAll(dir, 0755)
 	if err != nil {
-		glog.Errorf("Error checking source mount point %s: %v", source, err)
+		glog.Errorf("Error creating mount target directory %s: %v", dir, err)
 		return err
+	}
+	if dir != target {
+		// Make sure target file exists, otherwise the bind mount will fail.
+		f, err := os.Create(target)
+		if err != nil {
+			glog.Errorf("Error creating mount target file %s: %v", target, err)
+			return err
+		}
+		f.Close()
 	}
 	// Bind mount source to target.
 	err = mounter(source, target, "", uintptr(syscall.MS_BIND), "")
 	if err != nil {
 		glog.Errorf("Error mounting %s->%s: %v", source, target, err)
+		return err
+	}
+	return nil
+}
+
+func (om *OSMounter) DetachMount(unit, dst string) error {
+	target := filepath.Join(om.basedir, unit, "ROOTFS", dst)
+	if err := unmounter(target, syscall.MNT_DETACH); err != nil {
+		glog.Errorf("Error unmounting %s: %v", target, err)
 		return err
 	}
 	return nil
@@ -223,6 +283,11 @@ func createTmpfs(dir string, size int64) error {
 }
 
 func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
+	err := os.Mkdir(dir, 0755)
+	if err != nil && !os.IsExist(err) {
+		glog.Errorf("Error creating emptyDir mount point %s: %v", dir, err)
+		return err
+	}
 	switch emptyDir.Medium {
 	case api.StorageMediumDefault:
 		glog.Infof("Using disk space for backing EmptyDir %s", dir)
@@ -231,5 +296,7 @@ func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
 		glog.Infof("Using tmpfs for backing EmptyDir %s", dir)
 		return createTmpfs(dir, emptyDir.SizeLimit)
 	}
-	return fmt.Errorf("Unknown medium %s in createEmptydir()", emptyDir.Medium)
+	err = fmt.Errorf("Unknown medium %s in createEmptydir()", emptyDir.Medium)
+	glog.Errorf("%v", err)
+	return err
 }
