@@ -18,6 +18,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
 )
@@ -29,6 +30,7 @@ const (
 	DEFAULT_ROOTDIR     = "/tmp/milpa/units"
 	ITZO_VERSION        = "1.0"
 	FILE_BYTES_LIMIT    = 4096
+	logTailPeriod       = 100 * time.Millisecond
 )
 
 // Some kind of invalid input from the user. Useful here to decide when to
@@ -44,17 +46,6 @@ func (pe *ParameterError) Error() string {
 	return ""
 }
 
-type WebsocketParams struct {
-	// Time allowed to write data to the client.
-	writeWait time.Duration
-	// Time allowed to read the next pong message from the client.
-	pongWait time.Duration
-	// Send pings to client with this period. Must be less than pongWait.
-	pingPeriod time.Duration
-	// Poll for changes with this period.
-	filePeriod time.Duration
-}
-
 type Server struct {
 	env           EnvStore
 	httpServer    *http.Server
@@ -62,7 +53,6 @@ type Server struct {
 	startTime     time.Time
 	podController *PodController
 	unitMgr       *UnitManager
-	wsParams      WebsocketParams
 	wsUpgrader    websocket.Upgrader
 	// Packages will be installed under this directory (created if it does not
 	// exist).
@@ -86,11 +76,6 @@ func New(rootdir string) *Server {
 		wsUpgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
-		},
-		wsParams: WebsocketParams{
-			writeWait:  10 * time.Second,
-			pingPeriod: (2 * time.Second * 9) / 10,
-			filePeriod: 100 * time.Millisecond,
 		},
 	}
 }
@@ -175,12 +160,12 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				badRequest(w, err.Error())
 			}
-			ws, err := s.wsUpgrader.Upgrade(w, r, nil)
+			conn, err := s.wsUpgrader.Upgrade(w, r, nil)
 			if err != nil {
 				serverError(w, err)
 				return
 			}
-			s.RunLogTailer(ws, unitName, logBuffer)
+			s.RunLogTailer(conn, unitName, logBuffer)
 			return
 		}
 
@@ -221,70 +206,34 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) RunLogTailer(ws *websocket.Conn, unitName string, logBuffer *logbuf.LogBuffer) {
-	pingTicker := time.NewTicker(s.wsParams.pingPeriod)
-	fileTicker := time.NewTicker(s.wsParams.filePeriod)
-	closed := make(chan struct{})
-
-	defer func() {
-		pingTicker.Stop()
-		fileTicker.Stop()
-		ws.Close()
-	}()
-
-	// Reader goroutine just listens for pings and the client disconnecting
-	go func() {
-		ws.SetReadLimit(512)
-		ws.SetReadDeadline(time.Now().Add(s.wsParams.pongWait))
-		ws.SetPongHandler(func(string) error {
-			ws.SetReadDeadline(time.Now().Add(s.wsParams.pongWait))
-			return nil
-		})
-		for {
-			_, _, err := ws.ReadMessage()
-			if err != nil {
-				if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-					glog.Info("closing log tailing connection")
-				} else {
-					glog.Errorln("Closing connection after error:", err)
-				}
-				close(closed)
-				return
-			}
-		}
-	}()
-
+func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *logbuf.LogBuffer) {
+	ws := wsstream.NewWSStream(conn)
+	fileTicker := time.NewTicker(logTailPeriod)
+	defer ws.CloseAndCleanup()
+	defer fileTicker.Stop()
 	lastOffset := logBuffer.GetOffset()
+
+	var entries []logbuf.LogEntry
 	for {
 		select {
-		case <-closed:
+		case <-ws.Closed():
 			return
 		case <-fileTicker.C:
 			unitRunning := s.unitMgr.UnitRunning(unitName)
 			if !unitRunning {
-				_ = ws.WriteMessage(websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 				return
 			}
 
-			var entries []logbuf.LogEntry
 			entries, lastOffset = logBuffer.ReadSince(lastOffset)
 			if len(entries) > 0 {
 				msg := make([]byte, 0, 1024)
 				for i := 0; i < len(entries); i++ {
 					msg = append(msg, []byte(entries[i].Line)...)
 				}
-				_ = ws.SetWriteDeadline(time.Now().Add(s.wsParams.writeWait))
-				err := ws.WriteMessage(websocket.TextMessage, msg)
-				if err != nil {
+				if err := ws.WriteMsg(1, msg); err != nil {
+					glog.Errorln("Error writing logs to buffer:", err)
 					return
 				}
-			}
-		case <-pingTicker.C:
-			_ = ws.SetWriteDeadline(time.Now().Add(s.wsParams.writeWait))
-			err := ws.WriteMessage(websocket.PingMessage, []byte{})
-			if err != nil {
-				return
 			}
 		}
 	}
