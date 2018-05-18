@@ -105,12 +105,27 @@ func (um *UnitManager) StopUnit(name string) error {
 	if err != nil {
 		return fmt.Errorf("Error opening unit %s for termination: %s", name, err)
 	}
-	unit.Destroy()
 	err = proc.Kill()
 	if err != nil {
-		return fmt.Errorf("Error terminating %s: %v", unit, err)
+		// This happens if the process has already exited. Keep calm, log it
+		// and carry on.
+		glog.Warningf("Couldn't kill %s pid %d: %v (process terminated?)",
+			unit, proc.Pid, err)
 	}
 	um.runningUnits.Delete(name)
+	return nil
+}
+
+// This removes the unit and its files/directories from the filesystem.
+func (um *UnitManager) RemoveUnit(name string) error {
+	unit, err := OpenUnit(um.rootDir, name)
+	if err != nil {
+		return fmt.Errorf("Error opening unit %s for removal: %v", name, err)
+	}
+	err = unit.Destroy()
+	if err != nil {
+		return fmt.Errorf("Error removing unit %s: %v", name, err)
+	}
 	return nil
 }
 

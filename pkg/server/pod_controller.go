@@ -20,6 +20,7 @@ type Mounter interface {
 	CreateMount(*api.Volume) error
 	DeleteMount(*api.Volume) error
 	AttachMount(unitname, src, dst string) error
+	DetachMount(unitname, dst string) error
 }
 
 // Too bad there isn't a word for a creator AND destroyer
@@ -27,6 +28,7 @@ type Mounter interface {
 type UnitRunner interface {
 	StartUnit(string, []string, []string, []string, api.RestartPolicy) error
 	StopUnit(string) error
+	RemoveUnit(string) error
 }
 
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
@@ -247,11 +249,31 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
 
 	// do deletes
-	for unitName, _ := range deleteUnits {
+	for unitName, unit := range deleteUnits {
 		glog.Infoln("Stopping unit", unitName)
+		//
+		// There's a few things here that need to happen in order:
+		//   * Stop the unit (kill its main process).
+		//   * Detach all its mounts.
+		//   * Remove its files/directories.
+		//
 		err := pc.unitMgr.StopUnit(unitName)
 		if err != nil {
-			glog.Errorf("Error deleting unit %s, trying to continue", unitName)
+			glog.Errorf("Error stopping unit %s: %v; trying to continue",
+				unitName, err)
+		}
+		for _, mount := range unit.VolumeMounts {
+			err = pc.mountCtl.DetachMount(unit.Name, mount.MountPath)
+			if err != nil {
+				glog.Errorf(
+					"Error detaching mount %s from %s: %v; trying to continue",
+					mount.Name, unit.Name, err)
+			}
+		}
+		err = pc.unitMgr.RemoveUnit(unitName)
+		if err != nil {
+			glog.Errorf("Error removing unit %s; trying to continue",
+				unitName)
 		}
 	}
 	for _, volume := range deleteVolumes {
