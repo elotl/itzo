@@ -32,7 +32,7 @@ const (
 	ITZO_VERSION      = "1.0"
 	FILE_BYTES_LIMIT  = 4096
 	// Screw it, I'm changing to go convention, no captials...
-	logTailPeriod = 100 * time.Millisecond
+	logTailPeriod = 250 * time.Millisecond
 )
 
 // Some kind of invalid input from the user. Useful here to decide when to
@@ -146,7 +146,13 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	// additional params: need PID of process
 	switch r.Method {
 	case "GET":
-		path := strings.TrimPrefix(r.URL.Path, "/")
+		parsedURL, err := r.URL.Parse(r.URL.Path)
+		if err != nil {
+			badRequest(w, err.Error())
+			return
+		}
+
+		path := strings.TrimPrefix(parsedURL.Path, "/")
 		parts := strings.Split(path, "/")
 		unit := ""
 		if len(parts) > 3 {
@@ -154,9 +160,11 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// todo, this is a bit messy here, break it out if possible
-		follow := r.FormValue("follow")
+		q := parsedURL.Query()
+		follow := q.Get("follow")
 		if follow != "" {
-			// Bug: if the unit gets closed, we don't know about the closure
+			// Bug: if the unit gets closed or quits, we don't know
+			// about the closure
 			unitName, _ := s.unitMgr.CleanUnitName(unit)
 			logBuffer, err := s.unitMgr.GetLogBuffer(unit)
 			if err != nil {
@@ -173,8 +181,8 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 
 		n := 0
 		numBytes := 0
-		lines := r.FormValue("lines")
-		strBytes := r.FormValue("bytes")
+		lines := q.Get("lines")
+		strBytes := q.Get("bytes")
 		if lines != "" {
 			if i, err := strconv.Atoi(lines); err == nil {
 				n = i
@@ -219,6 +227,7 @@ func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *
 	for {
 		select {
 		case <-ws.Closed():
+			fmt.Println("websocket got closed")
 			return
 		case <-fileTicker.C:
 			unitRunning := s.unitMgr.UnitRunning(unitName)
@@ -233,6 +242,7 @@ func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *
 					msg = append(msg, []byte(entries[i].Line)...)
 				}
 				if err := ws.WriteMsg(1, msg); err != nil {
+					fmt.Println("error writing logs to buffer")
 					glog.Errorln("Error writing logs to buffer:", err)
 					return
 				}

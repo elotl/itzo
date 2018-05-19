@@ -70,7 +70,7 @@ func (lb *LogBuffer) Read(nn int) []LogEntry {
 	// while your're fucking up, while you're fucking up, while you're
 	// fucking up.
 	//
-	// I did test this on paper...
+	// I did walk through this on paper...
 	for i, j := int64(1), n-1; i <= n; i, j = i+1, j-1 {
 		bufLoc := (offset - i) % lb.capacity
 		entries[j] = lb.buf[bufLoc]

@@ -3,12 +3,14 @@ package conmap
 import (
 	"sync"
 
-	"github.com/cheekybits/genny/generic"
+	"github.com/justnoise/genny/generic"
 )
 
 // Mostly taken from
 // https://github.com/cheekybits/gennylib/blob/master/maps/concurrentmap.go
-// We've added an Items() function
+// We've added an Items() function. Don't use cheekybits/genny since
+// that doesn't have a good golang parser, use the one from justnoise
+// (that's ME!)
 
 //go:generate genny -in=$GOFILE -out=gen-$GOFILE gen "KeyType=string ValueType=string,*os.Process,*logbuf.LogBuffer"
 

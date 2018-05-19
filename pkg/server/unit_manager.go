@@ -69,7 +69,7 @@ func (um *UnitManager) GetLogBuffer(unit string) (*logbuf.LogBuffer, error) {
 		return nil, err
 	}
 	lb, exists := um.logbuf.GetOK(unit)
-	if !exists {
+	if !exists || lb == nil {
 		return nil, fmt.Errorf("Could not find logs for unit named %s", unit)
 	}
 	return lb, nil
