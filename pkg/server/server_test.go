@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -381,7 +382,7 @@ func TestStatusHandlerSucceeded(t *testing.T) {
 	assert.NotZero(t, reply.UnitStatuses[0].State.Terminated.FinishedAt)
 }
 
-func TestGetLogs(t *testing.T) {
+func TestGetLogsFunctional(t *testing.T) {
 	if !*runFunctional {
 		return
 	}
@@ -402,7 +403,7 @@ func TestGetLogs(t *testing.T) {
 	assert.True(t, 2 <= len(lines))
 }
 
-func TestGetLogsLines(t *testing.T) {
+func TestGetLogsLinesFunctional(t *testing.T) {
 	if !*runFunctional {
 		return
 	}
@@ -416,7 +417,7 @@ func TestGetLogsLines(t *testing.T) {
 	var lines []string
 	timeout := time.Now().Add(3 * time.Second)
 	for time.Now().Before(timeout) {
-		path := "/rest/v1/logs/yes?lines=3"
+		path := "/rest/v1/logs/yes?lines=3&bytes=0"
 		rr := sendRequest(t, "GET", path, nil)
 		assert.Equal(t, http.StatusOK, rr.Code)
 		lines = strings.Split(rr.Body.String(), "\n")
@@ -547,4 +548,31 @@ func TestDeployInvalidPackage(t *testing.T) {
 	srv.ServeHTTP(rr, req)
 
 	assert.NotEqual(t, http.StatusOK, rr.Code)
+}
+
+func TestGetLogs(t *testing.T) {
+	// populate server with what it needs
+	// unitMgr
+	unitName := "testunit"
+
+	um := NewUnitManager(DEFAULT_ROOTDIR)
+	s.unitMgr = um
+	lb := logbuf.NewLogBuffer(1000)
+	um.logbuf.Set(unitName, lb)
+	for i := 0; i < 10; i++ {
+		lb.Write("somesource", fmt.Sprintf("%d\n", i))
+	}
+	nLines := 5
+	path := fmt.Sprintf("/rest/v1/logs/%s?lines=%d&bytes=0", unitName, nLines)
+	rr := sendRequest(t, "GET", path, strings.NewReader(""))
+	assert.Equal(t, http.StatusOK, rr.Code)
+	responseBody := rr.Body.String()
+	if strings.HasSuffix(responseBody, "\n") {
+		responseBody = responseBody[:len(responseBody)-1]
+	}
+	lines := strings.Split(responseBody, "\n")
+	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
+
+	//assert.Equal(t, contents, responseBody)
+
 }

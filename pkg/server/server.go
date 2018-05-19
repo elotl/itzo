@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -143,10 +144,23 @@ func (s *Server) versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
-	// additional params: need PID of process
 	switch r.Method {
 	case "GET":
-		parsedURL, err := r.URL.Parse(r.URL.Path)
+		// EVERYTHING IS TERRIBLE! If the request came from our
+		// websocket library, the query params are in the path and
+		// r.URL.String() doesn't decode them correctly (they get
+		// escaped).  However, if the request came from a standard web
+		// client (http.Client) the query params are already parsed
+		// out into URL.RawQuery.  Lets look into the URL and see what
+		// we need to parse...  Yuck!
+		var parsedURL *url.URL
+		var err error
+		if r.URL.RawQuery != "" {
+			parsedURL, err = r.URL.Parse(r.URL.String())
+		} else {
+			parsedURL, err = r.URL.Parse(r.URL.Path)
+		}
+
 		if err != nil {
 			badRequest(w, err.Error())
 			return
@@ -227,7 +241,6 @@ func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *
 	for {
 		select {
 		case <-ws.Closed():
-			fmt.Println("websocket got closed")
 			return
 		case <-fileTicker.C:
 			unitRunning := s.unitMgr.UnitRunning(unitName)
