@@ -551,10 +551,7 @@ func TestDeployInvalidPackage(t *testing.T) {
 }
 
 func TestGetLogs(t *testing.T) {
-	// populate server with what it needs
-	// unitMgr
 	unitName := "testunit"
-
 	um := NewUnitManager(DEFAULT_ROOTDIR)
 	s.unitMgr = um
 	lb := logbuf.NewLogBuffer(1000)
@@ -572,7 +569,4 @@ func TestGetLogs(t *testing.T) {
 	}
 	lines := strings.Split(responseBody, "\n")
 	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
-
-	//assert.Equal(t, contents, responseBody)
-
 }
