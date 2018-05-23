@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,8 +19,11 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -28,6 +32,8 @@ const (
 	DEFAULT_ROOTDIR   = "/tmp/milpa/units"
 	ITZO_VERSION      = "1.0"
 	FILE_BYTES_LIMIT  = 4096
+	// Screw it, I'm changing to go convention, no captials...
+	logTailPeriod = 250 * time.Millisecond
 )
 
 // Some kind of invalid input from the user. Useful here to decide when to
@@ -50,6 +56,7 @@ type Server struct {
 	startTime     time.Time
 	podController *PodController
 	unitMgr       *UnitManager
+	wsUpgrader    websocket.Upgrader
 	// Packages will be installed under this directory (created if it does not
 	// exist).
 	installRootdir string
@@ -69,6 +76,10 @@ func New(rootdir string) *Server {
 		installRootdir: rootdir,
 		podController:  pc,
 		unitMgr:        um,
+		wsUpgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+		},
 	}
 }
 
@@ -133,19 +144,59 @@ func (s *Server) versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
-	// additional params: need PID of process
 	switch r.Method {
 	case "GET":
-		path := strings.TrimPrefix(r.URL.Path, "/")
+		// EVERYTHING IS TERRIBLE! If the request came from our
+		// websocket library, the query params are in the path and
+		// r.URL.String() doesn't decode them correctly (they get
+		// escaped).  However, if the request came from a standard web
+		// client (http.Client) the query params are already parsed
+		// out into URL.RawQuery.  Lets look into the URL and see what
+		// we need to parse...  Yuck!
+		var parsedURL *url.URL
+		var err error
+		if r.URL.RawQuery != "" {
+			parsedURL, err = r.URL.Parse(r.URL.String())
+		} else {
+			parsedURL, err = r.URL.Parse(r.URL.Path)
+		}
+
+		if err != nil {
+			badRequest(w, err.Error())
+			return
+		}
+
+		path := strings.TrimPrefix(parsedURL.Path, "/")
 		parts := strings.Split(path, "/")
 		unit := ""
 		if len(parts) > 3 {
 			unit = strings.Join(parts[3:], "/")
 		}
+
+		// todo, this is a bit messy here, break it out if possible
+		q := parsedURL.Query()
+		follow := q.Get("follow")
+		if follow != "" {
+			// Bug: if the unit gets closed or quits, we don't know
+			// about the closure
+			unitName, _ := s.unitMgr.CleanUnitName(unit)
+			logBuffer, err := s.unitMgr.GetLogBuffer(unit)
+			if err != nil {
+				badRequest(w, err.Error())
+			}
+			conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+			if err != nil {
+				serverError(w, err)
+				return
+			}
+			s.RunLogTailer(conn, unitName, logBuffer)
+			return
+		}
+
 		n := 0
 		numBytes := 0
-		lines := r.FormValue("lines")
-		strBytes := r.FormValue("bytes")
+		lines := q.Get("lines")
+		strBytes := q.Get("bytes")
 		if lines != "" {
 			if i, err := strconv.Atoi(lines); err == nil {
 				n = i
@@ -156,7 +207,8 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 				numBytes = i
 			}
 		}
-		logs, err := s.unitMgr.GetLogBuffer(unit, n)
+
+		logs, err := s.unitMgr.ReadLogBuffer(unit, n)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
@@ -175,6 +227,40 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s", buffStr)
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *logbuf.LogBuffer) {
+	ws := wsstream.NewWSStream(conn)
+	fileTicker := time.NewTicker(logTailPeriod)
+	defer ws.CloseAndCleanup()
+	defer fileTicker.Stop()
+	lastOffset := logBuffer.GetOffset()
+
+	var entries []logbuf.LogEntry
+	for {
+		select {
+		case <-ws.Closed():
+			return
+		case <-fileTicker.C:
+			unitRunning := s.unitMgr.UnitRunning(unitName)
+			if !unitRunning {
+				return
+			}
+
+			entries, lastOffset = logBuffer.ReadSince(lastOffset)
+			if len(entries) > 0 {
+				msg := make([]byte, 0, 1024)
+				for i := 0; i < len(entries); i++ {
+					msg = append(msg, []byte(entries[i].Line)...)
+				}
+				if err := ws.WriteMsg(1, msg); err != nil {
+					fmt.Println("error writing logs to buffer")
+					glog.Errorln("Error writing logs to buffer:", err)
+					return
+				}
+			}
+		}
 	}
 }
 
