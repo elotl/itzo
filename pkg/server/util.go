@@ -262,13 +262,6 @@ func tailFile(path string, lines int, maxBytes int64) (string, error) {
 	}
 }
 
-func minint64(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 type Link struct {
 	dst      string
 	src      string

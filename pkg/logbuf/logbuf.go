@@ -2,6 +2,8 @@ package logbuf
 
 import (
 	"time"
+
+	"github.com/elotl/itzo/pkg/util"
 )
 
 type LogEntry struct {
@@ -26,13 +28,6 @@ func NewLogBuffer(capacity int) *LogBuffer {
 	return &lb
 }
 
-func minint64(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (lb *LogBuffer) GetOffset() int64 {
 	return lb.offset
 }
@@ -49,7 +44,7 @@ func (lb *LogBuffer) Write(source, line string) {
 }
 
 func (lb *LogBuffer) Length() int {
-	return int(minint64(lb.capacity, lb.offset))
+	return int(util.Minint64(lb.capacity, lb.offset))
 }
 
 func (lb *LogBuffer) Read(nn int) []LogEntry {
@@ -62,7 +57,7 @@ func (lb *LogBuffer) Read(nn int) []LogEntry {
 		return nil
 	}
 	if n == 0 {
-		n = minint64(lb.capacity, lb.offset)
+		n = util.Minint64(lb.capacity, lb.offset)
 	}
 	entries := make([]LogEntry, n)
 	// Xibit: Yo dawg, I heard you like off-by-one-errors so I put an
@@ -87,8 +82,6 @@ func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64) {
 	nRead := int64(0)
 	entries := []LogEntry{}
 	if i > offset {
-		return entries, offset
-	} else if i == offset {
 		return entries, offset
 	}
 
