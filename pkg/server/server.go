@@ -256,7 +256,7 @@ func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *
 				for i := 0; i < len(entries); i++ {
 					msg = append(msg, []byte(entries[i].Line)...)
 				}
-				if err := ws.WriteMsg(1, msg); err != nil {
+				if err := ws.WriteMsg(wsstream.StdoutChan, msg); err != nil {
 					fmt.Println("error writing logs to buffer")
 					glog.Errorln("Error writing logs to buffer:", err)
 					return
@@ -375,55 +375,6 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) RunPortForward(conn *websocket.Conn) {
-	fmt.Println("running port forward")
-	ws := &wsstream.WSReadWriter{
-		WSStream: wsstream.NewWSStream(conn),
-	}
-	defer ws.CloseAndCleanup()
-	defer fmt.Println("returing from Port Forward: ws)")
-
-	var params api.PortForwardParams
-	select {
-	case <-ws.Closed():
-		return
-	case paramsJson := <-ws.ReadMsg():
-		err := json.Unmarshal(paramsJson, &params)
-		if err != nil {
-			msg := fmt.Sprintf("Error reading port forward params %v", err)
-			glog.Error(msg)
-			ws.WriteMsg(wsstream.StdoutChan, []byte(msg))
-			return
-		}
-	}
-
-	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer clientConn.Close()
-
-	portWriter := bufio.NewWriter(clientConn)
-	portReader := bufio.NewReader(clientConn)
-
-	// if either side hangs up, we close the websocket connection
-	// and end the interaction
-	wsToPort := ws.CreateReader(0)
-	go func() {
-		io.Copy(portWriter, wsToPort)
-		ws.CloseAndCleanup()
-	}()
-
-	wsFromPort := ws.CreateWriter(1)
-	go func() {
-		io.Copy(wsFromPort, portReader)
-		ws.CloseAndCleanup()
-	}()
-
-	ws.RunDispatch()
-}
-
 func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -446,7 +397,7 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			msg := fmt.Sprintf("Error reading port forward params %v", err)
 			glog.Error(msg)
-			ws.WriteMsg(wsstream.StdoutChan, []byte(msg))
+			ws.WriteMsg(wsstream.StderrChan, []byte(msg))
 			return
 		}
 	}
@@ -454,7 +405,7 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
 	if err != nil {
 		msg := fmt.Sprintf("error connecting to port %s: %v", params.Port, err)
-		ws.WriteMsg(wsstream.StdoutChan, []byte(msg))
+		ws.WriteMsg(wsstream.StderrChan, []byte(msg))
 		return
 	}
 	defer clientConn.Close()
@@ -464,13 +415,13 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 
 	// if either side hangs up, we close the websocket connection
 	// and end the interaction
-	wsToPort := ws.CreateReader(0)
+	wsToPort := ws.CreateReader(wsstream.StdinChan)
 	go func() {
 		io.Copy(portWriter, wsToPort)
 		ws.CloseAndCleanup()
 	}()
 
-	wsFromPort := ws.CreateWriter(1)
+	wsFromPort := ws.CreateWriter(wsstream.StdoutChan)
 	go func() {
 		io.Copy(wsFromPort, portReader)
 		ws.CloseAndCleanup()
@@ -480,14 +431,6 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
-	// conn, err := s.wsUpgrader.Upgrade(w, r, nil)
-	// if err != nil {
-	// 	if err != nil {
-	// 		serverError(w, err)
-	// 		return
-	// 	}
-	// }
-
 	// todo
 }
 

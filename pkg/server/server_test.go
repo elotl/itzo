@@ -573,15 +573,6 @@ func TestGetLogs(t *testing.T) {
 	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
 }
 
-// type WSServer struct {
-// 	*httptest.Server
-// }
-
-// func GetWSServer() *httptest.Server {
-// 	wsServer := httptest.NewServer(handlers)
-// 	return wsServer
-// }
-
 func runServer(port string) *Server {
 	s := &Server{}
 	s.getHandlers()
