@@ -622,9 +622,11 @@ func TestPortForward(t *testing.T) {
 	}
 	pfpb, err := json.Marshal(pfp)
 	assert.NoError(t, err)
-	ws.WriteRaw(pfpb)
+	err = ws.WriteRaw(pfpb)
+	assert.NoError(t, err)
 	msg := []byte("GET /rest/v1/ping HTTP/1.1\nHost: localhost:" + port + "\r\n\r\n")
-	ws.WriteMsg(0, msg)
+	err = ws.WriteMsg(0, msg)
+	assert.NoError(t, err)
 	timeout := 3 * time.Second
 	select {
 	case f := <-ws.ReadMsg():
