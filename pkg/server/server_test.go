@@ -617,7 +617,7 @@ func TestPortForward(t *testing.T) {
 	ws, err := createWebsocketClient(port, "/rest/v1/portforward/")
 	assert.NoError(t, err)
 
-	pfp := PortForwardParams{
+	pfp := api.PortForwardParams{
 		Port: port,
 	}
 	pfpb, err := json.Marshal(pfp)

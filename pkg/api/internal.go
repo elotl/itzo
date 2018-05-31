@@ -15,3 +15,8 @@ type RegistryCredentials struct {
 type PodStatusReply struct {
 	UnitStatuses []UnitStatus `json:"unitStatus"`
 }
+
+type PortForwardParams struct {
+	PodName string
+	Port    string
+}

@@ -375,10 +375,6 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type PortForwardParams struct {
-	Port string
-}
-
 func (s *Server) RunPortForward(conn *websocket.Conn) {
 	fmt.Println("running port forward")
 	ws := &wsstream.WSReadWriter{
@@ -387,7 +383,7 @@ func (s *Server) RunPortForward(conn *websocket.Conn) {
 	defer ws.CloseAndCleanup()
 	defer fmt.Println("returing from Port Forward: ws)")
 
-	var params PortForwardParams
+	var params api.PortForwardParams
 	select {
 	case <-ws.Closed():
 		return
@@ -441,7 +437,7 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.CloseAndCleanup()
 
-	var params PortForwardParams
+	var params api.PortForwardParams
 	select {
 	case <-ws.Closed():
 		return
