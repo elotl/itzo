@@ -484,13 +484,13 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
-	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-	}
+	// conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+	// if err != nil {
+	// 	if err != nil {
+	// 		serverError(w, err)
+	// 		return
+	// 	}
+	// }
 
 	// todo
 }
@@ -507,8 +507,9 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/resizevolume", s.resizevolumeHandler)
 	s.mux.HandleFunc("/rest/v1/ping", s.pingHandler)
 	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)
-	http.HandleFunc("/rest/v1/portforward/", s.servePortForward)
-	http.HandleFunc("/rest/v1/exec/", s.serveExec)
+	// streaming endpoints
+	s.mux.HandleFunc("/rest/v1/portforward/", s.servePortForward)
+	s.mux.HandleFunc("/rest/v1/exec/", s.serveExec)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

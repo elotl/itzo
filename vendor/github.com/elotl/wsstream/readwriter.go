@@ -31,7 +31,9 @@ func (ws *WSReadWriter) CreateWriter(channel int) *WSWriter {
 }
 
 func (ws *WSWriter) Write(p []byte) (n int, err error) {
-	err = ws.WriteMsg(ws.WriteChan, p)
+	if len(p) > 0 {
+		err = ws.WriteMsg(ws.WriteChan, p)
+	}
 	return len(p), err
 }
 

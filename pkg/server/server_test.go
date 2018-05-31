@@ -24,6 +24,8 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/wsstream"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -569,4 +571,68 @@ func TestGetLogs(t *testing.T) {
 	}
 	lines := strings.Split(responseBody, "\n")
 	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
+}
+
+// type WSServer struct {
+// 	*httptest.Server
+// }
+
+// func GetWSServer() *httptest.Server {
+// 	wsServer := httptest.NewServer(handlers)
+// 	return wsServer
+// }
+
+func runServer(port string) *Server {
+	s := &Server{}
+	s.getHandlers()
+	addr := ":" + port
+	s.httpServer = &http.Server{Addr: addr, Handler: s}
+	go s.httpServer.ListenAndServe()
+	return s
+}
+
+func createWebsocketClient(port, path string) (*wsstream.WSStream, error) {
+	addr := ":" + port
+	u := url.URL{Scheme: "ws", Host: addr, Path: path}
+	header := http.Header{}
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	if err != nil {
+		return nil, err
+	}
+	return wsstream.NewWSStream(c), nil
+}
+
+func TestPortForward(t *testing.T) {
+	// We start up our server, start a websocket port forwarwd request
+	// to the same server port and then forward, throught the
+	// websocket, a request to ping we expect pong as the output
+	//
+	// I could do work to find a random open port but i'm going to
+	// not do that now and just go with 6420...
+	port := "6420"
+	ss := runServer(port)
+	time.Sleep(1 * time.Second)
+	defer ss.httpServer.Close()
+
+	ws, err := createWebsocketClient(port, "/rest/v1/portforward/")
+	assert.NoError(t, err)
+
+	pfp := PortForwardParams{
+		Port: port,
+	}
+	pfpb, err := json.Marshal(pfp)
+	assert.NoError(t, err)
+	ws.WriteRaw(pfpb)
+	msg := []byte("GET /rest/v1/ping HTTP/1.1\nHost: localhost:" + port + "\r\n\r\n")
+	ws.WriteMsg(0, msg)
+	timeout := 3 * time.Second
+	select {
+	case f := <-ws.ReadMsg():
+		c, m, err := wsstream.UnpackMessage(f)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, c)
+		assert.True(t, strings.HasSuffix(string(m), "pong"))
+	case <-time.After(timeout):
+		assert.FailNow(t, "reading timed out")
+	}
 }
