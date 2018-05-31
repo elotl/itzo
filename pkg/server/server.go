@@ -3,6 +3,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -373,6 +375,126 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type PortForwardParams struct {
+	Port string
+}
+
+func (s *Server) RunPortForward(conn *websocket.Conn) {
+	fmt.Println("running port forward")
+	ws := &wsstream.WSReadWriter{
+		WSStream: wsstream.NewWSStream(conn),
+	}
+	defer ws.CloseAndCleanup()
+	defer fmt.Println("returing from Port Forward: ws)")
+
+	var params PortForwardParams
+	select {
+	case <-ws.Closed():
+		return
+	case paramsJson := <-ws.ReadMsg():
+		err := json.Unmarshal(paramsJson, &params)
+		if err != nil {
+			msg := fmt.Sprintf("Error reading port forward params %v", err)
+			glog.Error(msg)
+			ws.WriteMsg(wsstream.StdoutChan, []byte(msg))
+			return
+		}
+	}
+
+	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer clientConn.Close()
+
+	portWriter := bufio.NewWriter(clientConn)
+	portReader := bufio.NewReader(clientConn)
+
+	// if either side hangs up, we close the websocket connection
+	// and end the interaction
+	wsToPort := ws.CreateReader(0)
+	go func() {
+		io.Copy(portWriter, wsToPort)
+		ws.CloseAndCleanup()
+	}()
+
+	wsFromPort := ws.CreateWriter(1)
+	go func() {
+		io.Copy(wsFromPort, portReader)
+		ws.CloseAndCleanup()
+	}()
+
+	ws.RunDispatch()
+}
+
+func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+	}
+	ws := &wsstream.WSReadWriter{
+		WSStream: wsstream.NewWSStream(conn),
+	}
+	defer ws.CloseAndCleanup()
+
+	var params PortForwardParams
+	select {
+	case <-ws.Closed():
+		return
+	case paramsJson := <-ws.ReadMsg():
+		err := json.Unmarshal(paramsJson, &params)
+		if err != nil {
+			msg := fmt.Sprintf("Error reading port forward params %v", err)
+			glog.Error(msg)
+			ws.WriteMsg(wsstream.StdoutChan, []byte(msg))
+			return
+		}
+	}
+
+	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
+	if err != nil {
+		msg := fmt.Sprintf("error connecting to port %s: %v", params.Port, err)
+		ws.WriteMsg(wsstream.StdoutChan, []byte(msg))
+		return
+	}
+	defer clientConn.Close()
+
+	portWriter := bufio.NewWriter(clientConn)
+	portReader := bufio.NewReader(clientConn)
+
+	// if either side hangs up, we close the websocket connection
+	// and end the interaction
+	wsToPort := ws.CreateReader(0)
+	go func() {
+		io.Copy(portWriter, wsToPort)
+		ws.CloseAndCleanup()
+	}()
+
+	wsFromPort := ws.CreateWriter(1)
+	go func() {
+		io.Copy(wsFromPort, portReader)
+		ws.CloseAndCleanup()
+	}()
+
+	ws.RunDispatch()
+}
+
+func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+	}
+
+	// todo
+}
+
 func (s *Server) getHandlers() {
 	s.mux = http.ServeMux{}
 	s.mux.HandleFunc("/rest/v1/deploy/", s.deployHandler)
@@ -385,6 +507,8 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/resizevolume", s.resizevolumeHandler)
 	s.mux.HandleFunc("/rest/v1/ping", s.pingHandler)
 	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)
+	http.HandleFunc("/rest/v1/portforward/", s.servePortForward)
+	http.HandleFunc("/rest/v1/exec/", s.serveExec)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -7,36 +7,28 @@
 package wsstream
 
 import (
-	"encoding/json"
+	"encoding/base64"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
 )
 
-const (
-	BytesProtocol = "milpa.bytes"
-)
-
 var (
-	wsBufSize = 1000
+	wsBufSize = 0
 )
-
-type FrameType string
 
 const (
-	FrameTypeMessage  FrameType = "Message"
-	FrameTypeExitCode FrameType = "ExitCode"
+	StdinChan    int = 0
+	StdoutChan   int = 1
+	StderrChan   int = 2
+	ExitCodeChan int = 3
 )
 
-type Frame struct {
-	Protocol string    `json:"protocol"`
-	Type     FrameType `json:"type"`
-	Channel  uint32    `json:"channel"`
-	Message  []byte    `json:"message"`
-	ExitCode uint32    `json:"exitCode"`
-}
+type MessageFrame []byte
 
 type WebsocketParams struct {
 	// Time allowed to write the file to the client.
@@ -99,6 +91,7 @@ func (ws *WSStream) CloseAndCleanup() error {
 	case <-ws.closed:
 		// if we've already closed the conn then dont' try to write on
 		// the conn.
+		return io.EOF
 	default:
 		// If we haven't already closed the connection (ws.closed),
 		// then write a closed message, wait for it to be sent and
@@ -113,35 +106,45 @@ func (ws *WSStream) CloseAndCleanup() error {
 	return ws.conn.Close()
 }
 
-func (ws *WSStream) Read() <-chan []byte {
+func (ws *WSStream) ReadMsg() <-chan []byte {
 	return ws.readChan
 }
 
 func (ws *WSStream) WriteMsg(channel int, msg []byte) error {
-	return ws.write(FrameTypeMessage, channel, msg, uint32(0))
+	return ws.write(channel, msg)
 }
 
-func (ws *WSStream) WriteExit(code uint32) error {
-	return ws.write(FrameTypeExitCode, 0, nil, code)
-}
-
-func (ws *WSStream) write(frameType FrameType, channel int, msg []byte, code uint32) error {
+func (ws *WSStream) WriteRaw(framedMsg []byte) error {
 	select {
 	case <-ws.closed:
-		return fmt.Errorf("Cannot write to a closed websocket")
+		return io.EOF
 	default:
-		f := Frame{
-			Protocol: BytesProtocol,
-			Type:     frameType,
-			Channel:  uint32(channel),
-			Message:  msg,
-			ExitCode: code,
-		}
-		b, err := json.Marshal(f)
-		if err != nil {
-			return err
-		}
-		ws.writeChan <- b
+		ws.writeChan <- framedMsg
+		return nil
+	}
+}
+
+func UnpackMessage(frame []byte) (int, []byte, error) {
+	if len(frame) == 0 {
+		return 0, []byte(""), nil
+	}
+	channel := frame[0] - '0'
+	msg, err := base64.StdEncoding.DecodeString(string(frame[1:]))
+	return int(channel), msg, err
+}
+
+func PackMessage(channel int, data []byte) []byte {
+	frame := string('0'+channel) + base64.StdEncoding.EncodeToString(data)
+	return []byte(frame)
+}
+
+func (ws *WSStream) write(channel int, msg []byte) error {
+	select {
+	case <-ws.closed:
+		return io.EOF
+	default:
+		f := PackMessage(channel, msg)
+		ws.writeChan <- f
 	}
 	return nil
 }
@@ -155,8 +158,10 @@ func (ws *WSStream) StartReader() {
 	for {
 		_, msg, err := ws.conn.ReadMessage()
 		if err != nil {
-			if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure) &&
+				!strings.Contains(err.Error(), "closed network connection") {
 				glog.Errorln("Closing connection after error:", err)
+				fmt.Printf("%#v\n", err)
 			}
 			close(ws.closed)
 			return
