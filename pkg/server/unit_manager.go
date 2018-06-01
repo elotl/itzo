@@ -194,7 +194,6 @@ func (um *UnitManager) StartUnit(name string, command, args, appenv []string, po
 			glog.Errorf("Unit %v (helper pid %d) exited with error %v", command, pid, err)
 		}
 		lp.Remove()
-		unit.Close()
 	}()
 	return nil
 }

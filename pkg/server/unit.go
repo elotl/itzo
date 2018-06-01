@@ -210,10 +210,6 @@ func (u *Unit) SetImage(image string) error {
 	return nil
 }
 
-func (u *Unit) Close() {
-	// No-op for now.
-}
-
 func (u *Unit) Destroy() error {
 	// You'll need to kill the child process before.
 	u.LogPipe.Remove()

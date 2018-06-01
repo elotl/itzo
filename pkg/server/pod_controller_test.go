@@ -458,7 +458,7 @@ func createTestUnit(name string) (string, *Unit, func()) {
 	if err != nil {
 		panic(err)
 	}
-	closer := func() { u.Close(); os.RemoveAll(tmpdir) }
+	closer := func() { u.Destroy(); os.RemoveAll(tmpdir) }
 	return tmpdir, u, closer
 }
 
