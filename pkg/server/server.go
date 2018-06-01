@@ -411,7 +411,7 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	defer ws.CloseAndCleanup()
 
 	var params api.PortForwardParams
-	err = getInitialParams(ws, params)
+	err = getInitialParams(ws, &params)
 	if err != nil {
 		return
 	}
