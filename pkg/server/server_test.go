@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -573,13 +574,17 @@ func TestGetLogs(t *testing.T) {
 	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
 }
 
-func runServer(port string) *Server {
+func runServer() (*Server, int) {
 	s := &Server{}
 	s.getHandlers()
-	addr := ":" + port
-	s.httpServer = &http.Server{Addr: addr, Handler: s}
-	go s.httpServer.ListenAndServe()
-	return s
+	s.httpServer = &http.Server{Addr: ":0", Handler: s}
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		panic(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	go s.httpServer.Serve(listener)
+	return s, port
 }
 
 func createWebsocketClient(port, path string) (*wsstream.WSStream, error) {
@@ -600,22 +605,22 @@ func TestPortForward(t *testing.T) {
 	//
 	// I could do work to find a random open port but i'm going to
 	// not do that now and just go with 6420...
-	port := "6420"
-	ss := runServer(port)
+	ss, port := runServer()
+	portstr := fmt.Sprintf("%d", port)
 	time.Sleep(1 * time.Second)
 	defer ss.httpServer.Close()
 
-	ws, err := createWebsocketClient(port, "/rest/v1/portforward/")
+	ws, err := createWebsocketClient(portstr, "/rest/v1/portforward/")
 	assert.NoError(t, err)
 
 	pfp := api.PortForwardParams{
-		Port: port,
+		Port: portstr,
 	}
 	pfpb, err := json.Marshal(pfp)
 	assert.NoError(t, err)
 	err = ws.WriteRaw(pfpb)
 	assert.NoError(t, err)
-	msg := []byte("GET /rest/v1/ping HTTP/1.1\nHost: localhost:" + port + "\r\n\r\n")
+	msg := []byte("GET /rest/v1/ping HTTP/1.1\nHost: localhost:" + portstr + "\r\n\r\n")
 	err = ws.WriteMsg(0, msg)
 	assert.NoError(t, err)
 	timeout := 3 * time.Second
