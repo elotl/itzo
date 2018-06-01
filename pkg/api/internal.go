@@ -28,3 +28,10 @@ type ExecParams struct {
 	Interactive bool
 	TTY         bool
 }
+
+type AttachParams struct {
+	PodName     string
+	UnitName    string
+	Interactive bool
+	TTY         bool
+}
