@@ -11,7 +11,7 @@
   branch = "master"
   name = "github.com/elotl/wsstream"
   packages = ["."]
-  revision = "2bd7a8a9d42f11dbe87530018df893eccec0dd73"
+  revision = "a88a26dd5a786dfa2f13d85847c85fa2ae383188"
 
 [[projects]]
   branch = "master"

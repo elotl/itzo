@@ -3,6 +3,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -254,7 +256,7 @@ func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *
 				for i := 0; i < len(entries); i++ {
 					msg = append(msg, []byte(entries[i].Line)...)
 				}
-				if err := ws.WriteMsg(1, msg); err != nil {
+				if err := ws.WriteMsg(wsstream.StdoutChan, msg); err != nil {
 					fmt.Println("error writing logs to buffer")
 					glog.Errorln("Error writing logs to buffer:", err)
 					return
@@ -373,6 +375,95 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) doUpgrade(w http.ResponseWriter, r *http.Request) (*wsstream.WSReadWriter, error) {
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		serverError(w, err)
+		return nil, err
+	}
+	ws := &wsstream.WSReadWriter{
+		WSStream: wsstream.NewWSStream(conn),
+	}
+	return ws, nil
+}
+
+func getInitialParams(ws *wsstream.WSReadWriter, params interface{}) error {
+	select {
+	case <-ws.Closed():
+		return fmt.Errorf("connection closed before first parameter")
+	case paramsJson := <-ws.ReadMsg():
+		err := json.Unmarshal(paramsJson, params)
+		if err != nil {
+			msg := fmt.Sprintf("Error reading port forward params %v", err)
+			glog.Error(msg)
+			ws.WriteMsg(wsstream.StderrChan, []byte(msg))
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return
+	}
+	defer ws.CloseAndCleanup()
+
+	var params api.PortForwardParams
+	err = getInitialParams(ws, &params)
+	if err != nil {
+		return
+	}
+
+	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
+	if err != nil {
+		msg := fmt.Sprintf("error connecting to port %s: %v", params.Port, err)
+		_ = ws.WriteMsg(wsstream.StderrChan, []byte(msg))
+		return
+	}
+	defer clientConn.Close()
+
+	portWriter := bufio.NewWriter(clientConn)
+	portReader := bufio.NewReader(clientConn)
+
+	// if either side hangs up, we close the websocket connection
+	// and end the interaction
+	wsToPort := ws.CreateReader(wsstream.StdinChan)
+	go func() {
+		io.Copy(portWriter, wsToPort)
+		ws.CloseAndCleanup()
+	}()
+
+	wsFromPort := ws.CreateWriter(wsstream.StdoutChan)
+	go func() {
+		io.Copy(wsFromPort, portReader)
+		ws.CloseAndCleanup()
+	}()
+
+	ws.RunDispatch()
+}
+
+func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return
+	}
+	defer ws.CloseAndCleanup()
+
+	var params api.ExecParams
+	err = getInitialParams(ws, &params)
+	if err != nil {
+		return
+	}
+
+	s.runExec(ws, params)
+
+	// We do a bit of a dance to make sure that we don't leave
+	// anything running when we close the websocket prematurely
+
+}
+
 func (s *Server) getHandlers() {
 	s.mux = http.ServeMux{}
 	s.mux.HandleFunc("/rest/v1/deploy/", s.deployHandler)
@@ -385,6 +476,9 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/resizevolume", s.resizevolumeHandler)
 	s.mux.HandleFunc("/rest/v1/ping", s.pingHandler)
 	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)
+	// streaming endpoints
+	s.mux.HandleFunc("/rest/v1/portforward/", s.servePortForward)
+	s.mux.HandleFunc("/rest/v1/exec/", s.serveExec)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
