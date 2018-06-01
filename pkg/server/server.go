@@ -375,37 +375,51 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
+func (s *Server) doUpgrade(w http.ResponseWriter, r *http.Request) (*wsstream.WSReadWriter, error) {
 	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		if err != nil {
-			serverError(w, err)
-			return
-		}
+		serverError(w, err)
+		return nil, err
 	}
 	ws := &wsstream.WSReadWriter{
 		WSStream: wsstream.NewWSStream(conn),
 	}
-	defer ws.CloseAndCleanup()
+	return ws, nil
+}
 
-	var params api.PortForwardParams
+func getInitialParams(ws *wsstream.WSReadWriter, params interface{}) error {
 	select {
 	case <-ws.Closed():
-		return
+		return fmt.Errorf("connection closed before first parameter")
 	case paramsJson := <-ws.ReadMsg():
-		err := json.Unmarshal(paramsJson, &params)
+		err := json.Unmarshal(paramsJson, params)
 		if err != nil {
 			msg := fmt.Sprintf("Error reading port forward params %v", err)
 			glog.Error(msg)
 			ws.WriteMsg(wsstream.StderrChan, []byte(msg))
-			return
+			return err
 		}
+	}
+	return nil
+}
+
+func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return
+	}
+	defer ws.CloseAndCleanup()
+
+	var params api.PortForwardParams
+	err = getInitialParams(ws, params)
+	if err != nil {
+		return
 	}
 
 	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
 	if err != nil {
 		msg := fmt.Sprintf("error connecting to port %s: %v", params.Port, err)
-		ws.WriteMsg(wsstream.StderrChan, []byte(msg))
+		_ = ws.WriteMsg(wsstream.StderrChan, []byte(msg))
 		return
 	}
 	defer clientConn.Close()
@@ -431,7 +445,23 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
-	// todo
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return
+	}
+	defer ws.CloseAndCleanup()
+
+	var params api.ExecParams
+	err = getInitialParams(ws, &params)
+	if err != nil {
+		return
+	}
+
+	s.runExec(ws, params)
+
+	// We do a bit of a dance to make sure that we don't leave
+	// anything running when we close the websocket prematurely
+
 }
 
 func (s *Server) getHandlers() {

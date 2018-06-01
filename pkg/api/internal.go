@@ -20,3 +20,11 @@ type PortForwardParams struct {
 	PodName string
 	Port    string
 }
+
+type ExecParams struct {
+	PodName     string
+	UnitName    string
+	Command     string
+	Interactive bool
+	TTY         bool
+}
