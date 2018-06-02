@@ -382,34 +382,6 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) doUpgrade(w http.ResponseWriter, r *http.Request) (*wsstream.WSReadWriter, error) {
-	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		serverError(w, err)
-		return nil, err
-	}
-	ws := &wsstream.WSReadWriter{
-		WSStream: wsstream.NewWSStream(conn),
-	}
-	return ws, nil
-}
-
-func getInitialParams(ws *wsstream.WSReadWriter, params interface{}) error {
-	select {
-	case <-ws.Closed():
-		return fmt.Errorf("connection closed before first parameter")
-	case paramsJson := <-ws.ReadMsg():
-		err := json.Unmarshal(paramsJson, params)
-		if err != nil {
-			msg := fmt.Sprintf("Error reading port forward params %v", err)
-			glog.Error(msg)
-			ws.WriteMsg(wsstream.StderrChan, []byte(msg))
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.doUpgrade(w, r)
 	if err != nil {
@@ -425,8 +397,7 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 
 	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
 	if err != nil {
-		msg := fmt.Sprintf("error connecting to port %s: %v", params.Port, err)
-		_ = ws.WriteMsg(wsstream.StderrChan, []byte(msg))
+		writeWSError(ws, "error connecting to port %s: %v", params.Port, err)
 		return
 	}
 	defer clientConn.Close()
@@ -449,6 +420,75 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	ws.RunDispatch()
+}
+
+func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
+	unitName, err := s.podController.GetUnitName(params.UnitName)
+	if err != nil {
+		writeWSError(ws, err.Error())
+		return
+	}
+	logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
+	if err != nil {
+		writeWSError(ws, err.Error())
+		return
+	}
+
+	// todo: open unit's stdin pipe
+
+	// wsStdinReader := ws.CreateReader(0)
+	// inPipe, err := cmd.StdinPipe()
+	// if err != nil {
+	// 	return err
+	// }
+	// go io.Copy(inPipe, wsStdinReader)
+
+	// copy our stdout and stderr (from logbuffer) to the websocket
+	fileTicker := time.NewTicker(logTailPeriod)
+	defer fileTicker.Stop()
+	lastOffset := logBuffer.GetOffset()
+
+	var entries []logbuf.LogEntry
+	for {
+		select {
+		case <-ws.Closed():
+			return
+		case <-fileTicker.C:
+			unitRunning := s.unitMgr.UnitRunning(unitName)
+			if !unitRunning {
+				return
+			}
+
+			entries, lastOffset = logBuffer.ReadSince(lastOffset)
+			for i := 0; i < len(entries); i++ {
+				channel := wsstream.StdoutChan
+				if entries[i].Source == logbuf.StderrLogSource {
+					channel = wsstream.StderrChan
+				}
+				err := ws.WriteMsg(channel, []byte(entries[i].Line))
+				if err != nil {
+					glog.Errorln("Error writing output to websocket", err)
+					return
+				}
+			}
+		}
+	}
+}
+
+func (s *Server) serveAttach(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return
+	}
+	defer ws.CloseAndCleanup()
+
+	var params api.AttachParams
+	err = getInitialParams(ws, &params)
+	if err != nil {
+		return
+	}
+
+	s.runAttach(ws, params)
 }
 
 func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
@@ -481,7 +521,9 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)
 	// streaming endpoints
 	s.mux.HandleFunc("/rest/v1/portforward/", s.servePortForward)
+	s.mux.HandleFunc("/rest/v1/attach/", s.serveAttach)
 	s.mux.HandleFunc("/rest/v1/exec/", s.serveExec)
+
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

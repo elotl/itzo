@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os/exec"
 	"strconv"
@@ -19,14 +18,6 @@ import (
 const (
 	wsTTYControlChan = 4
 )
-
-func writeWSError(ws *wsstream.WSReadWriter, format string, a ...interface{}) {
-	msg := fmt.Sprintf(format, a...)
-	err := ws.WriteMsg(wsstream.StderrChan, []byte(msg))
-	if err != nil {
-		glog.Errorln("Error writing error to websocket, reporting it here:", msg)
-	}
-}
 
 func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 	if len(params.Command) == 0 {

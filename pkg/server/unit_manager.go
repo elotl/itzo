@@ -14,6 +14,10 @@ import (
 	quote "github.com/kballard/go-shellquote"
 )
 
+const (
+	logBuffSize = 4096
+)
+
 func StartUnit(rootdir, name string, command []string, policy api.RestartPolicy) error {
 	// todo: should this be rootdir or basedir?
 	glog.Infof("Starting %v for %s in basedir %s", command, name, rootdir)
@@ -148,15 +152,15 @@ func (um *UnitManager) StartUnit(name string, command, args, appenv []string, po
 
 	lp := unit.LogPipe
 	// XXX: Make number of log lines retained configurable.
-	um.logbuf.Set(name, logbuf.NewLogBuffer(1000))
+	um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		um.logbuf.Get(name).Write(fmt.Sprintf("[%s stdout]", name), line)
+		um.logbuf.Get(name).Write(logbuf.StdoutLogSource, line)
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		um.logbuf.Get(name).Write(fmt.Sprintf("[%s stderr]", name), line)
+		um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
 	})
 	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-		um.logbuf.Get(name).Write(fmt.Sprintf("[%s helper]", name), line)
+		um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
 	})
 
 	if err = cmd.Start(); err != nil {
