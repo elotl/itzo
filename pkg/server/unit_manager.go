@@ -39,35 +39,7 @@ func NewUnitManager(rootDir string) *UnitManager {
 	}
 }
 
-// Unit name might be an emptystring so figure out what unit the user
-// might want.
-func (um *UnitManager) CleanUnitName(unit string) (string, error) {
-	if unit == "" {
-		if um.logbuf.Len() == 0 {
-			return "", fmt.Errorf("Unable to get logs, no units found")
-		}
-		if um.logbuf.Len() == 1 {
-			for _, node := range um.logbuf.Items() {
-				return node.Key, nil
-			}
-		} else if um.runningUnits.Len() == 1 {
-			// we might have multiple logbuffers but only one running
-			// unit so get the name of the unit from the list of running
-			// units
-			for _, node := range um.runningUnits.Items() {
-				return node.Key, nil
-			}
-		}
-		return "", fmt.Errorf("Multiple unit logfiles found, please specify a unit name")
-	}
-	return unit, nil
-}
-
 func (um *UnitManager) GetLogBuffer(unit string) (*logbuf.LogBuffer, error) {
-	unit, err := um.CleanUnitName(unit)
-	if err != nil {
-		return nil, err
-	}
 	lb, exists := um.logbuf.GetOK(unit)
 	if !exists || lb == nil {
 		return nil, fmt.Errorf("Could not find logs for unit named %s", unit)
@@ -75,10 +47,17 @@ func (um *UnitManager) GetLogBuffer(unit string) (*logbuf.LogBuffer, error) {
 	return lb, nil
 }
 
+func (um *UnitManager) GetPid(unitName string) (int, bool) {
+	proc, exists := um.runningUnits.GetOK(unitName)
+	if !exists {
+		return 0, false
+	}
+	return proc.Pid, true
+}
+
 func (um *UnitManager) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
-	unit, err := um.CleanUnitName(unit)
-	if err != nil {
-		return nil, err
+	if unit == "" {
+		return nil, fmt.Errorf("Could not find unit")
 	}
 	lb, exists := um.logbuf.GetOK(unit)
 	if !exists {

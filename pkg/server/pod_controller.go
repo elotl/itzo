@@ -77,6 +77,24 @@ func (pc *PodController) Start() {
 	go pc.runUpdateLoop()
 }
 
+func (pc *PodController) GetUnitName(unitName string) (string, error) {
+	if unitName == "" {
+		if len(pc.podStatus.Units) > 0 {
+			return pc.podStatus.Units[0].Name, nil
+		} else {
+			return "", fmt.Errorf("No running units on pod")
+		}
+	}
+	return unitName, nil
+
+	// for i := range pc.podStatus.Units {
+	// 	if unitName == pc.podStatus.Units[i].Name {
+	// 		return unitName, nil
+	// 	}
+	// }
+	// return "", fmt.Errorf("Could not find running unit named %s", unitName)
+}
+
 func (pc *PodController) UpdatePod(params *api.PodParameters) error {
 	// If something goes horribly wrong, don't block the rest client,
 	// just return an error for the update and kick the problem back

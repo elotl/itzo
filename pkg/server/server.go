@@ -181,8 +181,11 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		if follow != "" {
 			// Bug: if the unit gets closed or quits, we don't know
 			// about the closure
-			unitName, _ := s.unitMgr.CleanUnitName(unit)
-			logBuffer, err := s.unitMgr.GetLogBuffer(unit)
+			unitName, err := s.podController.GetUnitName(unit)
+			if err != nil {
+				badRequest(w, err.Error())
+			}
+			logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
 			if err != nil {
 				badRequest(w, err.Error())
 			}
@@ -210,7 +213,11 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		logs, err := s.unitMgr.ReadLogBuffer(unit, n)
+		unitName, err := s.podController.GetUnitName(unit)
+		if err != nil {
+			badRequest(w, err.Error())
+		}
+		logs, err := s.unitMgr.ReadLogBuffer(unitName, n)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
@@ -458,10 +465,6 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.runExec(ws, params)
-
-	// We do a bit of a dance to make sure that we don't leave
-	// anything running when we close the websocket prematurely
-
 }
 
 func (s *Server) getHandlers() {

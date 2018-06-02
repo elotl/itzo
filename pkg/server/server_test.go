@@ -115,6 +115,7 @@ func TestMain(m *testing.M) {
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
+		podController:  NewPodController("", nil, nil),
 	}
 	s.getHandlers()
 	ret := m.Run()
