@@ -199,8 +199,8 @@ type PodSpot struct {
 type PodPhase string
 
 const (
-	// PodCreating means that we're waiting for the pod to begin running.
-	PodCreating PodPhase = "Creating"
+	// PodWaiting means that we're waiting for the pod to begin running.
+	PodWaiting PodPhase = "Waiting"
 	// PodDispatching means that we have a node to put this pod on
 	// and we're in the process of starting the app on the node
 	PodDispatching PodPhase = "Dispatching"
