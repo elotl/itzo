@@ -31,7 +31,9 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		return
 	}
 
+	// todo: should we use exec.LookPath if the command has no slashes in it?
 	command := params.Command
+
 	// allow us to skip entering namespace for testing
 	if !params.SkipNSEnter {
 		pid, exists := s.unitMgr.GetPid(unitName)
@@ -49,8 +51,8 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		}
 		command = append(nsenterCmd, command...)
 	}
-	cmd := exec.Command(command[0], command[1:]...)
 
+	cmd := exec.Command(command[0], command[1:]...)
 	if params.TTY {
 		err = s.runExecTTY(ws, cmd, params.Interactive)
 	} else {
