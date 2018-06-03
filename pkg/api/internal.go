@@ -27,6 +27,7 @@ type ExecParams struct {
 	Command     []string
 	Interactive bool
 	TTY         bool
+	SkipNSEnter bool
 }
 
 type AttachParams struct {

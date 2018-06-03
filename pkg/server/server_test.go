@@ -112,10 +112,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("Error creating temporary directory")
 	}
+	defer os.RemoveAll(tmpdir)
+
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
-		podController:  NewPodController("", nil, nil),
+		podController:  NewPodController(tmpdir, nil, nil),
 	}
 	s.getHandlers()
 	ret := m.Run()
@@ -575,8 +577,17 @@ func TestGetLogs(t *testing.T) {
 	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
 }
 
-func runServer() (*Server, int) {
-	s := &Server{}
+func runServer() (*Server, func(), int) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	if err != nil {
+		panic("Error creating temporary directory")
+	}
+	closer := func() { os.RemoveAll(tmpdir) }
+	s := &Server{
+		installRootdir: tmpdir,
+		unitMgr:        NewUnitManager(tmpdir),
+		podController:  NewPodController(tmpdir, nil, nil),
+	}
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: ":0", Handler: s}
 	listener, err := net.Listen("tcp", ":0")
@@ -585,7 +596,7 @@ func runServer() (*Server, int) {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	go s.httpServer.Serve(listener)
-	return s, port
+	return s, closer, port
 }
 
 func createWebsocketClient(port, path string) (*wsstream.WSStream, error) {
@@ -603,7 +614,8 @@ func TestPortForward(t *testing.T) {
 	// We start up our server, start a websocket port forwarwd request
 	// to the same server port and then forward, throught the
 	// websocket, a request to ping we expect pong as the output
-	ss, port := runServer()
+	ss, closer, port := runServer()
+	defer closer()
 	portstr := fmt.Sprintf("%d", port)
 	time.Sleep(1 * time.Second)
 	defer ss.httpServer.Close()
@@ -631,4 +643,44 @@ func TestPortForward(t *testing.T) {
 	case <-time.After(timeout):
 		assert.FailNow(t, "reading timed out")
 	}
+}
+
+func TestExec(t *testing.T) {
+	// We start up our server, start an exec request
+	ss, closer, port := runServer()
+	defer closer()
+	portstr := fmt.Sprintf("%d", port)
+	time.Sleep(1 * time.Second)
+	defer ss.httpServer.Close()
+
+	unitName := "testunit"
+	ss.podController.podStatus.Units = []api.Unit{{
+		Name: unitName,
+	}}
+
+	ws, err := createWebsocketClient(portstr, "/rest/v1/exec/")
+	assert.NoError(t, err)
+
+	params := api.ExecParams{
+		Command:     []string{"/bin/cat", "/proc/version"},
+		Interactive: false,
+		TTY:         false,
+		SkipNSEnter: true,
+	}
+	paramsb, err := json.Marshal(params)
+	assert.NoError(t, err)
+	err = ws.WriteRaw(paramsb)
+	assert.NoError(t, err)
+	out := <-ws.ReadMsg()
+
+	c, msg, err := wsstream.UnpackMessage(out)
+	assert.NoError(t, err)
+	assert.True(t, strings.Contains(string(msg), "Linux"))
+	assert.Equal(t, 1, c)
+
+	exit := <-ws.ReadMsg()
+	c, msg, err = wsstream.UnpackMessage(exit)
+	assert.NoError(t, err)
+	assert.Equal(t, "0", string(msg))
+	assert.Equal(t, 3, c)
 }

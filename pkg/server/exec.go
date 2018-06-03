@@ -31,22 +31,25 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		return
 	}
 
-	pid, exists := s.unitMgr.GetPid(unitName)
-	if !exists {
-		writeWSError(ws, "Could not find process for unit named %s", unitName)
-		return
+	command := params.Command
+	// allow us to skip entering namespace for testing
+	if !params.SkipNSEnter {
+		pid, exists := s.unitMgr.GetPid(unitName)
+		if !exists {
+			writeWSError(ws, "Could not find process for unit named %s", unitName)
+			return
+		}
+		nsenterCmd := []string{
+			"/usr/bin/nsenter",
+			"-t",
+			strconv.Itoa(pid),
+			"-p",
+			"-u",
+			"-m",
+		}
+		command = append(nsenterCmd, command...)
 	}
-
-	nsenterCmd := []string{
-		"/usr/bin/nsenter",
-		"-t",
-		strconv.Itoa(pid),
-		"-p",
-		"-u",
-		"-m",
-	}
-	nsenterCmd = append(nsenterCmd, params.Command...)
-	cmd := exec.Command(nsenterCmd[0], nsenterCmd[1:]...)
+	cmd := exec.Command(command[0], command[1:]...)
 
 	if params.TTY {
 		err = s.runExecTTY(ws, cmd, params.Interactive)
@@ -160,6 +163,8 @@ func waitForFinished(ws *wsstream.WSReadWriter, cmd *exec.Cmd) {
 				_ = ws.WriteMsg(wsstream.ExitCodeChan, b)
 			}
 
+		} else {
+			_ = ws.WriteMsg(wsstream.ExitCodeChan, []byte("0"))
 		}
 		// if we don't wait here the websocket closes before we can
 		// flush the final output
