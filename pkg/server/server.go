@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -461,7 +462,33 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 
 	// We do a bit of a dance to make sure that we don't leave
 	// anything running when we close the websocket prematurely
+}
 
+func (s *Server) runcmdHandler(w http.ResponseWriter, r *http.Request) {
+	// get the params out, deserialize args
+	// run the command, capture the output
+	// return the error code and the output
+	// if we got an error running, return a 500 error
+	var params api.RunCmdParams
+	err := json.NewDecoder(r.Body).Decode(&params)
+	if err != nil {
+		badRequest(w, fmt.Sprintf("Error decoding run command request: %v", err))
+		return
+	}
+	if len(params.Command) == 0 {
+		badRequest(w, fmt.Sprintf("Empty command argument"))
+		return
+
+	}
+	cmd := exec.Command(params.Command[0], params.Command[1:]...)
+	output, err := cmd.Output()
+	if err != nil {
+		serverError(w, fmt.Errorf("Error running command: %v", err))
+		return
+	}
+	// Todo: do we need to base64 encode the output from the command?
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, string(output))
 }
 
 func (s *Server) getHandlers() {
@@ -469,6 +496,7 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/deploy/", s.deployHandler)
 	s.mux.HandleFunc("/rest/v1/logs/", s.logsHandler)
 	s.mux.HandleFunc("/rest/v1/file/", s.fileHandler)
+	s.mux.HandleFunc("/rest/v1/runcmd/", s.runcmdHandler)
 	// The updatepod endpoint is used to send in a full PodParameters struct.
 	s.mux.HandleFunc("/rest/v1/updatepod", s.updateHandler)
 	// This endpoint gives back the status of the whole pod.
@@ -476,6 +504,7 @@ func (s *Server) getHandlers() {
 	s.mux.HandleFunc("/rest/v1/resizevolume", s.resizevolumeHandler)
 	s.mux.HandleFunc("/rest/v1/ping", s.pingHandler)
 	s.mux.HandleFunc("/rest/v1/version", s.versionHandler)
+
 	// streaming endpoints
 	s.mux.HandleFunc("/rest/v1/portforward/", s.servePortForward)
 	s.mux.HandleFunc("/rest/v1/exec/", s.serveExec)

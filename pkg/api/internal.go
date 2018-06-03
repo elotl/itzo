@@ -28,3 +28,7 @@ type ExecParams struct {
 	Interactive bool
 	TTY         bool
 }
+
+type RunCmdParams struct {
+	Command []string
+}
