@@ -603,9 +603,6 @@ func TestPortForward(t *testing.T) {
 	// We start up our server, start a websocket port forwarwd request
 	// to the same server port and then forward, throught the
 	// websocket, a request to ping we expect pong as the output
-	//
-	// I could do work to find a random open port but i'm going to
-	// not do that now and just go with 6420...
 	ss, port := runServer()
 	portstr := fmt.Sprintf("%d", port)
 	time.Sleep(1 * time.Second)
