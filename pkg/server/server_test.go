@@ -634,3 +634,22 @@ func TestPortForward(t *testing.T) {
 		assert.FailNow(t, "reading timed out")
 	}
 }
+
+func TestRunCmd(t *testing.T) {
+	cmdParams := api.RunCmdParams{
+		Command: []string{"/bin/cat", "/proc/cpuinfo"},
+	}
+	b, err := json.Marshal(cmdParams)
+	assert.NoError(t, err)
+	buf := bytes.NewBuffer(b)
+	rr := sendRequest(t, "GET", "/rest/v1/runcmd/", buf)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, strings.Contains(rr.Body.String(), "processor"))
+
+	cmdParams.Command = []string{"/this/command/isnt/found"}
+	b, err = json.Marshal(cmdParams)
+	assert.NoError(t, err)
+	buf = bytes.NewBuffer(b)
+	rr = sendRequest(t, "GET", "/rest/v1/runcmd/", buf)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+}
