@@ -16,7 +16,7 @@ func ParseImageSpec(image string) (string, string, error) {
 	parts := strings.Split(image, "/")
 	// ECS: ACCOUNT.dkr.ecr.REGION.amazonaws.com/imagename:tag
 	if len(parts) == 1 {
-		// all good
+		imageRepo = strings.Join([]string{"library", parts[0]}, "/")
 	} else if len(parts) == 2 && strings.HasSuffix(parts[0], "amazonaws.com") {
 		server = parts[0]
 		imageRepo = strings.Join(parts[1:], "/")
