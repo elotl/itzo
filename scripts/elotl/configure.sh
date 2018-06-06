@@ -125,6 +125,17 @@ step 'Add tosi'
 wget -O /usr/local/bin/tosi http://tosi-download.s3.amazonaws.com/tosi
 chmod 755 /usr/local/bin/tosi
 
+step 'Add aws-ena module'
+wget http://itzo-packages.s3.amazonaws.com/aws-ena-module.tar.gz
+tar xvzf aws-ena-module.tar.gz
+for kernel in /lib/modules/*; do
+    mkdir -p "${kernel}/misc"
+    cp ena.ko "${kernel}/misc/"
+    depmod -a "$(basename ${kernel})"
+done
+rm aws-ena-module.tar.gz
+echo ena > /etc/modprobe.d/ena.conf
+
 #
 # Note: the driver and libcuda client libraries need to be in sync, e.g. both
 # using the 387.26 interface.
