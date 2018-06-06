@@ -144,6 +144,8 @@ type Unit struct {
 	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
 	// A list of ports that will be opened up for this unit.
 	Ports []ServicePort
+	// Working directory to change to before running the command for the unit.
+	WorkingDir string `json:"workingDir,omitempty"`
 }
 
 // VolumeMount specifies what volumes to attach to the unit and the path where

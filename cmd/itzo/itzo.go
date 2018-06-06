@@ -22,6 +22,7 @@ func main() {
 	var appunit = flag.String("unit", "", "Unit name")
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var apprestartpolicy = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Unit restart policy: always, never or onfailure")
+	var workingdir = flag.String("workingdir", "", "Working directory for unit")
 	// todo, ability to log to a file instead of stdout
 
 	flag.Parse()
@@ -36,7 +37,7 @@ func main() {
 			glog.Fatalf("Invalid command '%s' for unit %s: %v",
 				*appcmdline, *appunit, err)
 		}
-		err = server.StartUnit(*rootdir, *appunit, cmdargs, policy)
+		err = server.StartUnit(*rootdir, *appunit, *workingdir, cmdargs, policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s for unit %s: %v",
 				*appcmdline, *appunit, err)

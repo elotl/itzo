@@ -19,6 +19,44 @@ const (
 	MAX_BACKOFF_TIME = 5 * time.Minute
 )
 
+// This is part of the config of docker images.
+type HealthConfig struct {
+	Test        []string      `json:",omitempty"`
+	Interval    time.Duration `json:",omitempty"`
+	Timeout     time.Duration `json:",omitempty"`
+	StartPeriod time.Duration `json:",omitempty"`
+	Retries     int           `json:",omitempty"`
+}
+
+// This is the main config struct for docker images.
+type Config struct {
+	Hostname        string
+	Domainname      string
+	User            string
+	AttachStdin     bool
+	AttachStdout    bool
+	AttachStderr    bool
+	ExposedPorts    map[string]struct{} `json:",omitempty"`
+	Tty             bool
+	OpenStdin       bool
+	StdinOnce       bool
+	Env             []string
+	Cmd             []string
+	Healthcheck     *HealthConfig `json:",omitempty"`
+	ArgsEscaped     bool          `json:",omitempty"`
+	Image           string
+	Volumes         map[string]struct{}
+	WorkingDir      string
+	Entrypoint      []string
+	NetworkDisabled bool   `json:",omitempty"`
+	MacAddress      string `json:",omitempty"`
+	OnBuild         []string
+	Labels          map[string]string
+	StopSignal      string   `json:",omitempty"`
+	StopTimeout     *int     `json:",omitempty"`
+	Shell           []string `json:",omitempty"`
+}
+
 func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 	return &api.UnitStatus{
 		Name: name,
@@ -38,8 +76,7 @@ type Unit struct {
 	Name       string
 	Image      string
 	statusPath string
-	entryPoint []string
-	cmd        []string
+	config     *Config
 }
 
 func IsUnitExist(rootdir, name string) bool {
@@ -72,8 +109,7 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		Name:       name,
 		statusPath: filepath.Join(directory, "status"),
 	}
-	u.entryPoint = u.getEntryPoint()
-	u.cmd = u.getCmd()
+	u.config, err = u.getConfig()
 	// We need to get the image, that's saved in the status
 	s, err := u.GetStatus()
 	if err != nil {
@@ -84,33 +120,23 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 	return &u, nil
 }
 
-func (u *Unit) getMetadataFromFile(filename string, i interface{}) interface{} {
-	path := filepath.Join(u.Directory, filename)
+func (u *Unit) getConfig() (*Config, error) {
+	path := filepath.Join(u.Directory, "config")
 	buf, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error reading metadata %s for %s\n", filename, u.Name)
+			glog.Errorf("Error reading image config for %s\n", u.Name)
 		}
-		return i
+		return nil, err
 	}
-	err = json.Unmarshal(buf, i)
+	var config Config
+	err = json.Unmarshal(buf, &config)
 	if err != nil {
-		glog.Errorf("Error deserializing metadata '%v' for %s: %v\n",
+		glog.Errorf("Error deserializing config '%v' for %s: %v\n",
 			buf, u.Name, err)
+		return nil, err
 	}
-	return i
-}
-
-func (u *Unit) getEntryPoint() []string {
-	var ep []string
-	result := u.getMetadataFromFile("entrypoint", &ep)
-	return *result.(*[]string)
-}
-
-func (u *Unit) getCmd() []string {
-	var cmd []string
-	result := u.getMetadataFromFile("cmd", &cmd)
-	return *result.(*[]string)
+	return &config, nil
 }
 
 func (u *Unit) CreateCommand(command []string, args []string) []string {
@@ -119,15 +145,23 @@ func (u *Unit) CreateCommand(command []string, args []string) []string {
 	// for more information on the possible interactions between k8s
 	// command/args and docker entrypoint/cmd.
 	if len(command) == 0 {
-		command = u.entryPoint
+		command = u.config.Entrypoint
 		if len(args) == 0 {
-			args = u.cmd
+			args = u.config.Cmd
 		}
 	}
-	if len(command) == 0 {
+	if len(command) == 0 && len(args) == 0 {
 		glog.Warningf("No command or entrypoint for unit %s", u.Name)
 	}
 	return append(command, args...)
+}
+
+func (u *Unit) GetEnv() []string {
+	return u.config.Env
+}
+
+func (u *Unit) GetWorkingDir() string {
+	return u.config.WorkingDir
 }
 
 func (u *Unit) SetImage(image string) error {
@@ -185,10 +219,8 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 		image,
 		"-extractto",
 		u.GetRootfs(),
-		"-saveentrypoint",
-		filepath.Join(u.Directory, "entrypoint"),
-		"-savecmd",
-		filepath.Join(u.Directory, "cmd"),
+		"-saveconfig",
+		filepath.Join(u.Directory, "config"),
 	}
 	if username != "" {
 		args = append(args, []string{"-username", username}...)
@@ -343,7 +375,7 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 	}
 }
 
-func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter mount.Mounter) error {
+func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",
@@ -435,6 +467,15 @@ func (u *Unit) Run(command, env []string, policy api.RestartPolicy, mounter moun
 			return err
 		}
 		u.statusPath = "/status"
+	}
+
+	if workingdir != "" {
+		err = os.Chdir(workingdir)
+		if err != nil {
+			glog.Errorf("Failed to change to working directory %s: %v",
+				workingdir, err)
+			return err
+		}
 	}
 
 	err = u.runUnitLoop(command, env, unitout, uniterr, policy)
