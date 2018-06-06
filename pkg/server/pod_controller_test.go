@@ -269,13 +269,13 @@ func NewImagePullMock() *ImagePullMock {
 }
 
 type UnitMock struct {
-	Start  func(string, []string, []string, []string, api.RestartPolicy) error
+	Start  func(string, string, []string, []string, []string, api.RestartPolicy) error
 	Stop   func(string) error
 	Remove func(string) error
 }
 
-func (u *UnitMock) StartUnit(name string, command, args, env []string, rp api.RestartPolicy) error {
-	return u.Start(name, command, args, env, rp)
+func (u *UnitMock) StartUnit(name, workingdir string, command, args, env []string, rp api.RestartPolicy) error {
+	return u.Start(name, workingdir, command, args, env, rp)
 }
 
 func (u *UnitMock) StopUnit(name string) error {
@@ -288,7 +288,7 @@ func (u *UnitMock) RemoveUnit(name string) error {
 
 func NewUnitMock() *UnitMock {
 	return &UnitMock{
-		Start: func(name string, command, args, env []string, rp api.RestartPolicy) error {
+		Start: func(name, workingdir string, command, args, env []string, rp api.RestartPolicy) error {
 			return nil
 		},
 		Stop: func(name string) error {
@@ -428,7 +428,7 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			mod: func(pc *PodController) {
 				m := pc.unitMgr.(*UnitMock)
-				m.Start = func(name string, command, args, env []string, rp api.RestartPolicy) error {
+				m.Start = func(name, workingdir string, command, args, env []string, rp api.RestartPolicy) error {
 					return fmt.Errorf("unit add failed")
 				}
 			},
