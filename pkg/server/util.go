@@ -154,11 +154,12 @@ func downloadTosi(tosipath string) error {
 }
 
 func runTosi(tp string, args ...string) error {
+	glog.Infof("Running tosi %s with args %v", tp, args)
 	n := 0
 	start := time.Now()
 	backoff := 1 * time.Second
 	var err error
-	for n < TOSI_MAX_RETRIES {
+	for {
 		n++
 		var stderr bytes.Buffer
 		cmd := exec.Command(tp, args...)
@@ -173,6 +174,9 @@ func runTosi(tp string, args ...string) error {
 			"Error getting image after %d attempt(s): %+v, output:\n%s",
 			n, err, stderr.String())
 		glog.Errorf("Image download problem: %v", err)
+		if n >= TOSI_MAX_RETRIES {
+			break
+		}
 		glog.Infof("Retrying image download in %v", backoff)
 		time.Sleep(backoff)
 		backoff = backoff * 2
