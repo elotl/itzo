@@ -226,6 +226,24 @@ cat /etc/init.d/nvidia
 step 'Load iptables modules at boot'
 echo 'iptable_nat' >> /etc/modules
 
+step 'automatically resize root partition'
+cat > /etc/init.d/resizeroot <<-EOF
+#!/sbin/openrc-run
+
+name=\$RC_SVCNAME
+
+depend() {
+        need localmount
+}
+
+start() {
+  rootdev=$(mount -v | fgrep 'on / ' | cut -f 1 -d' ')
+  /usr/sbin/resize2fs $rootdev
+}
+EOF
+chmod 755 /etc/init.d/resizeroot
+cat /etc/init.d/resizeroot
+
 step 'Enable services'
 rc-update add acpid default
 rc-update add chronyd default
@@ -233,6 +251,7 @@ rc-update add crond default
 rc-update add net.eth0 default
 rc-update add sshd default
 rc-update add itzo default
+rc-update add resizeroot default
 rc-update add nvidia default
 rc-update add net.lo boot
 rc-update add termencoding boot
