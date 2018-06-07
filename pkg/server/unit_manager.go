@@ -15,12 +15,13 @@ import (
 )
 
 func StartUnit(rootdir, name, workingdir string, command []string, policy api.RestartPolicy) error {
-	glog.Infof("Starting %v for %s in basedir %s", command, name, rootdir)
 	unit, err := OpenUnit(rootdir, name)
 	if err != nil {
 		return err
 	}
 	mounter := mount.NewOSMounter(rootdir)
+	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",
+		command, name, rootdir, os.Environ(), workingdir, policy)
 	return unit.Run(command, os.Environ(), workingdir, policy, mounter)
 }
 
@@ -132,8 +133,7 @@ func (um *UnitManager) RemoveUnit(name string) error {
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
 func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv []string, policy api.RestartPolicy) error {
-	glog.Infof("Starting unit %s (wd %s command %v %v env %v policy %v",
-		name, workingdir, command, args, appenv, policy)
+	glog.Infof("Starting unit %s", name)
 
 	unit, err := OpenUnit(um.rootDir, name)
 	if err != nil {
@@ -159,7 +159,12 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 		workingdir,
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
-	cmd.Env = append(unit.GetEnv(), appenv...)
+
+	env := append(unit.GetEnv(), appenv...)
+	cmd.Env = env
+
+	glog.Infof("Unit %s workingdir %s command %v %v env %v policy %v",
+		name, workingdir, command, args, env, policy)
 
 	// Check if a chroot exists for the unit. If it does, a package has been
 	// deployed there with a complete root filesystem, and we need to run our
