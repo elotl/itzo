@@ -237,8 +237,8 @@ depend() {
 }
 
 start() {
-  rootdev=$(mount -v | fgrep 'on / ' | cut -f 1 -d' ')
-  /usr/sbin/resize2fs $rootdev
+  rootdev=\$(mount -v | fgrep 'on / ' | cut -f 1 -d' ')
+  /usr/sbin/resize2fs \$rootdev
 }
 EOF
 chmod 755 /etc/init.d/resizeroot
