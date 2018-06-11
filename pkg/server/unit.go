@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -72,11 +73,13 @@ func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 
 type Unit struct {
 	*LogPipe
-	Directory  string
-	Name       string
-	Image      string
-	statusPath string
-	config     *Config
+	Directory   string
+	Name        string
+	Image       string
+	statusPath  string
+	config      *Config
+	stdinPath   string
+	stdinCloser chan struct{}
 }
 
 func IsUnitExist(rootdir, name string) bool {
@@ -109,6 +112,11 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		Name:       name,
 		statusPath: filepath.Join(directory, "status"),
 	}
+	err = u.createStdin()
+	if err != nil {
+		lp.Remove()
+		return nil, err
+	}
 	u.config, err = u.getConfig()
 	// We need to get the image, that's saved in the status
 	s, err := u.GetStatus()
@@ -118,6 +126,59 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		u.Image = s.Image
 	}
 	return &u, nil
+}
+
+func (u *Unit) createStdin() error {
+	pipepath := filepath.Join(u.Directory, "unit-stdin")
+	err := syscall.Mkfifo(pipepath, 0600)
+	if err != nil && !os.IsExist(err) {
+		glog.Errorf("Error creating stdin pipe %s: %v", pipepath, err)
+		return err
+	}
+	u.stdinPath = pipepath
+	u.stdinCloser = make(chan struct{})
+	return nil
+}
+
+// This is only used internally to pass in an io.Reader to the process as its
+// stdin. We also start a writer so that opening the pipe for reading won't
+// block. This writer will be stopped via closeStdin().
+func (u *Unit) openStdinReader() (io.ReadCloser, error) {
+	go func() {
+		wfp, err := os.OpenFile(u.stdinPath, os.O_WRONLY, 0200)
+		if err != nil {
+			glog.Errorf("Error opening stdin pipe %s: %v", u.stdinPath, err)
+		} else {
+			defer wfp.Close()
+		}
+		select {
+		case _ = <-u.stdinCloser:
+			break
+		}
+	}()
+	fp, err := os.OpenFile(u.stdinPath, os.O_RDONLY, 0400)
+	if err != nil {
+		glog.Errorf("Error opening stdin pipe %s: %v", u.stdinPath, err)
+		return nil, err
+	}
+	return fp, nil
+}
+
+func (u *Unit) OpenStdinWriter() (io.WriteCloser, error) {
+	fp, err := os.OpenFile(u.stdinPath, os.O_WRONLY, 0200)
+	if err != nil {
+		glog.Errorf("Error opening stdin pipe %s: %v", u.stdinPath, err)
+		return nil, err
+	}
+	return fp, nil
+}
+
+func (u *Unit) closeStdin() {
+	select {
+	case u.stdinCloser <- struct{}{}:
+	default:
+		glog.Warningf("Stdin for unit %s has already been closed", u.Name)
+	}
 }
 
 func (u *Unit) getConfig() (*Config, error) {
@@ -183,13 +244,10 @@ func (u *Unit) SetImage(image string) error {
 	return nil
 }
 
-func (u *Unit) Close() {
-	// No-op for now.
-}
-
 func (u *Unit) Destroy() error {
 	// You'll need to kill the child process before.
 	u.LogPipe.Remove()
+	u.closeStdin()
 	return os.RemoveAll(u.Directory)
 }
 
@@ -288,7 +346,7 @@ func maybeBackOff(err error, command []string, backoff *time.Duration) {
 	time.Sleep(*backoff)
 }
 
-func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, policy api.RestartPolicy) (err error) {
+func (u *Unit) runUnitLoop(command, env []string, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
 	backoff := 1 * time.Second
 	restarts := -1
 	for {
@@ -296,6 +354,7 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 		start := time.Now()
 		cmd := exec.Command(command[0], command[1:]...)
 		cmd.Env = env
+		cmd.Stdin = unitin
 		cmd.Stdout = unitout
 		cmd.Stderr = uniterr
 
@@ -410,6 +469,11 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 		return err
 	}
 	defer uniterr.Close()
+	unitin, err := u.openStdinReader()
+	if err != nil {
+		return err
+	}
+	defer unitin.Close()
 
 	if rootfs != "" {
 		rootfsEtcDir := filepath.Join(rootfs, "/etc")
@@ -477,8 +541,7 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 			return err
 		}
 	}
-
-	err = u.runUnitLoop(command, env, unitout, uniterr, policy)
+	err = u.runUnitLoop(command, env, unitin, unitout, uniterr, policy)
 
 	if rootfs != "" {
 		mounter.UnmountSpecial()
