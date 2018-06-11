@@ -442,10 +442,11 @@ func TestFullSyncErrors(t *testing.T) {
 			mountCtl:    NewMountMock(),
 			unitMgr:     NewUnitMock(),
 			imagePuller: NewImagePullMock(),
+			syncErrors:  make(map[string]api.UnitStatus),
 		}
 		testCase.mod(&podCtl)
-		failures := podCtl.SyncPodUnits(&spec, &status, creds)
-		assert.Len(t, failures, testCase.numFailures)
+		podCtl.SyncPodUnits(&spec, &status, creds)
+		assert.Len(t, podCtl.syncErrors, testCase.numFailures)
 	}
 }
 
