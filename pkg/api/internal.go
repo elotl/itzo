@@ -36,3 +36,7 @@ type AttachParams struct {
 	Interactive bool
 	TTY         bool
 }
+
+type RunCmdParams struct {
+	Command []string
+}

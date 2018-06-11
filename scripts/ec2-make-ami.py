@@ -81,6 +81,7 @@ def make_ami_from_snapshot(name,snapshot_id):
                              Architecture='x86_64',
                              RootDeviceName='xvda',
                              VirtualizationType='hvm',
+                             EnaSupport=True,
                              BlockDeviceMappings=[
                                  {
                                      'DeviceName' : 'xvda',

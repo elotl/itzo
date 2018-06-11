@@ -26,7 +26,7 @@ type Mounter interface {
 // Too bad there isn't a word for a creator AND destroyer
 // Coulda gone with Shiva(er) but that's a bit imprecise...
 type UnitRunner interface {
-	StartUnit(string, []string, []string, []string, api.RestartPolicy) error
+	StartUnit(string, string, []string, []string, []string, api.RestartPolicy) error
 	StopUnit(string) error
 	RemoveUnit(string) error
 }
@@ -39,7 +39,9 @@ type PodController struct {
 	imagePuller Puller
 	podStatus   *api.PodSpec
 	updateChan  chan *api.PodParameters
-	syncErrors  map[string]api.UnitStatus
+	// We keep syncErrors in the map between syncs until a sync works
+	// and we clear or overwrite the error
+	syncErrors map[string]api.UnitStatus
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -68,7 +70,7 @@ func (pc *PodController) runUpdateLoop() {
 		podParams := <-pc.updateChan
 		spec := &podParams.Spec
 		MergeSecretsIntoSpec(podParams.Secrets, spec)
-		pc.syncErrors = pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
+		pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
 		pc.podStatus = spec
 	}
 }
@@ -259,7 +261,7 @@ func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.Strin
 	return addUnits, deleteUnits
 }
 
-func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) map[string]api.UnitStatus {
+func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
 	// By this point, spec must have had the secrets merged into the env vars
 	//fmt.Printf("%#v\n", *spec)
 	//fmt.Printf("%#v\n", *status)
@@ -312,13 +314,12 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	// collect the units that failed and pass them back to the caller
 	// so that we can update the unit's status and bubble up the data
 	// to milpa.
-	erroredUnits := make(map[string]api.UnitStatus)
 	for _, unit := range addUnits {
 		// pull image
 		server, imageRepo, err := util.ParseImageSpec(unit.Image)
 		if err != nil {
 			msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
-			erroredUnits[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 			continue
 		}
 		creds := allCreds[server]
@@ -326,7 +327,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		if err != nil {
 			msg := fmt.Sprintf("Error pulling image for unit %s: %v",
 				unit.Name, err)
-			erroredUnits[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 			continue
 		}
 
@@ -338,7 +339,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			if err != nil {
 				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
 					mount.Name, unit.Name, err)
-				erroredUnits[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+				pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 				mountFailure = true
 				break
 			}
@@ -349,29 +350,26 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 
 		glog.Infoln("Starting unit", unit.Name)
 		err = pc.unitMgr.StartUnit(
-			unit.Name, unit.Command, unit.Args, makeAppEnv(&unit), spec.RestartPolicy)
+			unit.Name,
+			unit.WorkingDir,
+			unit.Command,
+			unit.Args,
+			makeAppEnv(&unit),
+			spec.RestartPolicy)
 		if err != nil {
 			msg := fmt.Sprintf("Error starting unit %s: %v",
 				unit.Name, err)
-			erroredUnits[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 			continue
 		}
+		delete(pc.syncErrors, unit.Name)
 	}
-	return erroredUnits
 }
 
 func makeAppEnv(unit *api.Unit) []string {
 	e := []string{}
-	path := ""
 	for _, ev := range unit.Env {
 		e = append(e, fmt.Sprintf("%s=%s", ev.Name, ev.Value))
-		if ev.Name == "PATH" {
-			path = ev.Value
-		}
-	}
-	if path == "" {
-		// If PATH is not specified, set it to a reasonable default.
-		e = append(e, "PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin/:/usr/local/sbin")
 	}
 	return e
 }

@@ -91,19 +91,28 @@ type HostPath struct {
 // ResourceSpec is used to specify resource requirements for the node
 // that will run a pod.
 type ResourceSpec struct {
-	// The number of cpus on the instance, can be a float for
-	// burstable instances.
-	CPU float32 `json:"cpu"`
-	// Request an instance with burstable CPU. For AWS this is a T
-	// instance with a variable speed CPU.
-	Burstable bool `json:"burstable"`
+	// The number of cpus on the instance.  Can be a float to
+	// accomodate shared cpu instance types (e.g. 0.5)
+	CPU string `json:"cpu"`
 	// The amount of memory on the instance in gigabytes. For AWS this
 	// is in GB and for GCE this is in GiB.
 	Memory string `json:"memory"`
-	// Root volume size in GB. All units will share this disk.
-	VolumeSize int64 `json:"volumeSize"`
 	// Number of GPUs present on the instance.
-	GPU int `json:"gpu"`
+	GPU string `json:"gpu"`
+	// Root volume size in GB. All units will share this disk.
+	VolumeSize string `json:"volumeSize"`
+	// Request an instance with dedicated or non-shared CPU. For AWS
+	// T2 instances have a shared CPU, all other instance families
+	// have a dedicated CPU.  Set dedicatedCPU to true if you do
+	// not want Milpa to consider using a T2 instance for your pod.
+	DedicatedCPU bool `json:"dedicatedCPU"`
+	// Request unlimited CPU for T2 shared instance in AWS Only
+	// https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/t2-unlimited.html
+	SustainedCPU *bool `json:"sustainedCPU,omitempty"`
+	// If PrivateIPOnly is true, the pod will be launched on a node
+	// without a public IP address.  By default the pod will run on
+	// a node with a public IP address
+	PrivateIPOnly bool `json:"privateIPOnly"`
 }
 
 // Units run applications. A pod consists of one or more units.
@@ -135,6 +144,8 @@ type Unit struct {
 	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
 	// A list of ports that will be opened up for this unit.
 	Ports []ServicePort
+	// Working directory to change to before running the command for the unit.
+	WorkingDir string `json:"workingDir,omitempty"`
 }
 
 // VolumeMount specifies what volumes to attach to the unit and the path where

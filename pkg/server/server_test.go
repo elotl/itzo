@@ -101,11 +101,12 @@ func TestMain(m *testing.M) {
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var rootdir = flag.String("rootdir", DEFAULT_ROOTDIR, "Base dir for units")
 	var unit = flag.String("unit", "myunit", "Unit name")
+	var workingdir = flag.String("workingdir", "", "Working directory")
 	var rp = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Restart policy")
 	flag.Parse()
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*rp)
-		StartUnit(*rootdir, *unit, strings.Split(*appcmdline, " "), policy)
+		StartUnit(*rootdir, *unit, *workingdir, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
@@ -683,4 +684,23 @@ func TestExec(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "0", string(msg))
 	assert.Equal(t, 3, c)
+}
+
+func TestRunCmd(t *testing.T) {
+	cmdParams := api.RunCmdParams{
+		Command: []string{"/bin/cat", "/proc/cpuinfo"},
+	}
+	b, err := json.Marshal(cmdParams)
+	assert.NoError(t, err)
+	buf := bytes.NewBuffer(b)
+	rr := sendRequest(t, "GET", "/rest/v1/runcmd/", buf)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, strings.Contains(rr.Body.String(), "processor"))
+
+	cmdParams.Command = []string{"/this/command/isnt/found"}
+	b, err = json.Marshal(cmdParams)
+	assert.NoError(t, err)
+	buf = bytes.NewBuffer(b)
+	rr = sendRequest(t, "GET", "/rest/v1/runcmd/", buf)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 }

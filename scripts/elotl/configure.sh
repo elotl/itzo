@@ -125,6 +125,26 @@ step 'Add tosi'
 wget -O /usr/local/bin/tosi http://tosi-download.s3.amazonaws.com/tosi
 chmod 755 /usr/local/bin/tosi
 
+step 'Add aws-ena module'
+wget http://itzo-packages.s3.amazonaws.com/aws-ena-module.tar.gz
+tar xvzf aws-ena-module.tar.gz
+for kernel in /lib/modules/*; do
+    mkdir -p "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
+    cp ena.ko "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
+    depmod -a "$(basename ${kernel})"
+done
+rm aws-ena-module.tar.gz
+echo ena > /etc/modules-load.d/ena.conf
+
+# Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
+# Create ENA feature for mkinitfs
+# Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
+echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
+# Enable ENA and NVME features these don't hurt for any instance and are
+# hard requirements of the 5 series and i3 series of instances
+sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
+/sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
+
 #
 # Note: the driver and libcuda client libraries need to be in sync, e.g. both
 # using the 387.26 interface.
@@ -203,8 +223,26 @@ EOF
 chmod 755 /etc/init.d/nvidia
 cat /etc/init.d/nvidia
 
-Step 'Load iptables modules at boot'
+step 'Load iptables modules at boot'
 echo 'iptable_nat' >> /etc/modules
+
+step 'automatically resize root partition'
+cat > /etc/init.d/resizeroot <<-EOF
+#!/sbin/openrc-run
+
+name=\$RC_SVCNAME
+
+depend() {
+        need localmount
+}
+
+start() {
+  rootdev=\$(mount -v | fgrep 'on / ' | cut -f 1 -d' ')
+  /usr/sbin/resize2fs \$rootdev
+}
+EOF
+chmod 755 /etc/init.d/resizeroot
+cat /etc/init.d/resizeroot
 
 step 'Enable services'
 rc-update add acpid default
@@ -213,6 +251,7 @@ rc-update add crond default
 rc-update add net.eth0 default
 rc-update add sshd default
 rc-update add itzo default
+rc-update add resizeroot default
 rc-update add nvidia default
 rc-update add net.lo boot
 rc-update add termencoding boot
