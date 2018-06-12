@@ -38,7 +38,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 	if !params.SkipNSEnter {
 		pid, exists := s.unitMgr.GetPid(unitName)
 		if !exists {
-			writeWSError(ws, "Could not find process for unit named %s", unitName)
+			writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
 			return
 		}
 		nsenterCmd := []string{

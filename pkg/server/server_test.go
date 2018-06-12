@@ -709,7 +709,7 @@ func TestAttach(t *testing.T) {
 
 	ss.unitMgr.CaptureLogs(unitName, u)
 	// silly hack that allows us to get the output from the unit
-	ss.unitMgr.runningUnits.Set(unitName, nil)
+	ss.unitMgr.runningUnits.Set(unitName, &os.Process{})
 	unitin, err := u.openStdinReader()
 	assert.NoError(t, err)
 	lp := u.LogPipe

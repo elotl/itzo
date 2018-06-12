@@ -190,12 +190,12 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				badRequest(w, err.Error())
 			}
-			conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+			ws, err := s.doUpgrade(w, r)
 			if err != nil {
-				serverError(w, err)
-				return
+				return // Do upgrade will write errors to the client
 			}
-			s.RunLogTailer(conn, unitName, logBuffer)
+
+			s.RunLogTailer(ws, unitName, logBuffer)
 			return
 		}
 
@@ -240,13 +240,14 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *logbuf.LogBuffer) {
-	ws := wsstream.NewWSStream(conn)
-	fileTicker := time.NewTicker(logTailPeriod)
+func (s *Server) RunLogTailer(ws *wsstream.WSReadWriter, unitName string, logBuffer *logbuf.LogBuffer) {
 	defer ws.CloseAndCleanup()
+
+	//ws := wsstream.NewWSStream(conn)
+	fileTicker := time.NewTicker(logTailPeriod)
+	//defer ws.CloseAndCleanup()
 	defer fileTicker.Stop()
 	lastOffset := logBuffer.GetOffset()
-
 	var entries []logbuf.LogEntry
 	for {
 		select {
@@ -255,9 +256,9 @@ func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *
 		case <-fileTicker.C:
 			unitRunning := s.unitMgr.UnitRunning(unitName)
 			if !unitRunning {
+				writeWSError(ws, "Unit %s is not running\n", unitName)
 				return
 			}
-
 			entries, lastOffset = logBuffer.ReadSince(lastOffset)
 			if len(entries) > 0 {
 				msg := make([]byte, 0, 1024)
@@ -398,7 +399,7 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 
 	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
 	if err != nil {
-		writeWSError(ws, "error connecting to port %s: %v", params.Port, err)
+		writeWSError(ws, "error connecting to port %s: %v\n", params.Port, err)
 		return
 	}
 	defer clientConn.Close()
@@ -424,10 +425,14 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
-
 	unitName, err := s.podController.GetUnitName(params.UnitName)
 	if err != nil {
 		writeWSError(ws, err.Error())
+		return
+	}
+	_, exists := s.unitMgr.GetPid(unitName)
+	if !exists {
+		writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
 		return
 	}
 
@@ -440,12 +445,12 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 	if params.Interactive {
 		u, err := OpenUnit(s.installRootdir, unitName)
 		if err != nil {
-			msg := fmt.Sprintf("Could not open unit %s: %v", unitName, err)
+			msg := fmt.Sprintf("Could not open unit %s: %v\n", unitName, err)
 			writeWSError(ws, msg)
 		}
 		inWriter, err := u.OpenStdinWriter()
 		if err != nil {
-			msg := fmt.Sprintf("Could not open stdin for unit %s: %v", unitName, err)
+			msg := fmt.Sprintf("Could not open stdin for unit %s: %v\n", unitName, err)
 			writeWSError(ws, msg)
 		}
 		wsStdinReader := ws.CreateReader(wsstream.StdinChan)
@@ -465,6 +470,7 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 		case <-fileTicker.C:
 			unitRunning := s.unitMgr.UnitRunning(unitName)
 			if !unitRunning {
+				writeWSError(ws, "Unit %s is not running\n", unitName)
 				return
 			}
 
