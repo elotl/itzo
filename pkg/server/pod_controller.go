@@ -88,13 +88,6 @@ func (pc *PodController) GetUnitName(unitName string) (string, error) {
 		}
 	}
 	return unitName, nil
-
-	// for i := range pc.podStatus.Units {
-	// 	if unitName == pc.podStatus.Units[i].Name {
-	// 		return unitName, nil
-	// 	}
-	// }
-	// return "", fmt.Errorf("Could not find running unit named %s", unitName)
 }
 
 func (pc *PodController) UpdatePod(params *api.PodParameters) error {

@@ -36,7 +36,7 @@ func getInitialParams(ws *wsstream.WSReadWriter, params interface{}) error {
 	case paramsJson := <-ws.ReadMsg():
 		err := json.Unmarshal(paramsJson, params)
 		if err != nil {
-			msg := fmt.Sprintf("Error reading port forward params %v", err)
+			msg := fmt.Sprintf("Error reading parameters %v", err)
 			glog.Error(msg)
 			ws.WriteMsg(wsstream.StderrChan, []byte(msg))
 			return err

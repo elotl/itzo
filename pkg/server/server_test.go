@@ -686,6 +686,73 @@ func TestExec(t *testing.T) {
 	assert.Equal(t, 3, c)
 }
 
+// Todo: This test is a gosh darn tragedy...  It's closer to an
+// end-to-end test that makes use of the unitMg logs, pod controller,
+// unit and unit pipes as well as the server.  :( It's going to be a
+// change detector test If this gets in the way, comment it out,
+// assign an issue to bcox.
+func TestAttach(t *testing.T) {
+	unitName := "testunit"
+	ss, closer, port := runServer()
+	defer closer()
+	portstr := fmt.Sprintf("%d", port)
+	defer ss.httpServer.Close()
+	// need the pod controller in order to get the unit
+	ss.podController.podStatus.Units = []api.Unit{{
+		Name: unitName,
+	}}
+
+	// Open the unit
+	u, err := OpenUnit(ss.installRootdir, unitName)
+	assert.NoError(t, err)
+	defer u.Destroy()
+
+	ss.unitMgr.CaptureLogs(unitName, u)
+	// silly hack that allows us to get the output from the unit
+	ss.unitMgr.runningUnits.Set(unitName, nil)
+	unitin, err := u.openStdinReader()
+	assert.NoError(t, err)
+	lp := u.LogPipe
+	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT, false)
+	defer unitout.Close()
+
+	// start a unit that we can get stdin and stdout from
+	ch := make(chan error)
+	go func() {
+		err = u.runUnitLoop(
+			[]string{"/bin/cat", "-"},
+			[]string{}, unitin, unitout, nil, api.RestartPolicyNever)
+		ch <- err
+	}()
+
+	ws, err := createWebsocketClient(portstr, "/rest/v1/attach/")
+	assert.NoError(t, err)
+	defer ws.CloseAndCleanup()
+
+	params := api.AttachParams{
+		Interactive: true,
+	}
+	paramsb, err := json.Marshal(params)
+	assert.NoError(t, err)
+	err = ws.WriteRaw(paramsb)
+	assert.NoError(t, err)
+
+	msgString := []byte("Hello Milpa\n") // don't forget newline, we are line based
+	err = ws.WriteMsg(wsstream.StdinChan, msgString)
+	assert.NoError(t, err)
+
+	timeout := 3 * time.Second
+	select {
+	case f := <-ws.ReadMsg():
+		c, m, err := wsstream.UnpackMessage(f)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, c)
+		assert.Equal(t, msgString, m)
+	case <-time.After(timeout):
+		assert.FailNow(t, "reading timed out")
+	}
+}
+
 func TestRunCmd(t *testing.T) {
 	cmdParams := api.RunCmdParams{
 		Command: []string{"/bin/cat", "/proc/cpuinfo"},

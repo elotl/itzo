@@ -91,9 +91,6 @@ func TestStatus(t *testing.T) {
 }
 
 func TestUnitStdin(t *testing.T) {
-	tmpfile, err := ioutil.TempFile("", "itzo-test")
-	assert.NoError(t, err)
-	defer tmpfile.Close()
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpdir)

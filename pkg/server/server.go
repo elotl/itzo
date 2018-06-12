@@ -424,31 +424,39 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
+
 	unitName, err := s.podController.GetUnitName(params.UnitName)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return
 	}
+
 	logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return
 	}
 
-	// todo: open unit's stdin pipe
-
-	// wsStdinReader := ws.CreateReader(0)
-	// inPipe, err := cmd.StdinPipe()
-	// if err != nil {
-	// 	return err
-	// }
-	// go io.Copy(inPipe, wsStdinReader)
+	if params.Interactive {
+		u, err := OpenUnit(s.installRootdir, unitName)
+		if err != nil {
+			msg := fmt.Sprintf("Could not open unit %s: %v", unitName, err)
+			writeWSError(ws, msg)
+		}
+		inWriter, err := u.OpenStdinWriter()
+		if err != nil {
+			msg := fmt.Sprintf("Could not open stdin for unit %s: %v", unitName, err)
+			writeWSError(ws, msg)
+		}
+		wsStdinReader := ws.CreateReader(wsstream.StdinChan)
+		go ws.RunDispatch()
+		go io.Copy(inWriter, wsStdinReader)
+	}
 
 	// copy our stdout and stderr (from logbuffer) to the websocket
 	fileTicker := time.NewTicker(logTailPeriod)
 	defer fileTicker.Stop()
 	lastOffset := logBuffer.GetOffset()
-
 	var entries []logbuf.LogEntry
 	for {
 		select {

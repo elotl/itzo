@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -77,7 +78,9 @@ func (l *LogPipe) readFromPipe(name string, callback func(string)) {
 		line, err := r.ReadString('\n')
 		if err != nil {
 			// Probably the helper exited, thus we got an EOF.
-			glog.Errorf("Error reading from pipe %v: %v", pipepath, err)
+			if err != io.EOF {
+				glog.Errorf("Error reading from pipe %v: %v", pipepath, err)
+			}
 			break
 		}
 		callback(line)

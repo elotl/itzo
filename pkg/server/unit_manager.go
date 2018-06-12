@@ -163,22 +163,23 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 		}
 	}
 
-	lp := unit.LogPipe
-	// XXX: Make number of log lines retained configurable.
-	um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
-	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.StdoutLogSource, line)
-	})
-	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
-	})
-	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
-	})
+	um.CaptureLogs(name, unit)
+
+	// // XXX: Make number of log lines retained configurable.
+	// um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
+	// lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
+	// 	um.logbuf.Get(name).Write(logbuf.StdoutLogSource, line)
+	// })
+	// lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
+	// 	um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
+	// })
+	// lp.StartReader(PIPE_HELPER_OUT, func(line string) {
+	// 	um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
+	// })
 
 	if err = cmd.Start(); err != nil {
 		glog.Errorf("Failed to start %+v: %v", cmd, err)
-		lp.Remove()
+		unit.LogPipe.Remove()
 		return err
 	}
 	um.runningUnits.Set(name, cmd.Process)
@@ -190,7 +191,22 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 		} else {
 			glog.Errorf("Unit %v (helper pid %d) exited with error %v", command, pid, err)
 		}
-		lp.Remove()
+		unit.LogPipe.Remove()
 	}()
 	return nil
+}
+
+func (um *UnitManager) CaptureLogs(name string, unit *Unit) {
+	// XXX: Make number of log lines retained configurable.
+	lp := unit.LogPipe
+	um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
+	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
+		um.logbuf.Get(name).Write(logbuf.StdoutLogSource, line)
+	})
+	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
+		um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
+	})
+	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
+		um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
+	})
 }
