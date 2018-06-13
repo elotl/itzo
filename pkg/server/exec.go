@@ -116,33 +116,33 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 		go func() {
 			io.Copy(tty, wsStdinReader)
 		}()
-
-		// handle resize terminal messages
-		termChanges := ws.CreateReader(wsTTYControlChan)
-		go func() {
-			for {
-				buf := make([]byte, 32*1024)
-				n, err := termChanges.Read(buf)
-				if err != nil {
-					if err != io.EOF {
-						glog.Errorf("Error reading terminal changes")
-					}
-					return
-				}
-				var s pty.Winsize
-				err = json.Unmarshal(buf[0:n], &s)
-				if err != nil {
-					glog.Warning("error unmarshalling pty resize: %s", err)
-					// should we send these errors back on stderr?
-					return
-				}
-				if err := pty.Setsize(tty, &s); err != nil {
-					glog.Warning("error resizing pty: %s", err)
-					return
-				}
-			}
-		}()
 	}
+
+	// handle resize terminal messages
+	termChanges := ws.CreateReader(wsTTYControlChan)
+	go func() {
+		for {
+			buf := make([]byte, 32*1024)
+			n, err := termChanges.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					glog.Errorf("Error reading terminal changes")
+				}
+				return
+			}
+			var s pty.Winsize
+			err = json.Unmarshal(buf[0:n], &s)
+			if err != nil {
+				glog.Warning("error unmarshalling pty resize: %s", err)
+				// should we send these errors back on stderr?
+				return
+			}
+			if err := pty.Setsize(tty, &s); err != nil {
+				glog.Warning("error resizing pty: %s", err)
+				return
+			}
+		}
+	}()
 
 	wsStdoutWriter := ws.CreateWriter(1)
 	go func() {

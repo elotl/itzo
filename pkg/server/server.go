@@ -190,12 +190,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				badRequest(w, err.Error())
 			}
-			ws, err := s.doUpgrade(w, r)
-			if err != nil {
-				return // Do upgrade will write errors to the client
-			}
-
-			s.RunLogTailer(ws, unitName, logBuffer)
+			s.RunLogTailer(w, r, unitName, logBuffer)
 			return
 		}
 
@@ -240,12 +235,14 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) RunLogTailer(ws *wsstream.WSReadWriter, unitName string, logBuffer *logbuf.LogBuffer) {
+func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName string, logBuffer *logbuf.LogBuffer) {
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return // Do upgrade will write errors to the client
+	}
 	defer ws.CloseAndCleanup()
 
-	//ws := wsstream.NewWSStream(conn)
 	fileTicker := time.NewTicker(logTailPeriod)
-	//defer ws.CloseAndCleanup()
 	defer fileTicker.Stop()
 	lastOffset := logBuffer.GetOffset()
 	var entries []logbuf.LogEntry
@@ -523,10 +520,6 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runcmdHandler(w http.ResponseWriter, r *http.Request) {
-	// get the params out, deserialize args
-	// run the command, capture the output
-	// return the error code and the output
-	// if we got an error running, return a 500 error
 	var params api.RunCmdParams
 	err := json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {

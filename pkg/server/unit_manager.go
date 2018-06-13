@@ -165,18 +165,6 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 
 	um.CaptureLogs(name, unit)
 
-	// // XXX: Make number of log lines retained configurable.
-	// um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
-	// lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-	// 	um.logbuf.Get(name).Write(logbuf.StdoutLogSource, line)
-	// })
-	// lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-	// 	um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
-	// })
-	// lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-	// 	um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
-	// })
-
 	if err = cmd.Start(); err != nil {
 		glog.Errorf("Failed to start %+v: %v", cmd, err)
 		unit.LogPipe.Remove()
