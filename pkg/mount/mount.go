@@ -270,17 +270,23 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 	}
 	glog.Infof("Mounting %s->%s, actual path %s->%s", src, dst, source, target)
 	// Create directory for target if necessary.
-	dir := target
 	fi, err := os.Stat(source)
 	if err != nil {
 		glog.Errorf("Error checking mount source %s: %v", source, err)
 		return err
 	}
+	dir := filepath.Clean(target)
 	if !fi.IsDir() {
 		dir = filepath.Clean(filepath.Join(target, ".."))
 		glog.Infof("Mount source %s is a file, creating dir at %s", source, dir)
 	} else {
 		glog.Infof("Mount source %s is a directory, creating dir at %s", source, dir)
+	}
+	if !filepath.HasPrefix(dir, base) {
+		err = fmt.Errorf("Invalid mount target %s (%s is not in %s)",
+			dst, dir, base)
+		glog.Errorf("%v", err)
+		return err
 	}
 	err = os.MkdirAll(dir, 0755)
 	if err != nil {
