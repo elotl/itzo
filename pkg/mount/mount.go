@@ -112,7 +112,7 @@ func (om *OSMounter) MountSpecial() error {
 }
 
 func (om *OSMounter) BindMount(src, dst string) error {
-	return mounter(src, dst, "", syscall.MS_BIND|syscall.MS_REC, "")
+	return mounter(src, dst, "", uintptr(syscall.MS_BIND|syscall.MS_REC), "")
 }
 
 func (om *OSMounter) Unmount(dir string) error {
