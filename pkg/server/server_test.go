@@ -325,7 +325,7 @@ func TestStatusHandlerFailed(t *testing.T) {
 	assert.NotZero(t, reply.UnitStatuses[0].State.Terminated.FinishedAt)
 }
 
-func TestStatusHandlerLaunchFailure(t *testing.T) {
+func TestStatusHandlerStartFailure(t *testing.T) {
 	if !*runFunctional {
 		return
 	}
@@ -352,7 +352,7 @@ func TestStatusHandlerLaunchFailure(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	assert.NotNil(t, reply.UnitStatuses[0].State.Waiting)
-	assert.True(t, reply.UnitStatuses[0].State.Waiting.LaunchFailure)
+	assert.True(t, reply.UnitStatuses[0].State.Waiting.StartFailure)
 }
 
 func TestStatusHandlerSucceeded(t *testing.T) {

@@ -524,7 +524,7 @@ func TestPodControllerStatus(t *testing.T) {
 	// make sure it's overwritten in the status
 	expected.State = api.UnitState{
 		Waiting: &api.UnitStateWaiting{
-			LaunchFailure: true,
+			StartFailure: true,
 		},
 	}
 	podCtl.syncErrors[myUnit.Name] = expected

@@ -160,8 +160,8 @@ func makeFailedUpdateStatus(unit *api.Unit, msg string) api.UnitStatus {
 		Name: unit.Name,
 		State: api.UnitState{
 			Waiting: &api.UnitStateWaiting{
-				Reason:        msg,
-				LaunchFailure: true,
+				Reason:       msg,
+				StartFailure: true,
 			},
 		},
 		Image: unit.Image,

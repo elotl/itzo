@@ -50,8 +50,8 @@ func TestStatus(t *testing.T) {
 	defer u.Close()
 	waiting := api.UnitState{
 		Waiting: &api.UnitStateWaiting{
-			Reason:        "testing waiting unit state",
-			LaunchFailure: false,
+			Reason:       "testing waiting unit state",
+			StartFailure: false,
 		},
 	}
 	running := api.UnitState{
@@ -74,7 +74,7 @@ func TestStatus(t *testing.T) {
 			assert.NotNil(t, status.State.Waiting)
 			assert.Equal(t, s.Waiting.Reason, status.State.Waiting.Reason)
 			assert.Equal(t,
-				s.Waiting.LaunchFailure, status.State.Waiting.LaunchFailure)
+				s.Waiting.StartFailure, status.State.Waiting.StartFailure)
 		}
 		if s.Running != nil {
 			assert.NotNil(t, status.State.Running)

@@ -305,8 +305,8 @@ func (u *Unit) runUnitLoop(command, env []string, unitout, uniterr *os.File, pol
 			// or a resource allocation problem.
 			u.SetState(api.UnitState{
 				Waiting: &api.UnitStateWaiting{
-					LaunchFailure: true,
-					Reason:        err.Error(),
+					StartFailure: true,
+					Reason:       err.Error(),
 				},
 			}, &restarts)
 			glog.Errorf("Start() %v: %v", command, err)

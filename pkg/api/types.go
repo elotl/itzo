@@ -143,7 +143,7 @@ type Unit struct {
 	// A list of volumes that will be attached in the unit.
 	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
 	// A list of ports that will be opened up for this unit.
-	Ports []ServicePort
+	Ports []ServicePort `json:"ports,omitempty"`
 	// Working directory to change to before running the command for the unit.
 	WorkingDir string `json:"workingDir,omitempty"`
 }
@@ -263,8 +263,8 @@ const (
 )
 
 type UnitStateWaiting struct {
-	Reason        string
-	LaunchFailure bool
+	Reason       string `json:"reason"`
+	StartFailure bool   `json:"startFailure"`
 }
 
 type UnitStateRunning struct {
@@ -280,7 +280,7 @@ type UnitStateTerminated struct {
 // members may be specified.  If none of them is specified, the
 // default one is UnitStateRunning.
 type UnitState struct {
-	Waiting    *UnitStateWaiting
+	Waiting    *UnitStateWaiting    `json:"waiting,omitempty"`
 	Running    *UnitStateRunning    `json:"running,omitempty"`
 	Terminated *UnitStateTerminated `json:"terminated,omitempty"`
 }
