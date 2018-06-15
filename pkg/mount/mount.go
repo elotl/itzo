@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/elotl/itzo/pkg/api"
@@ -111,7 +112,7 @@ func (om *OSMounter) MountSpecial() error {
 }
 
 func (om *OSMounter) BindMount(src, dst string) error {
-	return mounter(src, dst, "", syscall.MS_BIND|syscall.MS_REC, "")
+	return mounter(src, dst, "", uintptr(syscall.MS_BIND|syscall.MS_REC), "")
 }
 
 func (om *OSMounter) Unmount(dir string) error {
@@ -222,21 +223,70 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 	return nil
 }
 
+func resolveLinks(base, target string) (string, error) {
+	targetList := strings.Split(target, string(filepath.Separator))
+	var path string
+	for i, _ := range targetList {
+		path = filepath.Join(base, filepath.Join(targetList[:i+1]...))
+		glog.Infof("Checking %s", path)
+		fi, err := os.Lstat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				glog.Infof("%s does not exist", path)
+				return filepath.Join(base, target), nil
+			}
+			glog.Errorf("Lstat() error on %s: %v", path, err)
+			return "", err
+		}
+		if (fi.Mode() & os.ModeSymlink) != os.ModeSymlink {
+			continue
+		}
+		dst, err := os.Readlink(path)
+		if err != nil {
+			glog.Errorf("Readlink() error on %s: %v", path, err)
+			return "", err
+		}
+		if len(dst) > 0 && dst[0] == filepath.Separator {
+			// Absolute link. It should stay inside the chroot, so prepend
+			// base, and then check the rest of the path.
+			base = filepath.Join(base, dst)
+			glog.Infof("%s is absolute link, new base: %s", dst, base)
+			return resolveLinks(base, filepath.Join(targetList[i+1:]...))
+		}
+	}
+	return path, nil
+}
+
 func (om *OSMounter) AttachMount(unit, src, dst string) error {
+	glog.Infof("Mounting %s->%s", src, dst)
+	// Directory for mount source.
 	source := filepath.Join(om.basedir, "../mounts", src)
-	target := filepath.Join(om.basedir, unit, "ROOTFS", dst)
+	// Check symlinks in dst.
+	base := filepath.Join(om.basedir, unit, "ROOTFS")
+	target, err := resolveLinks(base, dst)
+	if err != nil {
+		glog.Errorf("Error resolving links in %s %s: %v", base, dst, err)
+		return err
+	}
+	glog.Infof("Mounting %s->%s, actual path %s->%s", src, dst, source, target)
 	// Create directory for target if necessary.
-	dir := target
 	fi, err := os.Stat(source)
 	if err != nil {
 		glog.Errorf("Error checking mount source %s: %v", source, err)
 		return err
 	}
+	dir := filepath.Clean(target)
 	if !fi.IsDir() {
 		dir = filepath.Clean(filepath.Join(target, ".."))
 		glog.Infof("Mount source %s is a file, creating dir at %s", source, dir)
 	} else {
 		glog.Infof("Mount source %s is a directory, creating dir at %s", source, dir)
+	}
+	if !filepath.HasPrefix(dir, base) {
+		err = fmt.Errorf("Invalid mount target %s (%s is not in %s)",
+			dst, dir, base)
+		glog.Errorf("%v", err)
+		return err
 	}
 	err = os.MkdirAll(dir, 0755)
 	if err != nil {
