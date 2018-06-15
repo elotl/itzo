@@ -360,6 +360,11 @@ type ImagePuller struct {
 }
 
 func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string) error {
+	if server == "docker.io" {
+		// K8s and Helm might set this for images, but the actual official
+		// registry is registry-1.docker.io.
+		server = "registry-1.docker.io"
+	}
 	if server != "" && !strings.HasPrefix(server, "http") {
 		server = "https://" + server
 	}
