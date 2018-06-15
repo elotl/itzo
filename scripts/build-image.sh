@@ -61,17 +61,26 @@ done
 
 IMAGE_ABSPATH="$(readlink -f $IMAGE)"
 
-REQUIRED_PACKAGES="qemu-utils python-boto3"
-echo "Checking if required packages are installed."
-for pkg in $REQUIRED_PACKAGES; do
-    echo -n "$pkg..."
-    if dpkg -l|grep '^ii'|awk '{print $2}'|grep "$pkg" > /dev/null 2>&1; then
-        echo "OK"
-    else
+REQUIRED_PROGRAMS="qemu-img qemu-nbd"
+echo "Checking if required programs are installed."
+for prg in $REQUIRED_PROGRAMS; do
+    found=true
+    echo -n "$prg..."
+    which $prg > /dev/null 2>&1 || found=false
+    if [[ $found = false ]]; then
         echo "MISSING"
         exit 1
     fi
+    echo "OK"
 done
+found=true
+echo -n "boto3..."
+python -c "import boto3" > /dev/null 2>&1 || found=false
+if [[ $found = false ]]; then
+    echo "MISSING"
+    exit 1
+fi
+echo "OK"
 
 if [ "$NO_AMI" = false ]; then
     if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
