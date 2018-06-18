@@ -444,11 +444,13 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 		if err != nil {
 			msg := fmt.Sprintf("Could not open unit %s: %v\n", unitName, err)
 			writeWSError(ws, msg)
+			return
 		}
 		inWriter, err := u.OpenStdinWriter()
 		if err != nil {
 			msg := fmt.Sprintf("Could not open stdin for unit %s: %v\n", unitName, err)
 			writeWSError(ws, msg)
+			return
 		}
 		wsStdinReader := ws.CreateReader(wsstream.StdinChan)
 		go ws.RunDispatch()
@@ -473,6 +475,9 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 
 			entries, lastOffset = logBuffer.ReadSince(lastOffset)
 			for i := 0; i < len(entries); i++ {
+				if entries[i].Source == logbuf.HelperLogSource {
+					continue
+				}
 				channel := wsstream.StdoutChan
 				if entries[i].Source == logbuf.StderrLogSource {
 					channel = wsstream.StderrChan

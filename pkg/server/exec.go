@@ -31,7 +31,6 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		return
 	}
 
-	// todo: should we use exec.LookPath if the command has no slashes in it?
 	command := params.Command
 
 	// allow us to skip entering namespace for testing
