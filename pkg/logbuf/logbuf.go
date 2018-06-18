@@ -6,9 +6,17 @@ import (
 	"github.com/elotl/itzo/pkg/util"
 )
 
+const (
+	StdoutLogSource LogSource = "[Stdout]"
+	StderrLogSource LogSource = "[Stderr]"
+	HelperLogSource LogSource = "[Helper]"
+)
+
+type LogSource string
+
 type LogEntry struct {
 	Timestamp string
-	Source    string
+	Source    LogSource
 	Line      string
 }
 
@@ -32,7 +40,7 @@ func (lb *LogBuffer) GetOffset() int64 {
 	return lb.offset
 }
 
-func (lb *LogBuffer) Write(source, line string) {
+func (lb *LogBuffer) Write(source LogSource, line string) {
 	e := LogEntry{
 		Timestamp: time.Now().String(),
 		Source:    source,

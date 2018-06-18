@@ -113,9 +113,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("Error creating temporary directory")
 	}
+	defer os.RemoveAll(tmpdir)
+
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
+		podController:  NewPodController(tmpdir, nil, nil),
 	}
 	s.getHandlers()
 	ret := m.Run()
@@ -575,8 +578,17 @@ func TestGetLogs(t *testing.T) {
 	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
 }
 
-func runServer() (*Server, int) {
-	s := &Server{}
+func runServer() (*Server, func(), int) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	if err != nil {
+		panic("Error creating temporary directory")
+	}
+	closer := func() { os.RemoveAll(tmpdir) }
+	s := &Server{
+		installRootdir: tmpdir,
+		unitMgr:        NewUnitManager(tmpdir),
+		podController:  NewPodController(tmpdir, nil, nil),
+	}
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: ":0", Handler: s}
 	listener, err := net.Listen("tcp", ":0")
@@ -585,7 +597,7 @@ func runServer() (*Server, int) {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	go s.httpServer.Serve(listener)
-	return s, port
+	return s, closer, port
 }
 
 func createWebsocketClient(port, path string) (*wsstream.WSStream, error) {
@@ -603,10 +615,8 @@ func TestPortForward(t *testing.T) {
 	// We start up our server, start a websocket port forwarwd request
 	// to the same server port and then forward, throught the
 	// websocket, a request to ping we expect pong as the output
-	//
-	// I could do work to find a random open port but i'm going to
-	// not do that now and just go with 6420...
-	ss, port := runServer()
+	ss, closer, port := runServer()
+	defer closer()
 	portstr := fmt.Sprintf("%d", port)
 	time.Sleep(1 * time.Second)
 	defer ss.httpServer.Close()
@@ -631,6 +641,113 @@ func TestPortForward(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 1, c)
 		assert.True(t, strings.HasSuffix(string(m), "pong"))
+	case <-time.After(timeout):
+		assert.FailNow(t, "reading timed out")
+	}
+}
+
+func TestExec(t *testing.T) {
+	// We start up our server, start an exec request
+	ss, closer, port := runServer()
+	defer closer()
+	portstr := fmt.Sprintf("%d", port)
+	time.Sleep(1 * time.Second)
+	defer ss.httpServer.Close()
+
+	unitName := "testunit"
+	ss.podController.podStatus.Units = []api.Unit{{
+		Name: unitName,
+	}}
+
+	ws, err := createWebsocketClient(portstr, "/rest/v1/exec/")
+	assert.NoError(t, err)
+
+	params := api.ExecParams{
+		Command:     []string{"/bin/cat", "/proc/version"},
+		Interactive: false,
+		TTY:         false,
+		SkipNSEnter: true,
+	}
+	paramsb, err := json.Marshal(params)
+	assert.NoError(t, err)
+	err = ws.WriteRaw(paramsb)
+	assert.NoError(t, err)
+	out := <-ws.ReadMsg()
+
+	c, msg, err := wsstream.UnpackMessage(out)
+	assert.NoError(t, err)
+	assert.True(t, strings.Contains(string(msg), "Linux"))
+	assert.Equal(t, 1, c)
+
+	exit := <-ws.ReadMsg()
+	c, msg, err = wsstream.UnpackMessage(exit)
+	assert.NoError(t, err)
+	assert.Equal(t, "0", string(msg))
+	assert.Equal(t, 3, c)
+}
+
+// Todo: This test is a gosh darn tragedy...  It's closer to an
+// end-to-end test that makes use of the unitMg logs, pod controller,
+// unit and unit pipes as well as the server.  :( It's going to be a
+// change detector test If this gets in the way, comment it out,
+// assign an issue to bcox.
+func TestAttach(t *testing.T) {
+	unitName := "testunit"
+	ss, closer, port := runServer()
+	defer closer()
+	portstr := fmt.Sprintf("%d", port)
+	defer ss.httpServer.Close()
+	// need the pod controller in order to get the unit
+	ss.podController.podStatus.Units = []api.Unit{{
+		Name: unitName,
+	}}
+
+	// Open the unit
+	u, err := OpenUnit(ss.installRootdir, unitName)
+	assert.NoError(t, err)
+	defer u.Destroy()
+
+	ss.unitMgr.CaptureLogs(unitName, u)
+	// silly hack that allows us to get the output from the unit
+	ss.unitMgr.runningUnits.Set(unitName, &os.Process{})
+	unitin, err := u.openStdinReader()
+	assert.NoError(t, err)
+	lp := u.LogPipe
+	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT, false)
+	defer unitout.Close()
+
+	// start a unit that we can get stdin and stdout from
+	ch := make(chan error)
+	go func() {
+		err = u.runUnitLoop(
+			[]string{"/bin/cat", "-"},
+			[]string{}, unitin, unitout, nil, api.RestartPolicyNever)
+		ch <- err
+	}()
+
+	ws, err := createWebsocketClient(portstr, "/rest/v1/attach/")
+	assert.NoError(t, err)
+	defer ws.CloseAndCleanup()
+
+	params := api.AttachParams{
+		Interactive: true,
+	}
+	paramsb, err := json.Marshal(params)
+	assert.NoError(t, err)
+	err = ws.WriteRaw(paramsb)
+	assert.NoError(t, err)
+
+	msgString := []byte("Hello Milpa\n") // don't forget newline, we are line based
+	err = ws.WriteMsg(wsstream.StdinChan, msgString)
+	assert.NoError(t, err)
+
+	timeout := 3 * time.Second
+	select {
+	case f := <-ws.ReadMsg():
+		c, m, err := wsstream.UnpackMessage(f)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, c)
+		assert.Equal(t, msgString, m)
 	case <-time.After(timeout):
 		assert.FailNow(t, "reading timed out")
 	}

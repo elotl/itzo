@@ -24,7 +24,15 @@ type PortForwardParams struct {
 type ExecParams struct {
 	PodName     string
 	UnitName    string
-	Command     string
+	Command     []string
+	Interactive bool
+	TTY         bool
+	SkipNSEnter bool
+}
+
+type AttachParams struct {
+	PodName     string
+	UnitName    string
 	Interactive bool
 	TTY         bool
 }

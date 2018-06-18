@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -21,10 +22,10 @@ func TestOpenUnit(t *testing.T) {
 	assert.Nil(t, err)
 	u, err := OpenUnit(tmpdir, "foobar")
 	assert.Nil(t, err)
-	defer u.Close()
+	defer u.Destroy()
 	uu, err := OpenUnit(tmpdir, "foobar")
 	assert.Nil(t, err)
-	defer uu.Close()
+	defer uu.Destroy()
 	assert.Equal(t, u.Name, uu.Name)
 	assert.Equal(t, u.Directory, uu.Directory)
 }
@@ -35,7 +36,7 @@ func TestGetRootfs(t *testing.T) {
 	assert.Nil(t, err)
 	u, err := OpenUnit(tmpdir, "foobar")
 	assert.Nil(t, err)
-	defer u.Close()
+	defer u.Destroy()
 	isEmpty, err := isEmptyDir(u.GetRootfs())
 	assert.Nil(t, err)
 	assert.True(t, isEmpty)
@@ -47,7 +48,7 @@ func TestStatus(t *testing.T) {
 	assert.NoError(t, err)
 	u, err := OpenUnit(tmpdir, "foobar")
 	assert.NoError(t, err)
-	defer u.Close()
+	defer u.Destroy()
 	waiting := api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason:       "testing waiting unit state",
@@ -89,6 +90,40 @@ func TestStatus(t *testing.T) {
 	}
 }
 
+func TestUnitStdin(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpdir)
+	unit, err := OpenUnit(tmpdir, "myunit")
+	assert.NoError(t, err)
+	defer unit.Destroy()
+	ch := make(chan error)
+	inr, err := unit.openStdinReader()
+	assert.NoError(t, err)
+	inw, err := unit.OpenStdinWriter()
+	assert.NoError(t, err)
+	var stdout bytes.Buffer
+	go func() {
+		err = unit.runUnitLoop(
+			[]string{"cat", "-"},
+			[]string{}, inr, &stdout, nil, api.RestartPolicyNever)
+		ch <- err
+	}()
+	msg := []byte("Hello Milpa\n")
+	_, err = inw.Write(msg)
+	assert.NoError(t, err)
+	err = inw.Close()
+	assert.NoError(t, err)
+	unit.closeStdin()
+	select {
+	case err = <-ch:
+		assert.NoError(t, err)
+		assert.Equal(t, msg, stdout.Bytes())
+	case <-time.After(1 * time.Second):
+		assert.True(t, false, "Timed out waiting for process")
+	}
+}
+
 func TestUnitRestartPolicyAlways(t *testing.T) {
 	tmpfile, err := ioutil.TempFile("", "itzo-test")
 	assert.Nil(t, err)
@@ -98,12 +133,12 @@ func TestUnitRestartPolicyAlways(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 	unit, err := OpenUnit(tmpdir, "myunit")
 	assert.Nil(t, err)
-	defer unit.Close()
+	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, nil, nil, api.RestartPolicyAlways)
+			[]string{}, nil, nil, nil, api.RestartPolicyAlways)
 		ch <- err
 	}()
 	pid := 0
@@ -147,12 +182,12 @@ func TestUnitRestartPolicyNever(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 	unit, err := OpenUnit(tmpdir, "myunit")
 	assert.Nil(t, err)
-	defer unit.Close()
+	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, nil, nil, api.RestartPolicyNever)
+			[]string{}, nil, nil, nil, api.RestartPolicyNever)
 		ch <- err
 	}()
 	select {
@@ -179,12 +214,12 @@ func TestUnitRestartPolicyOnFailureHappy(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 	unit, err := OpenUnit(tmpdir, "myunit")
 	assert.Nil(t, err)
-	defer unit.Close()
+	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 0", tmpfile.Name())},
-			[]string{}, nil, nil, api.RestartPolicyOnFailure)
+			[]string{}, nil, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
 	}()
 	select {
@@ -209,12 +244,12 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 	unit, err := OpenUnit(tmpdir, "myunit")
 	assert.Nil(t, err)
-	defer unit.Close()
+	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, nil, nil, api.RestartPolicyOnFailure)
+			[]string{}, nil, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
 	}()
 	pid := 0
@@ -249,7 +284,7 @@ func TestIsUnitExist(t *testing.T) {
 	assert.False(t, IsUnitExist(tmpdir, name))
 	unit, err := OpenUnit(tmpdir, name)
 	assert.Nil(t, err)
-	defer unit.Close()
+	defer unit.Destroy()
 	assert.True(t, IsUnitExist(tmpdir, name))
 }
 

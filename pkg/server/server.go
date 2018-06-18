@@ -182,17 +182,15 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		if follow != "" {
 			// Bug: if the unit gets closed or quits, we don't know
 			// about the closure
-			unitName, _ := s.unitMgr.CleanUnitName(unit)
-			logBuffer, err := s.unitMgr.GetLogBuffer(unit)
+			unitName, err := s.podController.GetUnitName(unit)
 			if err != nil {
 				badRequest(w, err.Error())
 			}
-			conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+			logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
 			if err != nil {
-				serverError(w, err)
-				return
+				badRequest(w, err.Error())
 			}
-			s.RunLogTailer(conn, unitName, logBuffer)
+			s.RunLogTailer(w, r, unitName, logBuffer)
 			return
 		}
 
@@ -211,7 +209,11 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		logs, err := s.unitMgr.ReadLogBuffer(unit, n)
+		unitName, err := s.podController.GetUnitName(unit)
+		if err != nil {
+			badRequest(w, err.Error())
+		}
+		logs, err := s.unitMgr.ReadLogBuffer(unitName, n)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
@@ -233,13 +235,16 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *logbuf.LogBuffer) {
-	ws := wsstream.NewWSStream(conn)
-	fileTicker := time.NewTicker(logTailPeriod)
+func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName string, logBuffer *logbuf.LogBuffer) {
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return // Do upgrade will write errors to the client
+	}
 	defer ws.CloseAndCleanup()
+
+	fileTicker := time.NewTicker(logTailPeriod)
 	defer fileTicker.Stop()
 	lastOffset := logBuffer.GetOffset()
-
 	var entries []logbuf.LogEntry
 	for {
 		select {
@@ -248,9 +253,9 @@ func (s *Server) RunLogTailer(conn *websocket.Conn, unitName string, logBuffer *
 		case <-fileTicker.C:
 			unitRunning := s.unitMgr.UnitRunning(unitName)
 			if !unitRunning {
+				writeWSError(ws, "Unit %s is not running\n", unitName)
 				return
 			}
-
 			entries, lastOffset = logBuffer.ReadSince(lastOffset)
 			if len(entries) > 0 {
 				msg := make([]byte, 0, 1024)
@@ -376,34 +381,6 @@ func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) doUpgrade(w http.ResponseWriter, r *http.Request) (*wsstream.WSReadWriter, error) {
-	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		serverError(w, err)
-		return nil, err
-	}
-	ws := &wsstream.WSReadWriter{
-		WSStream: wsstream.NewWSStream(conn),
-	}
-	return ws, nil
-}
-
-func getInitialParams(ws *wsstream.WSReadWriter, params interface{}) error {
-	select {
-	case <-ws.Closed():
-		return fmt.Errorf("connection closed before first parameter")
-	case paramsJson := <-ws.ReadMsg():
-		err := json.Unmarshal(paramsJson, params)
-		if err != nil {
-			msg := fmt.Sprintf("Error reading port forward params %v", err)
-			glog.Error(msg)
-			ws.WriteMsg(wsstream.StderrChan, []byte(msg))
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.doUpgrade(w, r)
 	if err != nil {
@@ -419,8 +396,7 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 
 	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
 	if err != nil {
-		msg := fmt.Sprintf("error connecting to port %s: %v", params.Port, err)
-		_ = ws.WriteMsg(wsstream.StderrChan, []byte(msg))
+		writeWSError(ws, "error connecting to port %s: %v\n", params.Port, err)
 		return
 	}
 	defer clientConn.Close()
@@ -445,6 +421,93 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 	ws.RunDispatch()
 }
 
+func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
+	unitName, err := s.podController.GetUnitName(params.UnitName)
+	if err != nil {
+		writeWSError(ws, err.Error())
+		return
+	}
+	_, exists := s.unitMgr.GetPid(unitName)
+	if !exists {
+		writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
+		return
+	}
+
+	logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
+	if err != nil {
+		writeWSError(ws, err.Error())
+		return
+	}
+
+	if params.Interactive {
+		u, err := OpenUnit(s.installRootdir, unitName)
+		if err != nil {
+			msg := fmt.Sprintf("Could not open unit %s: %v\n", unitName, err)
+			writeWSError(ws, msg)
+			return
+		}
+		inWriter, err := u.OpenStdinWriter()
+		if err != nil {
+			msg := fmt.Sprintf("Could not open stdin for unit %s: %v\n", unitName, err)
+			writeWSError(ws, msg)
+			return
+		}
+		wsStdinReader := ws.CreateReader(wsstream.StdinChan)
+		go ws.RunDispatch()
+		go io.Copy(inWriter, wsStdinReader)
+	}
+
+	// copy our stdout and stderr (from logbuffer) to the websocket
+	fileTicker := time.NewTicker(logTailPeriod)
+	defer fileTicker.Stop()
+	lastOffset := logBuffer.GetOffset()
+	var entries []logbuf.LogEntry
+	for {
+		select {
+		case <-ws.Closed():
+			return
+		case <-fileTicker.C:
+			unitRunning := s.unitMgr.UnitRunning(unitName)
+			if !unitRunning {
+				writeWSError(ws, "Unit %s is not running\n", unitName)
+				return
+			}
+
+			entries, lastOffset = logBuffer.ReadSince(lastOffset)
+			for i := 0; i < len(entries); i++ {
+				if entries[i].Source == logbuf.HelperLogSource {
+					continue
+				}
+				channel := wsstream.StdoutChan
+				if entries[i].Source == logbuf.StderrLogSource {
+					channel = wsstream.StderrChan
+				}
+				err := ws.WriteMsg(channel, []byte(entries[i].Line))
+				if err != nil {
+					glog.Errorln("Error writing output to websocket", err)
+					return
+				}
+			}
+		}
+	}
+}
+
+func (s *Server) serveAttach(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.doUpgrade(w, r)
+	if err != nil {
+		return
+	}
+	defer ws.CloseAndCleanup()
+
+	var params api.AttachParams
+	err = getInitialParams(ws, &params)
+	if err != nil {
+		return
+	}
+
+	s.runAttach(ws, params)
+}
+
 func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.doUpgrade(w, r)
 	if err != nil {
@@ -459,16 +522,9 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.runExec(ws, params)
-
-	// We do a bit of a dance to make sure that we don't leave
-	// anything running when we close the websocket prematurely
 }
 
 func (s *Server) runcmdHandler(w http.ResponseWriter, r *http.Request) {
-	// get the params out, deserialize args
-	// run the command, capture the output
-	// return the error code and the output
-	// if we got an error running, return a 500 error
 	var params api.RunCmdParams
 	err := json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
@@ -507,7 +563,9 @@ func (s *Server) getHandlers() {
 
 	// streaming endpoints
 	s.mux.HandleFunc("/rest/v1/portforward/", s.servePortForward)
+	s.mux.HandleFunc("/rest/v1/attach/", s.serveAttach)
 	s.mux.HandleFunc("/rest/v1/exec/", s.serveExec)
+
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

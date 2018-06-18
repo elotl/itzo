@@ -2,37 +2,64 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
-	quote "github.com/kballard/go-shellquote"
 	"github.com/kr/pty"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+const (
+	wsTTYControlChan = 4
+)
+
 func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
-	cmdArray, err := quote.Split(params.Command)
-	if err != nil {
-		msg := fmt.Sprintf("error parsing exec command: %v", err)
-		_ = ws.WriteMsg(wsstream.StderrChan, []byte(msg))
+	if len(params.Command) == 0 {
+		writeWSError(ws, "No command specified")
+		return
 	}
 
-	cmd := exec.Command(cmdArray[0], cmdArray[1:]...)
+	unitName, err := s.podController.GetUnitName(params.UnitName)
+	if err != nil {
+		writeWSError(ws, err.Error())
+		return
+	}
+
+	command := params.Command
+
+	// allow us to skip entering namespace for testing
+	if !params.SkipNSEnter {
+		pid, exists := s.unitMgr.GetPid(unitName)
+		if !exists {
+			writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
+			return
+		}
+		nsenterCmd := []string{
+			"/usr/bin/nsenter",
+			"-t",
+			strconv.Itoa(pid),
+			"-p",
+			"-u",
+			"-m",
+		}
+		command = append(nsenterCmd, command...)
+	}
+
+	cmd := exec.Command(command[0], command[1:]...)
 	if params.TTY {
 		err = s.runExecTTY(ws, cmd, params.Interactive)
 	} else {
 		err = s.runExecCmd(ws, cmd, params.Interactive)
 	}
 	if err != nil {
-		err := ws.WriteMsg(2, []byte(err.Error()))
-		if err != nil {
-			glog.Errorln("Error writing error to websocket, reporting it here", err)
-		}
+		writeWSError(ws, err.Error())
+		return
 	}
 }
 
@@ -88,29 +115,33 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 		go func() {
 			io.Copy(tty, wsStdinReader)
 		}()
-
-		// handle resize terminal messages
-		termChanges := ws.CreateReader(4)
-		go func() {
-			for {
-				buf := make([]byte, 32*1024)
-				n, err := termChanges.Read(buf)
-				if err != nil {
-					return
-				}
-				var s pty.Winsize
-				err = json.Unmarshal(buf[0:n], &s)
-				if err != nil {
-					glog.Warning("error unmarshalling pty resize: %s", err)
-					continue
-				}
-				if err := pty.Setsize(tty, &s); err != nil {
-					glog.Warning("error resizing pty: %s", err)
-					continue
-				}
-			}
-		}()
 	}
+
+	// handle resize terminal messages
+	termChanges := ws.CreateReader(wsTTYControlChan)
+	go func() {
+		for {
+			buf := make([]byte, 32*1024)
+			n, err := termChanges.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					glog.Errorf("Error reading terminal changes")
+				}
+				return
+			}
+			var s pty.Winsize
+			err = json.Unmarshal(buf[0:n], &s)
+			if err != nil {
+				glog.Warning("error unmarshalling pty resize: %s", err)
+				// should we send these errors back on stderr?
+				return
+			}
+			if err := pty.Setsize(tty, &s); err != nil {
+				glog.Warning("error resizing pty: %s", err)
+				return
+			}
+		}
+	}()
 
 	wsStdoutWriter := ws.CreateWriter(1)
 	go func() {
@@ -125,26 +156,30 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 func waitForFinished(ws *wsstream.WSReadWriter, cmd *exec.Cmd) {
 	joinChan := make(chan struct{}, 1)
 	go func() {
-		cmd.Wait()
-		//
-		// todo, get the exit code of the process and write it to exit
-		// channel
-		//
+		procErr := cmd.Wait()
+		if exiterr, ok := procErr.(*exec.ExitError); ok {
+			if waitstatus, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+				exitCode := waitstatus.ExitStatus()
+				b := []byte(strconv.Itoa(exitCode))
+				_ = ws.WriteMsg(wsstream.ExitCodeChan, b)
+			}
 
-		// if we don't wait here the websocket closes
-		// before we can flush the final output
+		} else {
+			_ = ws.WriteMsg(wsstream.ExitCodeChan, []byte("0"))
+		}
+		// if we don't wait here the websocket closes before we can
+		// flush the final output
 		time.Sleep(1 * time.Second)
 		joinChan <- struct{}{}
 	}()
+
 	select {
 	case <-ws.Closed():
 		if cmd.Process != nil {
 			cmd.Process.Kill()
-			fmt.Println("killed process")
-		} else {
-			fmt.Println("proc is nil")
+			glog.Infoln("killed process")
 		}
 	case <-joinChan:
-		fmt.Println("process ended")
+		glog.Info("Exec process ended")
 	}
 }

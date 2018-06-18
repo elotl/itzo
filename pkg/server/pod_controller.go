@@ -79,6 +79,17 @@ func (pc *PodController) Start() {
 	go pc.runUpdateLoop()
 }
 
+func (pc *PodController) GetUnitName(unitName string) (string, error) {
+	if unitName == "" {
+		if len(pc.podStatus.Units) > 0 {
+			return pc.podStatus.Units[0].Name, nil
+		} else {
+			return "", fmt.Errorf("No running units on pod")
+		}
+	}
+	return unitName, nil
+}
+
 func (pc *PodController) UpdatePod(params *api.PodParameters) error {
 	// If something goes horribly wrong, don't block the rest client,
 	// just return an error for the update and kick the problem back
@@ -373,7 +384,6 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
-	defer u.Close()
 	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)
