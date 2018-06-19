@@ -244,6 +244,11 @@ EOF
 chmod 755 /etc/init.d/resizeroot
 cat /etc/init.d/resizeroot
 
+step 'Enable vsyscall emulation'
+sed -Ei -e "s|^[# ]*(default_kernel_opts)=.*|\1=\"vsyscall=emulate\"|" \
+	/etc/update-extlinux.conf
+update-extlinux --warn-only 2>&1 | grep -Fv 'extlinux: cannot open device /dev' >&2
+
 step 'Enable services'
 rc-update add acpid default
 rc-update add chronyd default
