@@ -68,7 +68,7 @@ for prg in $REQUIRED_PROGRAMS; do
     echo -n "$prg..."
     which $prg > /dev/null 2>&1 || found=false
     if [[ $found = false ]]; then
-        echo "MISSING"
+        echo "MISSING $prg"
         exit 1
     fi
     echo "OK"
@@ -77,7 +77,7 @@ found=true
 echo -n "boto3..."
 python -c "import boto3" > /dev/null 2>&1 || found=false
 if [[ $found = false ]]; then
-    echo "MISSING"
+    echo "MISSING boto3"
     exit 1
 fi
 echo "OK"
