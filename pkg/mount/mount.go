@@ -312,7 +312,13 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 }
 
 func (om *OSMounter) DetachMount(unit, dst string) error {
-	target := filepath.Join(om.basedir, unit, "ROOTFS", dst)
+	base := filepath.Join(om.basedir, unit, "ROOTFS")
+	target, err := resolveLinks(base, dst)
+	if err != nil {
+		glog.Errorf("Error resolving links in %s %s: %v", base, dst, err)
+		return err
+	}
+	glog.Infof("Unmounting %s, actual path %s", dst, target)
 	if err := unmounter(target, syscall.MNT_DETACH); err != nil {
 		glog.Errorf("Error unmounting %s: %v", target, err)
 		return err
