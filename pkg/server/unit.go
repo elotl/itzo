@@ -530,6 +530,7 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 			glog.Errorf("mountSpecial(): %v", err)
 			return err
 		}
+		defer mounter.UnmountSpecial()
 		u.statusPath = "/status"
 	}
 
@@ -547,11 +548,6 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 			return err
 		}
 	}
-	err = u.runUnitLoop(command, env, unitin, unitout, uniterr, policy)
 
-	if rootfs != "" {
-		mounter.UnmountSpecial()
-	}
-
-	return err
+	return u.runUnitLoop(command, env, unitin, unitout, uniterr, policy)
 }
