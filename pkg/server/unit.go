@@ -530,7 +530,14 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 			glog.Errorf("mountSpecial(): %v", err)
 			return err
 		}
+		defer mounter.UnmountSpecial()
 		u.statusPath = "/status"
+	}
+
+	err = os.Chmod("/", 0755)
+	if err != nil {
+		glog.Errorf("Failed to chmod / to 0755: %v", err)
+		return err
 	}
 
 	if workingdir != "" {
@@ -541,11 +548,6 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 			return err
 		}
 	}
-	err = u.runUnitLoop(command, env, unitin, unitout, uniterr, policy)
 
-	if rootfs != "" {
-		mounter.UnmountSpecial()
-	}
-
-	return err
+	return u.runUnitLoop(command, env, unitin, unitout, uniterr, policy)
 }
