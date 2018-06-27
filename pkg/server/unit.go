@@ -533,6 +533,12 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 		u.statusPath = "/status"
 	}
 
+	err = os.Chmod("/", 0755)
+	if err != nil {
+		glog.Errorf("Failed to chmod / to 0755: %v", err)
+		return err
+	}
+
 	if workingdir != "" {
 		err = os.Chdir(workingdir)
 		if err != nil {
