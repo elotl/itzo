@@ -434,6 +434,26 @@ func (u *Unit) runUnitLoop(command, env []string, unitin io.Reader, unitout, uni
 	}
 }
 
+func checkResolvConf(rootfs string) error {
+	dpath := filepath.Join(rootfs, "/etc")
+	if _, err := os.Stat(dpath); os.IsNotExist(err) {
+		glog.Infof("Creating directory %s", dpath)
+		if err := os.Mkdir(dpath, 0755); err != nil {
+			glog.Errorf("Could not create new directory %s: %v", dpath, err)
+			return err
+		}
+	}
+	fpath := filepath.Join(rootfs, "/etc/resolv.conf")
+	if _, err := os.Stat(fpath); err != nil {
+		glog.Infof("Copying system resolv.conf to %s", fpath)
+		if err := copyFile("/etc/resolv.conf", fpath); err != nil {
+			glog.Errorf("copyFile() resolv.conf to %s: %v", fpath, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -476,17 +496,11 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 	defer unitin.Close()
 
 	if rootfs != "" {
-		rootfsEtcDir := filepath.Join(rootfs, "/etc")
-		if _, err := os.Stat(rootfsEtcDir); os.IsNotExist(err) {
-			if err := os.Mkdir(rootfsEtcDir, 0755); err != nil {
-				glog.Errorf("Could not make new rootfs/etc directory: %s", err)
-				return err
-			}
-		}
-		if err := copyFile("/etc/resolv.conf", filepath.Join(rootfs, "/etc/resolv.conf")); err != nil {
-			glog.Errorf("copyFile() resolv.conf to %s: %v", rootfs, err)
+		err := checkResolvConf(rootfs)
+		if err != nil {
 			return err
 		}
+
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 
 		if err := mounter.BindMount(rootfs, rootfs); err != nil {
