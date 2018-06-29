@@ -721,7 +721,7 @@ func TestAttach(t *testing.T) {
 	go func() {
 		err = u.runUnitLoop(
 			[]string{"/bin/cat", "-"},
-			[]string{}, unitin, unitout, nil, api.RestartPolicyNever)
+			[]string{}, 0, 0, unitin, unitout, nil, api.RestartPolicyNever)
 		ch <- err
 	}()
 

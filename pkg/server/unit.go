@@ -359,11 +359,13 @@ func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Rea
 		cmd.Stdin = unitin
 		cmd.Stdout = unitout
 		cmd.Stderr = uniterr
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Credential: &syscall.Credential{
-				Uid: uid,
-				Gid: gid,
-			},
+		if uid > 0 || gid > 0 {
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Credential: &syscall.Credential{
+					Uid: uid,
+					Gid: gid,
+				},
+			}
 		}
 
 		err = cmd.Start()
