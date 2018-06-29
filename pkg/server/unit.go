@@ -7,7 +7,9 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -346,7 +348,7 @@ func maybeBackOff(err error, command []string, backoff *time.Duration) {
 	time.Sleep(*backoff)
 }
 
-func (u *Unit) runUnitLoop(command, env []string, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
+func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
 	backoff := 1 * time.Second
 	restarts := -1
 	for {
@@ -357,6 +359,12 @@ func (u *Unit) runUnitLoop(command, env []string, unitin io.Reader, unitout, uni
 		cmd.Stdin = unitin
 		cmd.Stdout = unitout
 		cmd.Stderr = uniterr
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{
+				Uid: uid,
+				Gid: gid,
+			},
+		}
 
 		err = cmd.Start()
 		if err != nil {
@@ -554,6 +562,29 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 		return err
 	}
 
+	uid := 0
+	gid := 0
+	if u.config.User != "" {
+		usr, err := user.Lookup(u.config.User)
+		if err != nil {
+			glog.Errorf("Failed to look up user %s: %v",
+				u.config.User, err)
+			return err
+		}
+		uid, err = strconv.Atoi(usr.Uid)
+		if err != nil {
+			glog.Errorf("Failed to look up user/group id %s/%s: %v",
+				usr.Uid, usr.Gid, err)
+			return err
+		}
+		gid, err = strconv.Atoi(usr.Gid)
+		if err != nil {
+			glog.Errorf("Failed to look up user/group id %s/%s: %v",
+				usr.Uid, usr.Gid, err)
+			return err
+		}
+	}
+
 	if workingdir != "" {
 		// Workingdir might not exist, try to create it first.
 		os.MkdirAll(workingdir, 0755)
@@ -563,7 +594,10 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 				workingdir, err)
 			return err
 		}
+		if uid != 0 {
+			os.Chown(workingdir, uid, gid)
+		}
 	}
 
-	return u.runUnitLoop(command, env, unitin, unitout, uniterr, policy)
+	return u.runUnitLoop(command, env, uint32(uid), uint32(gid), unitin, unitout, uniterr, policy)
 }
