@@ -555,6 +555,8 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 	}
 
 	if workingdir != "" {
+		// Workingdir might not exist, try to create it first.
+		os.MkdirAll(workingdir, 0755)
 		err = os.Chdir(workingdir)
 		if err != nil {
 			glog.Errorf("Failed to change to working directory %s: %v",
