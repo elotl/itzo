@@ -10,6 +10,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -58,6 +59,21 @@ type Config struct {
 	StopSignal      string   `json:",omitempty"`
 	StopTimeout     *int     `json:",omitempty"`
 	Shell           []string `json:",omitempty"`
+}
+
+type UserLookup interface {
+	Lookup(username string) (*user.User, error)
+	LookupGroup(name string) (*user.Group, error)
+}
+
+type OsUserLookup struct{}
+
+func (oul *OsUserLookup) Lookup(username string) (*user.User, error) {
+	return user.Lookup(username)
+}
+
+func (oul *OsUserLookup) LookupGroup(name string) (*user.Group, error) {
+	return user.LookupGroup(name)
 }
 
 func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
@@ -464,6 +480,42 @@ func checkResolvConf(rootfs string) error {
 	return nil
 }
 
+func lookupUser(userspec string, lookup UserLookup) (uint32, uint32, error) {
+	gidStr := ""
+	userName := userspec
+	if strings.Contains(userspec, ":") {
+		parts := strings.SplitN(userspec, ":", 2)
+		userName = parts[0]
+		groupName := parts[1]
+		grp, err := lookup.LookupGroup(groupName)
+		if err != nil {
+			glog.Errorf("Failed to look up group %s: %v", groupName, err)
+			return 0, 0, err
+		}
+		gidStr = grp.Gid
+	}
+	usr, err := lookup.Lookup(userName)
+	if err != nil {
+		glog.Errorf("Failed to look up user %s: %v", userName, err)
+		return 0, 0, err
+	}
+	uid, err := strconv.Atoi(usr.Uid)
+	if err != nil {
+		glog.Errorf("Failed to parse user id %s: %v", usr.Uid, err)
+		return 0, 0, err
+	}
+	if gidStr == "" {
+		gidStr = usr.Gid
+	}
+	gid, err := strconv.Atoi(gidStr)
+	if err != nil {
+		glog.Errorf("Failed to parse group id %s %v", gidStr, err)
+		return 0, 0, err
+	}
+	glog.Infof("Using uid %d gid %d", uid, gid)
+	return uint32(uid), uint32(gid), nil
+}
+
 func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -564,25 +616,12 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 		return err
 	}
 
-	uid := 0
-	gid := 0
+	uid := uint32(0)
+	gid := uint32(0)
 	if u.config.User != "" {
-		usr, err := user.Lookup(u.config.User)
+		oul := &OsUserLookup{}
+		uid, gid, err = lookupUser(u.config.User, oul)
 		if err != nil {
-			glog.Errorf("Failed to look up user %s: %v",
-				u.config.User, err)
-			return err
-		}
-		uid, err = strconv.Atoi(usr.Uid)
-		if err != nil {
-			glog.Errorf("Failed to look up user/group id %s/%s: %v",
-				usr.Uid, usr.Gid, err)
-			return err
-		}
-		gid, err = strconv.Atoi(usr.Gid)
-		if err != nil {
-			glog.Errorf("Failed to look up user/group id %s/%s: %v",
-				usr.Uid, usr.Gid, err)
 			return err
 		}
 	}
@@ -601,5 +640,5 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 		}
 	}
 
-	return u.runUnitLoop(command, env, uint32(uid), uint32(gid), unitin, unitout, uniterr, policy)
+	return u.runUnitLoop(command, env, uid, gid, unitin, unitout, uniterr, policy)
 }
