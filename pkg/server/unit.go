@@ -516,6 +516,26 @@ func lookupUser(userspec string, lookup UserLookup) (uint32, uint32, error) {
 	return uint32(uid), uint32(gid), nil
 }
 
+func changeToWorkdir(workingdir string, uid, gid uint32) error {
+	// Workingdir might not exist, try to create it first.
+	os.MkdirAll(workingdir, 0755)
+	err := os.Chdir(workingdir)
+	if err != nil {
+		glog.Errorf("Failed to change to working directory %s: %v",
+			workingdir, err)
+		return err
+	}
+	if uid != 0 || gid != 0 {
+		err = os.Chown(workingdir, int(uid), int(gid))
+		if err != nil {
+			glog.Errorf("Failed to chown workingdir %s to %d/%d: %v",
+				workingdir, uid, gid, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -627,16 +647,9 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 	}
 
 	if workingdir != "" {
-		// Workingdir might not exist, try to create it first.
-		os.MkdirAll(workingdir, 0755)
-		err = os.Chdir(workingdir)
+		err = changeToWorkdir(workingdir, uid, gid)
 		if err != nil {
-			glog.Errorf("Failed to change to working directory %s: %v",
-				workingdir, err)
 			return err
-		}
-		if uid != 0 {
-			os.Chown(workingdir, uid, gid)
 		}
 	}
 
