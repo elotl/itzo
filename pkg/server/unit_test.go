@@ -311,7 +311,20 @@ func (tul *TestUserLookup) Lookup(username string) (*user.User, error) {
 	return &usr, tul.uidErr
 }
 
+func (tul *TestUserLookup) LookupId(username string) (*user.User, error) {
+	usr := user.User{}
+	usr.Uid = fmt.Sprintf("%d", tul.uid)
+	usr.Gid = fmt.Sprintf("%d", tul.uidGid)
+	return &usr, tul.uidErr
+}
+
 func (tul *TestUserLookup) LookupGroup(name string) (*user.Group, error) {
+	grp := user.Group{}
+	grp.Gid = fmt.Sprintf("%d", tul.gid)
+	return &grp, tul.uidErr
+}
+
+func (tul *TestUserLookup) LookupGroupId(name string) (*user.Group, error) {
 	grp := user.Group{}
 	grp.Gid = fmt.Sprintf("%d", tul.gid)
 	return &grp, tul.uidErr
@@ -354,6 +367,16 @@ func TestLookupUser(t *testing.T) {
 			},
 			uid:     1,
 			gid:     1,
+			failure: false,
+		},
+		{
+			user: "1001",
+			lookup: &TestUserLookup{
+				uid:    1001,
+				uidGid: 1001,
+			},
+			uid:     1001,
+			gid:     1001,
 			failure: false,
 		},
 	}
