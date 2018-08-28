@@ -5,6 +5,7 @@ IMAGE="alpine.qcow2"
 IMAGE_SIZE="2G"
 NO_AMI=false
 ENVIRONMENT="dev"
+BUILD_VERSION=""
 
 while [[ -n "$1" ]]; do
     case "$1" in
@@ -17,8 +18,9 @@ while [[ -n "$1" ]]; do
                 "default is alpine.qcow2"
             echo "    -n|--no-ami: don't create AMI from qcow2 image"
             echo "    -e|--environment <env>: environment for image (dev|prod), " \
+            echo "    -v|--version <buildnumber>: version of the image, used in image name" \
             echo "Example:"
-            echo "    $0 -o my-alpine-image.qcow2 -s 2G -e prod"
+            echo "    $0 -o my-alpine-image.qcow2 -s 2G -e prod -v 16"
             exit 0
             ;;
         "-s"|"--size")
@@ -52,12 +54,27 @@ while [[ -n "$1" ]]; do
             fi
             shift
             ;;
+	"-v"|"--version")
+	    shift
+	    BUILD_VERSION="$1"
+	    case $BUILD_VERSION in
+		''|*[!0-9]*)
+		    echo "Version must be an integer"
+		    exit 1
+	    esac
+            shift
+            ;;
         *)
             echo "Error, invalid argument $1"
             exit 1
             ;;
     esac
 done
+
+if [[ -z "$BUILD_VERSION" ]]; then
+    echo "A build version (--version) is required"
+    exit 1
+fi
 
 IMAGE_ABSPATH="$(readlink -f $IMAGE)"
 
@@ -125,8 +142,9 @@ if $NO_AMI; then
     exit 0
 fi
 
-AMI_NAME=alpine-$(date +%s)
-if [ $ENVIRONMENT != "prod" ]; then
-    AMI_NAME=$AMI_NAME-$ENVIRONMENT
+PRODUCT_NAME="milpa"
+if [[ $ENVIRONMENT != "prod" ]]; then
+       PRODUCT_NAME="milpa$ENVIRONMENT"
 fi
+AMI_NAME=elotl-$PRODUCT_NAME-$BUILD_VERSION-$(date +"%Y%m%d-%H%M%S")
 python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $AMI_NAME
