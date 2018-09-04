@@ -146,6 +146,9 @@ type Unit struct {
 	Ports []ServicePort `json:"ports,omitempty"`
 	// Working directory to change to before running the command for the unit.
 	WorkingDir string `json:"workingDir,omitempty"`
+	// Init unit. They are run in order, one at a time before regular units are
+	// started.
+	IsInit bool `json:"isInit,omitempty"`
 }
 
 // VolumeMount specifies what volumes to attach to the unit and the path where
