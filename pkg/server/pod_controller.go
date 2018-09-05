@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
@@ -45,6 +46,7 @@ type PodController struct {
 	// and we clear or overwrite the error
 	syncErrors map[string]api.UnitStatus
 	cancelFunc context.CancelFunc
+	waitGroup  sync.WaitGroup
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -325,7 +327,12 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			pc.cancelFunc()
 		}
 		pc.cancelFunc = cancel
-		go pc.startAllUnits(ctx, allCreds, initUnits, addUnits, spec.RestartPolicy)
+		pc.waitGroup = sync.WaitGroup{}
+		pc.waitGroup.Add(1)
+		go func() {
+			pc.startAllUnits(ctx, allCreds, initUnits, addUnits, spec.RestartPolicy)
+			pc.waitGroup.Done()
+		}()
 	}
 }
 
