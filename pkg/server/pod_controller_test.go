@@ -446,6 +446,7 @@ func TestFullSyncErrors(t *testing.T) {
 		}
 		testCase.mod(&podCtl)
 		podCtl.SyncPodUnits(&spec, &status, creds)
+		podCtl.waitGroup.Wait()
 		assert.Len(t, podCtl.syncErrors, testCase.numFailures)
 	}
 }

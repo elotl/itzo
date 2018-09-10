@@ -3,11 +3,14 @@ package server
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/golang/glog"
+	"golang.org/x/net/context"
 )
 
 var specChanSize = 100
@@ -42,6 +45,8 @@ type PodController struct {
 	// We keep syncErrors in the map between syncs until a sync works
 	// and we clear or overwrite the error
 	syncErrors map[string]api.UnitStatus
+	cancelFunc context.CancelFunc
+	waitGroup  sync.WaitGroup
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -56,6 +61,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 			Phase:         api.PodRunning,
 			RestartPolicy: api.RestartPolicyAlways,
 		},
+		cancelFunc: nil,
 	}
 }
 
@@ -68,6 +74,7 @@ func (pc *PodController) runUpdateLoop() {
 			continue
 		}
 		podParams := <-pc.updateChan
+		glog.Infof("New pod update: %+v", podParams)
 		spec := &podParams.Spec
 		MergeSecretsIntoSpec(podParams.Secrets, spec)
 		pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
@@ -260,6 +267,17 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	//fmt.Printf("%#v\n", *status)
 	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
+	initUnits := make([]api.Unit, 0)
+	for _, unit := range addUnits {
+		if unit.IsInit {
+			initUnits = append(initUnits, unit)
+		}
+	}
+	for _, unit := range initUnits {
+		delete(addUnits, unit.Name)
+	}
+	glog.Infof("Units to add: %v, delete: %v, init: %v",
+		addUnits, deleteUnits, initUnits)
 
 	// do deletes
 	for unitName, unit := range deleteUnits {
@@ -302,60 +320,120 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
 		}
 	}
+	if len(initUnits) > 0 || len(addUnits) > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		if pc.cancelFunc != nil {
+			glog.Infof("Canceling previous pod update")
+			pc.cancelFunc()
+		}
+		pc.cancelFunc = cancel
+		pc.waitGroup = sync.WaitGroup{}
+		pc.waitGroup.Add(1)
+		go func() {
+			pc.startAllUnits(ctx, allCreds, initUnits, addUnits, spec.RestartPolicy)
+			pc.waitGroup.Done()
+		}()
+	}
+}
 
-	// if a delete fails, attempt to carry on.  If an add fails,
-	// collect the units that failed and pass them back to the caller
-	// so that we can update the unit's status and bubble up the data
-	// to milpa.
+func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds map[string]api.RegistryCredentials, policy api.RestartPolicy) {
+	// pull image
+	server, imageRepo, err := util.ParseImageSpec(unit.Image)
+	if err != nil {
+		msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
+		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+		return
+	}
+	creds := allCreds[server]
+	err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, creds.Username, creds.Password)
+	if err != nil {
+		msg := fmt.Sprintf("Error pulling image for unit %s: %v",
+			unit.Name, err)
+		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+		return
+	}
+
+	// attach mounts
+	mountFailure := false
+	for _, mount := range unit.VolumeMounts {
+		err := pc.mountCtl.AttachMount(
+			unit.Name, mount.Name, mount.MountPath)
+		if err != nil {
+			msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
+				mount.Name, unit.Name, err)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+			mountFailure = true
+			break
+		}
+	}
+	if mountFailure {
+		return
+	}
+
+	glog.Infoln("Starting unit", unit.Name)
+	err = pc.unitMgr.StartUnit(
+		unit.Name,
+		unit.WorkingDir,
+		unit.Command,
+		unit.Args,
+		makeAppEnv(&unit),
+		policy)
+	if err != nil {
+		msg := fmt.Sprintf("Error starting unit %s: %v",
+			unit.Name, err)
+		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+		return
+	}
+	delete(pc.syncErrors, unit.Name)
+}
+
+func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]api.RegistryCredentials, initUnits []api.Unit, addUnits map[string]api.Unit, policy api.RestartPolicy) {
+	ipolicy := policy
+	if ipolicy == api.RestartPolicyAlways {
+		// Restart policy "Always" is nonsensical for init units.
+		ipolicy = api.RestartPolicyOnFailure
+	}
+	for _, unit := range initUnits {
+		// Start init units first, one by one, and wait for each to finish.
+		pc.startUnit(ctx, unit, allCreds, ipolicy)
+		if !pc.waitForUnit(ctx, unit.Name) {
+			return
+		}
+	}
 	for _, unit := range addUnits {
-		// pull image
-		server, imageRepo, err := util.ParseImageSpec(unit.Image)
-		if err != nil {
-			msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
-			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-			continue
-		}
-		creds := allCreds[server]
-		err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, creds.Username, creds.Password)
-		if err != nil {
-			msg := fmt.Sprintf("Error pulling image for unit %s: %v",
-				unit.Name, err)
-			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-			continue
-		}
+		pc.startUnit(ctx, unit, allCreds, policy)
+	}
+}
 
-		// attach mounts
-		mountFailure := false
-		for _, mount := range unit.VolumeMounts {
-			err := pc.mountCtl.AttachMount(
-				unit.Name, mount.Name, mount.MountPath)
-			if err != nil {
-				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
-					mount.Name, unit.Name, err)
-				pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-				mountFailure = true
-				break
+func (pc *PodController) waitForUnit(ctx context.Context, name string) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			glog.Infof("Cancelled waiting for init unit %s", name)
+			return false
+		case <-time.After(1 * time.Second):
+			glog.Infof("Checking status of init unit %s", name)
+		}
+		u, err := OpenUnit(pc.rootdir, name)
+		if err != nil {
+			glog.Warningf("Opening init unit %s: %v", name, err)
+			continue
+		}
+		status, err := u.GetStatus()
+		if err != nil {
+			glog.Warningf("Getting status of init unit %s: %v", name, err)
+			continue
+		}
+		glog.Infof("Init unit %s status is %+v", name, status)
+		if status.State.Terminated != nil {
+			succeeded := false
+			ec := status.State.Terminated.ExitCode
+			if ec == 0 {
+				succeeded = true
 			}
+			glog.Infof("Init unit %s exited with %d", name, ec)
+			return succeeded
 		}
-		if mountFailure {
-			continue
-		}
-
-		glog.Infoln("Starting unit", unit.Name)
-		err = pc.unitMgr.StartUnit(
-			unit.Name,
-			unit.WorkingDir,
-			unit.Command,
-			unit.Args,
-			makeAppEnv(&unit),
-			spec.RestartPolicy)
-		if err != nil {
-			msg := fmt.Sprintf("Error starting unit %s: %v",
-				unit.Name, err)
-			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-			continue
-		}
-		delete(pc.syncErrors, unit.Name)
 	}
 }
 
