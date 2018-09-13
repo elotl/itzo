@@ -92,13 +92,14 @@ func New(rootdir string) *Server {
 func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		status, err := s.podController.GetStatus()
+		status, initStatus, err := s.podController.GetStatus()
 		if err != nil {
 			serverError(w, err)
 			return
 		}
 		reply := api.PodStatusReply{
-			UnitStatuses: status,
+			UnitStatuses:     status,
+			InitUnitStatuses: initStatus,
 		}
 		buf, err := json.Marshal(&reply)
 		if err != nil {

@@ -224,7 +224,7 @@ func DiffVolumes(spec []api.Volume, status []api.Volume) (map[string]api.Volume,
 	return addVolumes, deleteVolumes, allModifiedVolumes
 }
 
-func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.String) (map[string]api.Unit, map[string]api.Unit) {
+func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.String) ([]api.Unit, []api.Unit) {
 	miniSpecMap := unitToMiniUnitMap(spec)
 	specMap := unitToUnitMap(spec)
 	miniStatusMap := unitToMiniUnitMap(status)
@@ -264,7 +264,22 @@ func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.Strin
 		}
 	}
 
-	return addUnits, deleteUnits
+	// Order does matter for initunits, so let's convert the map back to a
+	// list, preserving original order.
+	addList := make([]api.Unit, 0)
+	deleteList := make([]api.Unit, 0)
+	for _, u := range spec {
+		_, exists := addUnits[u.Name]
+		if exists {
+			addList = append(addList, u)
+		}
+		_, exists = deleteUnits[u.Name]
+		if exists {
+			deleteList = append(deleteList, u)
+		}
+	}
+
+	return addList, deleteList
 }
 
 func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
@@ -273,20 +288,11 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	//fmt.Printf("%#v\n", *status)
 	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
-	initUnits := make([]api.Unit, 0)
-	for _, unit := range addUnits {
-		if unit.IsInit {
-			initUnits = append(initUnits, unit)
-		}
-	}
-	for _, unit := range initUnits {
-		delete(addUnits, unit.Name)
-	}
-	glog.Infof("Units to add: %v, delete: %v, init: %v",
-		addUnits, deleteUnits, initUnits)
+	addInits, deleteInits := DiffUnits(spec.InitUnits, status.InitUnits, allModifiedVolumes)
 
 	// do deletes
-	for unitName, unit := range deleteUnits {
+	for _, unit := range append(deleteUnits, deleteInits...) {
+		unitName := unit.Name
 		glog.Infoln("Stopping unit", unitName)
 		//
 		// There's a few things here that need to happen in order:
@@ -300,11 +306,11 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 				unitName, err)
 		}
 		for _, mount := range unit.VolumeMounts {
-			err = pc.mountCtl.DetachMount(unit.Name, mount.MountPath)
+			err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
 			if err != nil {
 				glog.Errorf(
 					"Error detaching mount %s from %s: %v; trying to continue",
-					mount.Name, unit.Name, err)
+					mount.Name, unitName, err)
 			}
 		}
 		err = pc.unitMgr.RemoveUnit(unitName)
@@ -326,7 +332,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
 		}
 	}
-	if len(initUnits) > 0 || len(addUnits) > 0 {
+	if len(addInits) > 0 || len(addUnits) > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		if pc.cancelFunc != nil {
 			glog.Infof("Canceling previous pod update")
@@ -336,7 +342,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		pc.waitGroup = sync.WaitGroup{}
 		pc.waitGroup.Add(1)
 		go func() {
-			pc.startAllUnits(ctx, allCreds, initUnits, addUnits, spec.RestartPolicy)
+			pc.startAllUnits(ctx, allCreds, addInits, addUnits, spec.RestartPolicy)
 			pc.waitGroup.Done()
 		}()
 	}
@@ -393,7 +399,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 	delete(pc.syncErrors, unit.Name)
 }
 
-func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]api.RegistryCredentials, initUnits []api.Unit, addUnits map[string]api.Unit, policy api.RestartPolicy) {
+func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]api.RegistryCredentials, initUnits []api.Unit, addUnits []api.Unit, policy api.RestartPolicy) {
 	ipolicy := policy
 	if ipolicy == api.RestartPolicyAlways {
 		// Restart policy "Always" is nonsensical for init units.
@@ -475,11 +481,11 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	return nil
 }
 
-func (pc *PodController) GetStatus() ([]api.UnitStatus, error) {
+func (pc *PodController) getUnitStatuses(units []api.Unit) []api.UnitStatus {
 	// go through listed units in the spec, get their status
 	// go through syncErrors, merge those in
 	unitStatusMap := make(map[string]*api.UnitStatus)
-	for _, podUnit := range pc.podStatus.Units {
+	for _, podUnit := range units {
 		// when errors opening the
 		if !IsUnitExist(pc.rootdir, podUnit.Name) {
 			reason := "Unit waiting"
@@ -502,13 +508,20 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, error) {
 			continue
 		}
 		unitStatusMap[podUnit.Name] = us
-	}
-	for _, syncFailStatus := range pc.syncErrors {
-		unitStatusMap[syncFailStatus.Name] = &syncFailStatus
+		syncFailStatus, exists := pc.syncErrors[podUnit.Name]
+		if exists {
+			unitStatusMap[syncFailStatus.Name] = &syncFailStatus
+		}
 	}
 	unitStatuses := make([]api.UnitStatus, 0, len(unitStatusMap))
 	for _, s := range unitStatusMap {
 		unitStatuses = append(unitStatuses, *s)
 	}
-	return unitStatuses, nil
+	return unitStatuses
+}
+
+func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error) {
+	statuses := pc.getUnitStatuses(pc.podStatus.Units)
+	initStatuses := pc.getUnitStatuses(pc.podStatus.InitUnits)
+	return statuses, initStatuses, nil
 }
