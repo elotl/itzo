@@ -273,7 +273,9 @@ func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.Strin
 		if exists {
 			addList = append(addList, u)
 		}
-		_, exists = deleteUnits[u.Name]
+	}
+	for _, u := range status {
+		_, exists := deleteUnits[u.Name]
 		if exists {
 			deleteList = append(deleteList, u)
 		}

@@ -149,13 +149,13 @@ func TestDiffUnits(t *testing.T) {
 		},
 	}
 	a, d := DiffUnits(spec, status, sets.NewString())
-	expectedAdd := map[string]api.Unit{
-		"u2": spec[1],
+	expectedAdd := []api.Unit{
+		spec[1],
 	}
 	assert.Equal(t, expectedAdd, a)
-	expectedDelete := map[string]api.Unit{
-		"u2": status[1],
-		"u3": status[2],
+	expectedDelete := []api.Unit{
+		status[1],
+		status[2],
 	}
 	assert.Equal(t, expectedDelete, d)
 }
@@ -202,12 +202,12 @@ func TestDiffUnitsWithVolumeChange(t *testing.T) {
 		},
 	}
 	a, d := DiffUnits(spec, status, sets.NewString("v2"))
-	expectedAdd := map[string]api.Unit{
-		"u2": spec[1],
+	expectedAdd := []api.Unit{
+		spec[1],
 	}
 	assert.Equal(t, expectedAdd, a)
-	expectedDelete := map[string]api.Unit{
-		"u2": status[1],
+	expectedDelete := []api.Unit{
+		status[1],
 	}
 	assert.Equal(t, expectedDelete, d)
 }
@@ -515,7 +515,7 @@ func TestPodControllerStatus(t *testing.T) {
 
 	podCtl := NewPodController(rootdir, nil, nil, nil)
 	podCtl.podStatus = &status
-	s, err := podCtl.GetStatus()
+	s, _, err := podCtl.GetStatus()
 
 	assert.NoError(t, err)
 	assert.Len(t, s, 1)
@@ -529,7 +529,7 @@ func TestPodControllerStatus(t *testing.T) {
 		},
 	}
 	podCtl.syncErrors[myUnit.Name] = expected
-	s, err = podCtl.GetStatus()
+	s, _, err = podCtl.GetStatus()
 	assert.NoError(t, err)
 	assert.Len(t, s, 1)
 	assertStatusEqual(t, &expected, &s[0])
