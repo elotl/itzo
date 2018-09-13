@@ -451,17 +451,26 @@ func TestFullSyncErrors(t *testing.T) {
 	}
 }
 
-func createTestUnit(name string) (string, *Unit, func()) {
+func createTestUnits(names []string) (string, []*Unit, func()) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	if err != nil {
 		panic(err)
 	}
-	u, err := OpenUnit(tmpdir, name)
-	if err != nil {
-		panic(err)
+	units := make([]*Unit, len(names))
+	for i, name := range names {
+		u, err := OpenUnit(tmpdir, name)
+		if err != nil {
+			panic(err)
+		}
+		units[i] = u
 	}
-	closer := func() { u.Destroy(); os.RemoveAll(tmpdir) }
-	return tmpdir, u, closer
+	closer := func() {
+		for _, u := range units {
+			u.Destroy()
+		}
+		os.RemoveAll(tmpdir)
+	}
+	return tmpdir, units, closer
 }
 
 func assertStatusEqual(t *testing.T, expected, actual *api.UnitStatus) {
@@ -489,37 +498,60 @@ func TestPodControllerStatus(t *testing.T) {
 		Image:   "elotl/foo",
 		Command: []string{"runfoo"},
 	}
-	rootdir, u, closer := createTestUnit(myUnit.Name)
-	status := api.PodSpec{
-		Units: []api.Unit{myUnit},
+	initUnit := api.Unit{
+		Name:    "initunit",
+		Image:   "elotl/init",
+		Command: []string{"runinit"},
 	}
-
+	rootdir, units, closer := createTestUnits([]string{myUnit.Name, initUnit.Name})
+	defer closer()
+	status := api.PodSpec{
+		Units:     []api.Unit{myUnit},
+		InitUnits: []api.Unit{initUnit},
+	}
 	running := api.UnitState{
 		Running: &api.UnitStateRunning{
 			StartedAt: api.Now(),
 		},
 	}
-
-	defer closer()
-	err := u.SetImage(myUnit.Image)
+	succeeded := api.UnitState{
+		Running: &api.UnitStateRunning{
+			StartedAt: api.Now(),
+		},
+	}
+	err := units[0].SetImage(myUnit.Image)
 	assert.NoError(t, err)
-	err = u.SetState(running, nil)
+	err = units[0].SetState(running, nil)
+	assert.NoError(t, err)
+	err = units[1].SetImage(initUnit.Image)
+	assert.NoError(t, err)
+	err = units[1].SetState(succeeded, nil)
 	assert.NoError(t, err)
 	expected := api.UnitStatus{
 		Name:  myUnit.Name,
 		State: running,
 		Image: myUnit.Image,
 	}
-	us, _ := u.GetStatus()
-	assertStatusEqual(t, &expected, us)
+	initExpected := api.UnitStatus{
+		Name:  initUnit.Name,
+		State: succeeded,
+		Image: initUnit.Image,
+	}
+	s, err := units[0].GetStatus()
+	assert.NoError(t, err)
+	assertStatusEqual(t, &expected, s)
+	s, err = units[1].GetStatus()
+	assert.NoError(t, err)
+	assertStatusEqual(t, &initExpected, s)
 
 	podCtl := NewPodController(rootdir, nil, nil, nil)
 	podCtl.podStatus = &status
-	s, _, err := podCtl.GetStatus()
-
+	statuses, initStatuses, err := podCtl.GetStatus()
 	assert.NoError(t, err)
-	assert.Len(t, s, 1)
-	assertStatusEqual(t, &expected, &s[0])
+	assert.Len(t, statuses, 1)
+	assertStatusEqual(t, &expected, &statuses[0])
+	assert.Len(t, initStatuses, 1)
+	assertStatusEqual(t, &initExpected, &initStatuses[0])
 
 	// now overwrite the status with a failure
 	// make sure it's overwritten in the status
@@ -529,8 +561,10 @@ func TestPodControllerStatus(t *testing.T) {
 		},
 	}
 	podCtl.syncErrors[myUnit.Name] = expected
-	s, _, err = podCtl.GetStatus()
+	statuses, initStatuses, err = podCtl.GetStatus()
 	assert.NoError(t, err)
-	assert.Len(t, s, 1)
-	assertStatusEqual(t, &expected, &s[0])
+	assert.Len(t, statuses, 1)
+	assertStatusEqual(t, &expected, &statuses[0])
+	assert.Len(t, initStatuses, 1)
+	assertStatusEqual(t, &initExpected, &initStatuses[0])
 }
