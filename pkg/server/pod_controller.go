@@ -343,6 +343,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			pc.cancelFunc()
 		}
 		pc.cancelFunc = cancel
+		pc.waitGroup.Wait() // Wait for previous update to finish.
 		pc.waitGroup = sync.WaitGroup{}
 		pc.waitGroup.Add(1)
 		go func() {
