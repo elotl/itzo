@@ -290,6 +290,8 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	//fmt.Printf("%#v\n", *status)
 	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
+	// TODO: according to the K8s specs, if "A user updates the PodSpec causing
+	// the Init Container image to change" then the entire pod is restarted.
 	addInits, deleteInits := DiffUnits(spec.InitUnits, status.InitUnits, allModifiedVolumes)
 
 	// do deletes
