@@ -185,10 +185,12 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			unitName, err := s.podController.GetUnitName(unit)
 			if err != nil {
 				badRequest(w, err.Error())
+				return
 			}
 			logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
 			if err != nil {
 				badRequest(w, err.Error())
+				return
 			}
 			s.RunLogTailer(w, r, unitName, logBuffer)
 			return
@@ -212,6 +214,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		unitName, err := s.podController.GetUnitName(unit)
 		if err != nil {
 			badRequest(w, err.Error())
+			return
 		}
 		logs, err := s.unitMgr.ReadLogBuffer(unitName, n)
 		if err != nil {
