@@ -317,7 +317,35 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	if url != "" {
 		args = append(args, []string{"-url", url}...)
 	}
-	return runTosi(tp, args...)
+	err = runTosi(tp, args...)
+	if err != nil {
+		return err
+	}
+	err = u.copyResolvConf()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u *Unit) copyResolvConf() error {
+	// Let's make sure there's a functioning resolv.conf inside the unit. Here
+	// we will overwrite /etc/resolv.conf with the one from the host system.
+	dpath := filepath.Join(u.GetRootfs(), "/etc")
+	if _, err := os.Stat(dpath); os.IsNotExist(err) {
+		glog.Infof("Creating directory %s", dpath)
+		if err := os.Mkdir(dpath, 0755); err != nil {
+			glog.Errorf("Could not create new directory %s: %v", dpath, err)
+			return err
+		}
+	}
+	fpath := filepath.Join(u.GetRootfs(), "/etc/resolv.conf")
+	glog.Infof("Copying system resolv.conf to %s", fpath)
+	if err := copyFile("/etc/resolv.conf", fpath); err != nil {
+		glog.Errorf("copyFile() resolv.conf to %s: %v", fpath, err)
+		return err
+	}
+	return nil
 }
 
 func (u *Unit) GetStatus() (*api.UnitStatus, error) {
@@ -470,26 +498,6 @@ func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Rea
 	}
 }
 
-func checkResolvConf(rootfs string) error {
-	dpath := filepath.Join(rootfs, "/etc")
-	if _, err := os.Stat(dpath); os.IsNotExist(err) {
-		glog.Infof("Creating directory %s", dpath)
-		if err := os.Mkdir(dpath, 0755); err != nil {
-			glog.Errorf("Could not create new directory %s: %v", dpath, err)
-			return err
-		}
-	}
-	fpath := filepath.Join(rootfs, "/etc/resolv.conf")
-	if _, err := os.Stat(fpath); err != nil {
-		glog.Infof("Copying system resolv.conf to %s", fpath)
-		if err := copyFile("/etc/resolv.conf", fpath); err != nil {
-			glog.Errorf("copyFile() resolv.conf to %s: %v", fpath, err)
-			return err
-		}
-	}
-	return nil
-}
-
 func lookupUser(userspec string, lookup UserLookup) (uint32, uint32, error) {
 	gidStr := ""
 	userName := userspec
@@ -598,11 +606,6 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 	defer unitin.Close()
 
 	if rootfs != "" {
-		err := checkResolvConf(rootfs)
-		if err != nil {
-			return err
-		}
-
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 
 		if err := mounter.BindMount(rootfs, rootfs); err != nil {
@@ -612,7 +615,7 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 		// Bind mount statusfile into the chroot. Note: both the source and the
 		// destination files need to exist, otherwise the bind mount will fail.
 		statussrc := filepath.Join(u.statusPath)
-		err = ensureFileExists(statussrc)
+		err := ensureFileExists(statussrc)
 		if err != nil {
 			glog.Errorln("error creating status file #1")
 		}
