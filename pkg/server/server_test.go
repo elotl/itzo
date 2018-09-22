@@ -118,7 +118,7 @@ func TestMain(m *testing.M) {
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
-		podController:  NewPodController(tmpdir, nil, nil),
+		podController:  NewPodController(tmpdir, nil, nil, nil),
 	}
 	s.getHandlers()
 	ret := m.Run()
@@ -587,7 +587,7 @@ func runServer() (*Server, func(), int) {
 	s := &Server{
 		installRootdir: tmpdir,
 		unitMgr:        NewUnitManager(tmpdir),
-		podController:  NewPodController(tmpdir, nil, nil),
+		podController:  NewPodController(tmpdir, nil, nil, nil),
 	}
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: ":0", Handler: s}

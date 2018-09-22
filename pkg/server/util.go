@@ -44,6 +44,15 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+func readLines(filename string) ([]string, error) {
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(content), "\n")
+	return lines, nil
+}
+
 func resizeVolume() error {
 	mounts, err := os.Open("/proc/mounts")
 	if err != nil {

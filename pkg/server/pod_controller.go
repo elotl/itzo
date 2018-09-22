@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/elotl/itzo/pkg/api"
@@ -31,27 +32,33 @@ type UnitRunner interface {
 	RemoveUnit(string) error
 }
 
+type ResolvConfUpdater interface {
+	UpdateSearch(string, string) error
+}
+
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
 type PodController struct {
-	rootdir     string
-	mountCtl    Mounter
-	unitMgr     UnitRunner
-	imagePuller Puller
-	podStatus   *api.PodSpec
-	updateChan  chan *api.PodParameters
+	rootdir           string
+	mountCtl          Mounter
+	unitMgr           UnitRunner
+	imagePuller       Puller
+	resolvConfUpdater ResolvConfUpdater
+	podStatus         *api.PodSpec
+	updateChan        chan *api.PodParameters
 	// We keep syncErrors in the map between syncs until a sync works
 	// and we clear or overwrite the error
 	syncErrors map[string]api.UnitStatus
 }
 
-func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
+func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner, resolvConfUpdater ResolvConfUpdater) *PodController {
 	return &PodController{
-		rootdir:     rootdir,
-		unitMgr:     unitMgr,
-		mountCtl:    mounter,
-		imagePuller: &ImagePuller{},
-		updateChan:  make(chan *api.PodParameters, specChanSize),
-		syncErrors:  make(map[string]api.UnitStatus),
+		rootdir:           rootdir,
+		unitMgr:           unitMgr,
+		mountCtl:          mounter,
+		imagePuller:       &ImagePuller{},
+		resolvConfUpdater: resolvConfUpdater,
+		updateChan:        make(chan *api.PodParameters, specChanSize),
+		syncErrors:        make(map[string]api.UnitStatus),
 		podStatus: &api.PodSpec{
 			Phase:         api.PodRunning,
 			RestartPolicy: api.RestartPolicyAlways,
@@ -70,6 +77,10 @@ func (pc *PodController) runUpdateLoop() {
 		podParams := <-pc.updateChan
 		spec := &podParams.Spec
 		MergeSecretsIntoSpec(podParams.Secrets, spec)
+		err := pc.resolvConfUpdater.UpdateSearch(podParams.ClusterName, podParams.Namespace)
+		if err != nil {
+			glog.Errorf("Error updating resolv.conf with cluster parameters")
+		}
 		pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
 		pc.podStatus = spec
 	}
@@ -324,6 +335,8 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			continue
 		}
 
+		//update resolv.conf
+
 		// attach mounts
 		mountFailure := false
 		for _, mount := range unit.VolumeMounts {
@@ -387,6 +400,37 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)
+	}
+	return nil
+}
+
+type RealResolvConfUpdater struct {
+	filepath string
+}
+
+func (u *RealResolvConfUpdater) UpdateSearch(clusterName, namespace string) error {
+	lines, err := readLines(u.filepath)
+	if err != nil {
+		return err
+	}
+	keep := make([]string, 0, len(lines))
+	for i := range lines {
+		if strings.HasPrefix(lines[i], "search") || lines[i] == "" {
+			continue
+		}
+		keep = append(keep, lines[i])
+	}
+	searchLine := fmt.Sprintf("search %s.%s.local", namespace, clusterName)
+	keep = append(keep, searchLine)
+	out, err := os.Create(u.filepath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	for _, line := range keep {
+		if _, err := out.WriteString(line + "\n"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
