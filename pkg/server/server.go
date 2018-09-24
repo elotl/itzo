@@ -71,7 +71,10 @@ func New(rootdir string) *Server {
 	}
 	mounter := mount.NewOSMounter(rootdir)
 	um := NewUnitManager(rootdir)
-	pc := NewPodController(rootdir, mounter, um)
+	resolvUpdater := &RealResolvConfUpdater{
+		filepath: "/etc/resolv.conf",
+	}
+	pc := NewPodController(rootdir, mounter, um, resolvUpdater)
 	pc.Start()
 	return &Server{
 		env:            EnvStore{},
