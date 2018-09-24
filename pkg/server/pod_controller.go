@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/elotl/itzo/pkg/api"
@@ -30,10 +29,6 @@ type UnitRunner interface {
 	StartUnit(string, string, []string, []string, []string, api.RestartPolicy) error
 	StopUnit(string) error
 	RemoveUnit(string) error
-}
-
-type ResolvConfUpdater interface {
-	UpdateSearch(string, string) error
 }
 
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
@@ -79,7 +74,7 @@ func (pc *PodController) runUpdateLoop() {
 		MergeSecretsIntoSpec(podParams.Secrets, spec)
 		err := pc.resolvConfUpdater.UpdateSearch(podParams.ClusterName, podParams.Namespace)
 		if err != nil {
-			glog.Errorf("Error updating resolv.conf with cluster parameters")
+			glog.Errorln("Error updating resolv.conf with cluster parameters", err)
 		}
 		pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
 		pc.podStatus = spec
@@ -335,8 +330,6 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			continue
 		}
 
-		//update resolv.conf
-
 		// attach mounts
 		mountFailure := false
 		for _, mount := range unit.VolumeMounts {
@@ -400,37 +393,6 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)
-	}
-	return nil
-}
-
-type RealResolvConfUpdater struct {
-	filepath string
-}
-
-func (u *RealResolvConfUpdater) UpdateSearch(clusterName, namespace string) error {
-	lines, err := readLines(u.filepath)
-	if err != nil {
-		return err
-	}
-	keep := make([]string, 0, len(lines))
-	for i := range lines {
-		if strings.HasPrefix(lines[i], "search") || lines[i] == "" {
-			continue
-		}
-		keep = append(keep, lines[i])
-	}
-	searchLine := fmt.Sprintf("search %s.%s.local", namespace, clusterName)
-	keep = append(keep, searchLine)
-	out, err := os.Create(u.filepath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	for _, line := range keep {
-		if _, err := out.WriteString(line + "\n"); err != nil {
-			return err
-		}
 	}
 	return nil
 }

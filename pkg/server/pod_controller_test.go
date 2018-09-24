@@ -300,20 +300,6 @@ func NewUnitMock() *UnitMock {
 	}
 }
 
-type ResolvConfUpdaterMock struct {
-	Updater func(clusterName, namespace string) error
-	updated bool
-}
-
-func NewResolvConfUpdaterMock() *ResolvConfUpdaterMock {
-	u := &ResolvConfUpdaterMock{}
-	u.Updater = func(clusterName, namespace string) error {
-		u.updated = true
-		return nil
-	}
-	return u
-}
-
 // Here we're testing 1. that we do the diffs somewhat correctly
 // and that we generate the correct number of errors when things
 // fail.
@@ -546,24 +532,4 @@ func TestPodControllerStatus(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, s, 1)
 	assertStatusEqual(t, &expected, &s[0])
-}
-
-func TestUpdateResolvConfSearch(t *testing.T) {
-	fp, err := ioutil.TempFile("", "itzo-test-resolv")
-	assert.NoError(t, err)
-	filepath := fp.Name()
-	defer os.Remove(filepath)
-	_, err = fp.Write([]byte(`search something.com somethingelse.com
-resolver 192.168.0.1
-`))
-	assert.NoError(t, err)
-	updater := RealResolvConfUpdater{filepath: filepath}
-	err = updater.UpdateSearch("mycluster", "mynamespace")
-	assert.NoError(t, err)
-	expected := []byte(`resolver 192.168.0.1
-search mynamespace.mycluster.local
-`)
-	actual, err := ioutil.ReadFile(filepath)
-	assert.NoError(t, err)
-	assert.Equal(t, string(expected), string(actual))
 }
