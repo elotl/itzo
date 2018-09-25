@@ -7,6 +7,7 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
 )
@@ -27,7 +28,9 @@ func main() {
 
 	flag.Parse()
 	flag.Lookup("logtostderr").Value.Set("true")
-
+	if err := util.DisableOOMKiller(); err != nil {
+		glog.Errorln("Error disabling OOM killer", err)
+	}
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
 		glog.Infof("Starting %s for %s; restart policy is %v",
