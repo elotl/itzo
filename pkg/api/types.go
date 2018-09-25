@@ -9,6 +9,9 @@ type PodSpec struct {
 	Phase PodPhase `json:"phase"`
 	// List of units that together compose this pod.
 	Units []Unit `json:"units"`
+	// Init units. They are run in order, one at a time before regular units
+	// are started.
+	InitUnits []Unit `json:"initUnits"`
 	// List of secrets that will be used for authenticating when pulling
 	// images.
 	ImagePullSecrets []string `json:"imagePullSecrets,omitemtpy"`
