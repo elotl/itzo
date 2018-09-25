@@ -3,7 +3,6 @@ package util
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
 )
 
 func Minint64(a, b int64) int64 {
@@ -13,11 +12,10 @@ func Minint64(a, b int64) int64 {
 	return b
 }
 
+// We disable the OOM Killer for Itzo in the itzo startup script
+// but we want to reenable it for user processes that itzo spawns
 func SetOOMScore(pid, score int) error {
 	writebytes := []byte(fmt.Sprintf("%d\n", score))
-	if pid == 0 {
-		pid = os.Getpid()
-	}
 	filepath := fmt.Sprintf("/proc/%d/oom_score_adj", pid)
 	return ioutil.WriteFile(filepath, writebytes, 0644)
 }

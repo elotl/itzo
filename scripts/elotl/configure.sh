@@ -115,6 +115,8 @@ for app in cloud-init itzo; do
     done
     chmod 755 \$app_path
 done
+
+echo "-1000" > /proc/self/oom_score_adj
 \${app_dir}/cloud-init --from-metadata-service >> /var/log/itzo/itzo.log 2>&1
 \${app_dir}/itzo >> /var/log/itzo/itzo.log 2>&1
 EOF
