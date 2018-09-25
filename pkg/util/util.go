@@ -1,6 +1,10 @@
 package util
 
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+	"os"
+)
 
 func Minint64(a, b int64) int64 {
 	if a < b {
@@ -9,7 +13,11 @@ func Minint64(a, b int64) int64 {
 	return b
 }
 
-func DisableOOMKiller() error {
-	val := []byte("-1000\n")
-	return ioutil.WriteFile("/proc/self/oom_score_adj", val, 0644)
+func SetOOMScore(pid, score int) error {
+	writebytes := []byte(fmt.Sprintf("%d\n", score))
+	if pid == 0 {
+		pid = os.Getpid()
+	}
+	filepath := fmt.Sprintf("/proc/%d/oom_score_adj", pid)
+	return ioutil.WriteFile(filepath, writebytes, 0644)
 }

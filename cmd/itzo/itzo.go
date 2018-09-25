@@ -28,7 +28,7 @@ func main() {
 
 	flag.Parse()
 	flag.Lookup("logtostderr").Value.Set("true")
-	if err := util.DisableOOMKiller(); err != nil {
+	if err := util.SetOOMScore(0, -1000); err != nil {
 		glog.Errorln("Error disabling OOM killer", err)
 	}
 	if *appcmdline != "" {
