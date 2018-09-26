@@ -27,7 +27,6 @@ func main() {
 
 	flag.Parse()
 	flag.Lookup("logtostderr").Value.Set("true")
-
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
 		glog.Infof("Starting %s for %s; restart policy is %v",

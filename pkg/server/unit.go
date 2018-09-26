@@ -16,11 +16,13 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 )
 
 const (
 	MAX_BACKOFF_TIME = 5 * time.Minute
+	CHILD_OOM_SCORE  = 15 // chosen arbitrarily... kernel will adjust this value
 )
 
 // This is part of the config of docker images.
@@ -443,6 +445,11 @@ func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Rea
 		}, &restarts)
 		if cmd.Process != nil {
 			glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+			err := util.SetOOMScore(cmd.Process.Pid, CHILD_OOM_SCORE)
+			if err != nil {
+				glog.Warningf("Error resetting oom score for pid %s: %s",
+					cmd.Process.Pid, err)
+			}
 		} else {
 			glog.Warningf("cmd has nil process: %#v", cmd)
 		}
