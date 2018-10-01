@@ -3,6 +3,9 @@ package util
 import (
 	"fmt"
 	"io/ioutil"
+	"syscall"
+
+	"github.com/golang/glog"
 )
 
 func Minint64(a, b int64) int64 {
@@ -18,4 +21,14 @@ func SetOOMScore(pid, score int) error {
 	writebytes := []byte(fmt.Sprintf("%d\n", score))
 	filepath := fmt.Sprintf("/proc/%d/oom_score_adj", pid)
 	return ioutil.WriteFile(filepath, writebytes, 0644)
+}
+
+func GetNumberOfFreeAndAvailableBlocks(path string) (uint64, uint64, error) {
+	var st syscall.Statfs_t
+	err := syscall.Statfs(path, &st)
+	if err != nil {
+		glog.Errorf("Error calling statfs() on %s: %v", path, err)
+		return uint64(0), uint64(0), err
+	}
+	return st.Bfree, st.Bavail, nil
 }
