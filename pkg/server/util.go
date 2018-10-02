@@ -15,13 +15,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 )
 
 var (
-	TOSI_MAX_RETRIES       = 3
-	MaxBufferSize    int64 = 1024 * 1024 * 10 // 10MB
-	TOSI_PRG               = "tosi"
+	TOSI_MAX_RETRIES        = 3
+	MaxBufferSize     int64 = 1024 * 1024 * 10 // 10MB
+	TOSI_PRG                = "tosi"
+	TOSI_OUTPUT_LIMIT       = 4096
 )
 
 func copyFile(src, dst string) error {
@@ -167,30 +169,40 @@ func runTosi(tp string, args ...string) error {
 	n := 0
 	start := time.Now()
 	backoff := 1 * time.Second
-	var err error
 	for {
 		n++
 		var stderr bytes.Buffer
 		cmd := exec.Command(tp, args...)
 		cmd.Stderr = &stderr
-		err = cmd.Run()
+		err := cmd.Run()
 		if err == nil {
 			glog.Infof("Image download succeeded after %d attempt(s), %v",
 				n, time.Now().Sub(start))
-			break
+			return err
+		}
+		freebs, availbs, serr := util.GetNumberOfFreeAndAvailableBlocks("/")
+		if serr == nil && (freebs < 5 || availbs < 5) {
+			err = fmt.Errorf("Low disk space while getting image, "+
+				"free blocks: %d available blocks: %d",
+				freebs, availbs)
+			glog.Errorf("Image download problem: %v", err)
+			return err
+		}
+		output := stderr.String()
+		if len(output) > TOSI_OUTPUT_LIMIT {
+			output = output[len(output)-TOSI_OUTPUT_LIMIT:]
 		}
 		err = fmt.Errorf(
-			"Error getting image after %d attempt(s): %+v, output:\n%s",
-			n, err, stderr.String())
+			"Error getting image after %d attempt(s): %+v, tosi output:\n%s",
+			n, err, output)
 		glog.Errorf("Image download problem: %v", err)
 		if n >= TOSI_MAX_RETRIES {
-			break
+			return err
 		}
 		glog.Infof("Retrying image download in %v", backoff)
 		time.Sleep(backoff)
 		backoff = backoff * 2
 	}
-	return err
 }
 
 // I have no idea why I wrote this...  I mean, the host tail

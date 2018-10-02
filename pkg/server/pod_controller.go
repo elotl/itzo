@@ -76,7 +76,7 @@ func (pc *PodController) runUpdateLoop() {
 			continue
 		}
 		podParams := <-pc.updateChan
-		glog.Infof("New pod update: %+v", podParams)
+		glog.Infof("New pod update")
 		spec := &podParams.Spec
 		MergeSecretsIntoSpec(podParams.Secrets, spec)
 		err := pc.resolvConfUpdater.UpdateSearch(podParams.ClusterName, podParams.Namespace)
