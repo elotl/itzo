@@ -551,6 +551,21 @@ func lookupUser(userspec string, lookup UserLookup) (uint32, uint32, error) {
 	return uint32(uid), uint32(gid), nil
 }
 
+func createDir(dir string, uid, gid int) error {
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		glog.Errorf("Failed to create directory %s: %v", dir, err)
+		return err
+	}
+	err = os.Chown(dir, uid, gid)
+	if err != nil {
+		glog.Errorf("Failed to change UID/GID of directory %s to %d/%d: %v",
+			dir, uid, gid, err)
+		return err
+	}
+	return nil
+}
+
 func changeToWorkdir(workingdir string, uid, gid uint32) error {
 	// Workingdir might not exist, try to create it first.
 	os.MkdirAll(workingdir, 0755)
@@ -671,6 +686,13 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 	if u.config.User != "" {
 		oul := &OsUserLookup{}
 		uid, gid, err = lookupUser(u.config.User, oul)
+		if err != nil {
+			return err
+		}
+	}
+
+	for vol, _ := range u.config.Volumes {
+		err = createDir(vol, int(uid), int(gid))
 		if err != nil {
 			return err
 		}
