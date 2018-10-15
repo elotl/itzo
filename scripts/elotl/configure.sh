@@ -124,7 +124,7 @@ chmod 755 /usr/local/bin/itzo_download.sh
 cat /usr/local/bin/itzo_download.sh
 
 step 'Add tosi'
-wget -O /usr/local/bin/tosi http://tosi-download.s3.amazonaws.com/tosi
+wget -O /usr/local/bin/tosi http://tosi.s3.amazonaws.com/tosi
 chmod 755 /usr/local/bin/tosi
 
 step 'Add aws-ena module'
