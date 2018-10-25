@@ -78,7 +78,8 @@ func (pc *PodController) runUpdateLoop() {
 		podParams := <-pc.updateChan
 		glog.Infof("New pod update")
 		spec := &podParams.Spec
-		MergeSecretsIntoSpec(podParams.Secrets, spec)
+		MergeSecretsIntoSpec(podParams.Secrets, spec.Units)
+		MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
 		err := pc.resolvConfUpdater.UpdateSearch(podParams.ClusterName, podParams.Namespace)
 		if err != nil {
 			glog.Errorln("Error updating resolv.conf with cluster parameters", err)
@@ -151,10 +152,10 @@ func unitToUnitMap(units []api.Unit) map[string]api.Unit {
 }
 
 // Modifies the PodSpec and inserts secrets into the spec
-func MergeSecretsIntoSpec(secrets map[string]map[string][]byte, spec *api.PodSpec) {
-	for i := 0; i < len(spec.Units); i++ {
-		newEnv := make([]api.EnvVar, 0, len(spec.Units[i].Env))
-		for _, ev := range spec.Units[i].Env {
+func MergeSecretsIntoSpec(secrets map[string]map[string][]byte, units []api.Unit) {
+	for i := 0; i < len(units); i++ {
+		newEnv := make([]api.EnvVar, 0, len(units[i].Env))
+		for _, ev := range units[i].Env {
 			if ev.ValueFrom == nil {
 				newEnv = append(newEnv, ev)
 			} else if ev.ValueFrom.SecretKeyRef != nil {
@@ -175,7 +176,7 @@ func MergeSecretsIntoSpec(secrets map[string]map[string][]byte, spec *api.PodSpe
 				newEnv = append(newEnv, api.EnvVar{Name: ev.Name, Value: string(val)})
 			}
 		}
-		spec.Units[i].Env = newEnv
+		units[i].Env = newEnv
 	}
 }
 

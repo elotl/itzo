@@ -47,7 +47,7 @@ func TestMergeSecretsIntoSpec(t *testing.T) {
 			"value1": []byte("secret1"),
 		},
 	}
-	MergeSecretsIntoSpec(secrets, spec)
+	MergeSecretsIntoSpec(secrets, spec.Units)
 	assert.Len(t, spec.Units[0].Env, 2)
 	assert.Equal(t, api.EnvVar{"foo", "fooval", nil}, spec.Units[0].Env[0])
 	assert.Equal(t, api.EnvVar{"bar", "secret1", nil}, spec.Units[0].Env[1])
