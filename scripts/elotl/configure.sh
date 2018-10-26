@@ -69,23 +69,22 @@ echo "-1000" > /proc/self/oom_score_adj
 itzo_dir=/usr/local/bin
 \${itzo_dir}/cloud-init --from-metadata-service >> /var/log/itzo/itzo.log 2>&1
 
-itzo_bucket_file="/tmp/milpa/itzo_bucket"
-itzo_bucket="itzo-download"
-if [[ -f \$itzo_bucket_file ]]; then
-    itzo_bucket=\$(head -n 1 \$itzo_bucket_file)
+itzo_url_file="/tmp/milpa/itzo_url"
+itzo_url="http://itzo-download.s3.amazonaws.com"
+if [[ -f \$itzo_url_file ]]; then
+    itzo_url=\$(head -n 1 \$itzo_url_file)
 fi
 itzo_version_file="/tmp/milpa/itzo_version"
 itzo_version="latest"
 if [[ -f \$itzo_version_file ]]; then
     itzo_version=\$(head -n 1 \$itzo_version_file)
 fi
-s3_url="http://\${itzo_bucket}.s3.amazonaws.com"
-s3_path="\${s3_url}/itzo-\${itzo_version}"
+itzo_full_url="\${itzo_url}/itzo-\${itzo_version}"
 itzo_path="\${itzo_dir}/itzo"
 rm -f \$itzo_path
 while true; do
-    echo "\$(date) downloading itzo from \$s3_path" >> /var/log/itzo/itzo_download.log 2>&1
-    wget --timeout=3 \$s3_path -O \$itzo_path && break >> /var/log/itzo/itzo_download.log 2>&1
+    echo "\$(date) downloading itzo from \$itzo_full_url" >> /var/log/itzo/itzo_download.log 2>&1
+    wget --timeout=3 \$itzo_full_url -O \$itzo_path && break >> /var/log/itzo/itzo_download.log 2>&1
     sleep 1
 done
 
