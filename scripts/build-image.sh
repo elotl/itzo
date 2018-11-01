@@ -4,7 +4,6 @@
 IMAGE="alpine.qcow2"
 IMAGE_SIZE="2G"
 NO_AMI=false
-ENVIRONMENT="dev"
 BUILD_VERSION=""
 
 while [[ -n "$1" ]]; do
@@ -17,7 +16,6 @@ while [[ -n "$1" ]]; do
             echo "    -o|--out <output path>: image output path, " \
                 "default is alpine.qcow2"
             echo "    -n|--no-ami: don't create AMI from qcow2 image"
-            echo "    -e|--environment <env>: environment for image (dev|prod), " \
             echo "    -v|--version <buildnumber>: version of the image, used in image name" \
             echo "Example:"
             echo "    $0 -o my-alpine-image.qcow2 -s 2G -e prod -v 16"
@@ -44,15 +42,6 @@ while [[ -n "$1" ]]; do
         "-n"|"--no-ami")
             shift
             NO_AMI=true
-            ;;
-	"-e"|"--environment")
-	    shift
-	    ENVIRONMENT="$1"
-            if [[ $ENVIRONMENT != "dev" ]] && [[ $ENVIRONMENT != "prod" ]]; then
-                echo "Error, invalid environment specified."
-                exit 1
-            fi
-            shift
             ;;
 	"-v"|"--version")
 	    shift
@@ -134,7 +123,7 @@ git clean -fdx
 #
 #     kvm -m 512 -net nic,model=virtio -net user,hostfwd=tcp:127.0.0.1:9222-:22 -drive file=alpine.qcow2,if=virtio
 #
-./alpine-make-vm-image --kernel-flavor vanilla --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$(cat ../elotl/packages)" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh --environment $ENVIRONMENT
+./alpine-make-vm-image --kernel-flavor vanilla --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$(cat ../elotl/packages)" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh
 
 popd > /dev/null
 
@@ -142,9 +131,6 @@ if $NO_AMI; then
     exit 0
 fi
 
-PRODUCT_NAME="milpa"
-if [[ $ENVIRONMENT != "prod" ]]; then
-       PRODUCT_NAME="milpa$ENVIRONMENT"
-fi
+PRODUCT_NAME="milpadev"
 AMI_NAME=elotl-$PRODUCT_NAME-$BUILD_VERSION-$(date +"%Y%m%d-%H%M%S")
 python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $AMI_NAME

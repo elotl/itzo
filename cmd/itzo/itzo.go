@@ -7,6 +7,7 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
 )
@@ -15,7 +16,7 @@ var buildDate string
 
 func main() {
 	//  go build -ldflags "-X main.buildDate=`date -u +.%Y%m%d.%H%M%S`"
-	var printBuild = flag.Bool("build", false, "display build date")
+	var version = flag.Bool("version", false, "display build date")
 	var disableTLS = flag.Bool("disable-tls", false, "don't use tls")
 	var port = flag.Int("port", 6421, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
@@ -45,8 +46,8 @@ func main() {
 		}
 	}
 
-	if *printBuild {
-		fmt.Println("Built On:", buildDate)
+	if *version {
+		fmt.Println("itzo version:", util.Version())
 		os.Exit(0)
 	}
 
