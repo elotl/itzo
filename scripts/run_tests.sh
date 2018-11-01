@@ -4,6 +4,7 @@ set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR=$SCRIPT_DIR/..
+
 cd $ROOT_DIR
 go test ./...
 
@@ -12,6 +13,7 @@ versiontag=""
 if [[ $TRAVIS_TAG =~ ^v[0-9].* ]] && [[ $TRAVIS_TAG == $TRAVIS_BRANCH ]]; then
     echo "How can you say you wanna sit there With all this funk going on?"
     echo "Get up. Time to release the beast!"
+    export PATH=$PATH:$HOME/.local/bin
     versiontag=$TRAVIS_BRANCH
     make itzo
     echo "Making an itzo release at $versiontag"
