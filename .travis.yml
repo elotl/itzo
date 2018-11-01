@@ -3,7 +3,7 @@ go:
   - 1.9
 
 before_install:
-  - pip install --local aws-cli
+  - pip install --user aws-cli
   - pip install --user boto3
 
 script: scripts/run_tests.sh
