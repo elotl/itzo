@@ -8,8 +8,6 @@ ROOT_DIR=$SCRIPT_DIR/..
 cd $ROOT_DIR
 go test ./...
 
-aws s3 ls
-
 # if our travis tag looks like a version and we're on a tagged branch
 versiontag=""
 if [[ $TRAVIS_TAG =~ ^v[0-9].* ]] && [[ $TRAVIS_TAG == $TRAVIS_BRANCH ]]; then
