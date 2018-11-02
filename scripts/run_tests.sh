@@ -19,6 +19,6 @@ if [[ $TRAVIS_TAG =~ ^v[0-9].* ]] && [[ $TRAVIS_TAG == $TRAVIS_BRANCH ]]; then
     echo "Making an itzo release at $versiontag"
     release_file=itzo-$versiontag
     release_bucket=itzo-download
-    aws s3 cp itzo s3://$release_bucket/$release_file
-    aws s3 cp itzo s3://$release_bucket/itzo-latest
+    aws s3 cp itzo s3://$release_bucket/$release_file --acl public-read
+    aws s3 cp itzo s3://$release_bucket/itzo-latest --acl public-read
 fi
