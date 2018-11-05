@@ -512,7 +512,7 @@ func changeToWorkdir(workingdir string, uid, gid uint32) error {
 	return nil
 }
 
-func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
+func (u *Unit) Run(podname string, command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",
@@ -599,6 +599,15 @@ func (u *Unit) Run(command, env []string, workingdir string, policy api.RestartP
 		}
 		defer mounter.UnmountSpecial()
 		u.statusPath = "/status"
+	}
+
+	if podname != "" {
+		err = syscall.Sethostname([]byte(podname))
+		if err != nil {
+			glog.Errorf("Failed to set hostname to %s: %v", podname, err)
+			return err
+		}
+		env = append(env, fmt.Sprintf("HOSTNAME=%s", podname))
 	}
 
 	err = os.Chmod("/", 0755)
