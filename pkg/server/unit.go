@@ -512,6 +512,16 @@ func changeToWorkdir(workingdir string, uid, gid uint32) error {
 	return nil
 }
 
+func (u *Unit) setStateToStartFailure(err error) {
+	serr := fmt.Sprintf("Failed to start: %v", err)
+	u.SetState(api.UnitState{
+		Waiting: &api.UnitStateWaiting{
+			Reason:       serr,
+			StartFailure: true,
+		},
+	}, nil)
+}
+
 func (u *Unit) Run(podname string, command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -532,23 +542,27 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 	helperout, err := lp.OpenWriter(PIPE_HELPER_OUT, true)
 	if err != nil {
 		lp.Remove()
+		u.setStateToStartFailure(err)
 		return err
 	}
 	defer helperout.Close()
 	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT, false)
 	if err != nil {
 		lp.Remove()
+		u.setStateToStartFailure(err)
 		return err
 	}
 	defer unitout.Close()
 	uniterr, err := lp.OpenWriter(PIPE_UNIT_STDERR, false)
 	if err != nil {
 		lp.Remove()
+		u.setStateToStartFailure(err)
 		return err
 	}
 	defer uniterr.Close()
 	unitin, err := u.openStdinReader()
 	if err != nil {
+		u.setStateToStartFailure(err)
 		return err
 	}
 	defer unitin.Close()
@@ -558,6 +572,7 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 
 		if err := mounter.BindMount(rootfs, rootfs); err != nil {
 			glog.Errorf("Mount() %s: %v", rootfs, err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		// Bind mount statusfile into the chroot. Note: both the source and the
@@ -574,27 +589,33 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		}
 		if err := mounter.BindMount(statussrc, statusdst); err != nil {
 			glog.Errorf("Mount() statusfile: %v", err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		if err := os.MkdirAll(oldrootfs, 0700); err != nil {
 			glog.Errorf("MkdirAll() %s: %v", oldrootfs, err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
 			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		if err := os.Chdir("/"); err != nil {
 			glog.Errorf("Chdir() /: %v", err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		if err := mounter.Unmount("/.oldrootfs"); err != nil {
 			glog.Errorf("Unmount() %s: %v", oldrootfs, err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		os.Remove("/.oldrootfs")
 		if err := mounter.MountSpecial(); err != nil {
 			glog.Errorf("mountSpecial(): %v", err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		defer mounter.UnmountSpecial()
@@ -605,6 +626,7 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		err = syscall.Sethostname([]byte(podname))
 		if err != nil {
 			glog.Errorf("Failed to set hostname to %s: %v", podname, err)
+			u.setStateToStartFailure(err)
 			return err
 		}
 		env = append(env, fmt.Sprintf("HOSTNAME=%s", podname))
@@ -613,6 +635,7 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 	err = os.Chmod("/", 0755)
 	if err != nil {
 		glog.Errorf("Failed to chmod / to 0755: %v", err)
+		u.setStateToStartFailure(err)
 		return err
 	}
 
@@ -622,6 +645,7 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		oul := &util.OsUserLookup{}
 		uid, gid, err = util.LookupUser(u.config.User, oul)
 		if err != nil {
+			u.setStateToStartFailure(err)
 			return err
 		}
 	}
@@ -629,6 +653,7 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 	for vol, _ := range u.config.Volumes {
 		err = createDir(vol, int(uid), int(gid))
 		if err != nil {
+			u.setStateToStartFailure(err)
 			return err
 		}
 	}
@@ -636,6 +661,7 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 	if workingdir != "" {
 		err = changeToWorkdir(workingdir, uid, gid)
 		if err != nil {
+			u.setStateToStartFailure(err)
 			return err
 		}
 	}
