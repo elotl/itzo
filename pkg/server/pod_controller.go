@@ -29,7 +29,7 @@ type Mounter interface {
 // Too bad there isn't a word for a creator AND destroyer
 // Coulda gone with Shiva(er) but that's a bit imprecise...
 type UnitRunner interface {
-	StartUnit(string, string, []string, []string, []string, api.RestartPolicy) error
+	StartUnit(string, string, string, []string, []string, []string, api.RestartPolicy) error
 	StopUnit(string) error
 	RemoveUnit(string) error
 }
@@ -37,6 +37,7 @@ type UnitRunner interface {
 // I know how to do one thing: Make Controllers. A fuckload of controllers...
 type PodController struct {
 	rootdir           string
+	podName           string
 	mountCtl          Mounter
 	unitMgr           UnitRunner
 	imagePuller       Puller
@@ -77,6 +78,7 @@ func (pc *PodController) runUpdateLoop() {
 		}
 		podParams := <-pc.updateChan
 		glog.Infof("New pod update")
+		pc.podName = podParams.PodName
 		spec := &podParams.Spec
 		MergeSecretsIntoSpec(podParams.Secrets, spec.Units)
 		MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
@@ -390,6 +392,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 
 	glog.Infoln("Starting unit", unit.Name)
 	err = pc.unitMgr.StartUnit(
+		pc.podName,
 		unit.Name,
 		unit.WorkingDir,
 		unit.Command,

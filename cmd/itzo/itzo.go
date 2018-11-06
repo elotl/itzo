@@ -20,6 +20,7 @@ func main() {
 	var disableTLS = flag.Bool("disable-tls", false, "don't use tls")
 	var port = flag.Int("port", 6421, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
+	var podname = flag.String("podname", "", "Pod name")
 	var appunit = flag.String("unit", "", "Unit name")
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var apprestartpolicy = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Unit restart policy: always, never or onfailure")
@@ -30,14 +31,14 @@ func main() {
 	flag.Lookup("logtostderr").Value.Set("true")
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
-		glog.Infof("Starting %s for %s; restart policy is %v",
-			*appcmdline, *appunit, policy)
+		glog.Infof("Starting %s for pod %s unit %s; restart policy is %v",
+			*appcmdline, *podname, *appunit, policy)
 		cmdargs, err := quote.Split(*appcmdline)
 		if err != nil {
 			glog.Fatalf("Invalid command '%s' for unit %s: %v",
 				*appcmdline, *appunit, err)
 		}
-		err = server.StartUnit(*rootdir, *appunit, *workingdir, cmdargs, policy)
+		err = server.StartUnit(*rootdir, *podname, *appunit, *workingdir, cmdargs, policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s for unit %s: %v",
 				*appcmdline, *appunit, err)

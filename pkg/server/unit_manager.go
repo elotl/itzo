@@ -18,15 +18,15 @@ const (
 	logBuffSize = 4096
 )
 
-func StartUnit(rootdir, name, workingdir string, command []string, policy api.RestartPolicy) error {
-	unit, err := OpenUnit(rootdir, name)
+func StartUnit(rootdir, podname, unitname, workingdir string, command []string, policy api.RestartPolicy) error {
+	unit, err := OpenUnit(rootdir, unitname)
 	if err != nil {
 		return err
 	}
 	mounter := mount.NewOSMounter(rootdir)
 	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",
-		command, name, rootdir, os.Environ(), workingdir, policy)
-	return unit.Run(command, os.Environ(), workingdir, policy, mounter)
+		command, unitname, rootdir, os.Environ(), workingdir, policy)
+	return unit.Run(podname, command, os.Environ(), workingdir, policy, mounter)
 }
 
 type UnitManager struct {
@@ -115,10 +115,10 @@ func (um *UnitManager) RemoveUnit(name string) error {
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv []string, policy api.RestartPolicy) error {
-	glog.Infof("Starting unit %s", name)
+func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, args, appenv []string, policy api.RestartPolicy) error {
+	glog.Infof("Starting unit %s", unitname)
 
-	unit, err := OpenUnit(um.rootDir, name)
+	unit, err := OpenUnit(um.rootDir, unitname)
 	if err != nil {
 		return err
 	}
@@ -134,8 +134,10 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 		quotedcmd,
 		"--restartpolicy",
 		string(policy),
+		"--podname",
+		podname,
 		"--unit",
-		name,
+		unitname,
 		"--rootdir",
 		um.rootDir,
 		"--workingdir",
@@ -147,7 +149,7 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 	cmd.Env = env
 
 	glog.Infof("Unit %s workingdir %s command %v %v env %v policy %v",
-		name, workingdir, command, args, env, policy)
+		unitname, workingdir, command, args, env, policy)
 
 	// Check if a chroot exists for the unit. If it does, a package has been
 	// deployed there with a complete root filesystem, and we need to run our
@@ -163,14 +165,14 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 		}
 	}
 
-	um.CaptureLogs(name, unit)
+	um.CaptureLogs(unitname, unit)
 
 	if err = cmd.Start(); err != nil {
 		glog.Errorf("Failed to start %+v: %v", cmd, err)
 		unit.LogPipe.Remove()
 		return err
 	}
-	um.runningUnits.Set(name, cmd.Process)
+	um.runningUnits.Set(unitname, cmd.Process)
 	pid := cmd.Process.Pid
 	go func() {
 		err = cmd.Wait()
@@ -179,7 +181,7 @@ func (um *UnitManager) StartUnit(name, workingdir string, command, args, appenv 
 		} else {
 			glog.Errorf("Unit %v (helper pid %d) exited with error %v", command, pid, err)
 		}
-		um.runningUnits.Delete(name)
+		um.runningUnits.Delete(unitname)
 		unit.LogPipe.Remove()
 	}()
 	return nil

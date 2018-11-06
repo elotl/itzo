@@ -4,6 +4,7 @@ type PodParameters struct {
 	Secrets     map[string]map[string][]byte   `json:"secrets"`
 	Credentials map[string]RegistryCredentials `json:"credentials"`
 	Spec        PodSpec                        `json:"spec"`
+	PodName     string
 	ClusterName string
 	Namespace   string
 }

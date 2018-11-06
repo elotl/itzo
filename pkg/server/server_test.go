@@ -101,12 +101,13 @@ func TestMain(m *testing.M) {
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var rootdir = flag.String("rootdir", DEFAULT_ROOTDIR, "Base dir for units")
 	var unit = flag.String("unit", "myunit", "Unit name")
+	var pod = flag.String("podname", "myPod", "Pod name")
 	var workingdir = flag.String("workingdir", "", "Working directory")
 	var rp = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Restart policy")
 	flag.Parse()
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*rp)
-		StartUnit(*rootdir, *unit, *workingdir, strings.Split(*appcmdline, " "), policy)
+		StartUnit(*rootdir, *pod, *unit, *workingdir, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
