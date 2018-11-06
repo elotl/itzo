@@ -419,7 +419,7 @@ func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Rea
 			glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
 			err := util.SetOOMScore(cmd.Process.Pid, CHILD_OOM_SCORE)
 			if err != nil {
-				glog.Warningf("Error resetting oom score for pid %s: %s",
+				glog.Warningf("Error resetting oom score for pid %v: %s",
 					cmd.Process.Pid, err)
 			}
 		} else {
