@@ -18,8 +18,13 @@ import (
 )
 
 const (
-	MAX_BACKOFF_TIME = 5 * time.Minute
-	CHILD_OOM_SCORE  = 15 // chosen arbitrarily... kernel will adjust this value
+	MAX_BACKOFF_TIME   = 5 * time.Minute
+	BACKOFF_RESET_TIME = 10 * time.Minute
+	CHILD_OOM_SCORE    = 15 // chosen arbitrarily... kernel will adjust this value
+)
+
+var (
+	sleep = time.Sleep // Allow time.Sleep() to be mocked out in tests.
 )
 
 // This is part of the config of docker images.
@@ -352,28 +357,28 @@ func (u *Unit) SetState(state api.UnitState, restarts *int) error {
 	}
 	buf, err := json.Marshal(status)
 	if err != nil {
-		glog.Errorf("Error serializing status for %s\n", u.Name)
+		glog.Errorf("Error serializing status for %s: %v\n", u.Name, err)
 		return err
 	}
 	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
-		glog.Errorf("Error updating statusfile for %s\n", u.Name)
+		glog.Errorf("Error updating statusfile for %s: %v\n", u.Name, err)
 		return err
 	}
 	return nil
 }
 
-func maybeBackOff(err error, command []string, backoff *time.Duration) {
-	if err != nil {
+func maybeBackOff(err error, command []string, backoff *time.Duration, runningTime time.Duration) {
+	if err == nil || runningTime >= BACKOFF_RESET_TIME {
+		// Reset backoff.
+		*backoff = 1 * time.Second
+	} else {
 		*backoff *= 2
 		if *backoff > MAX_BACKOFF_TIME {
 			*backoff = MAX_BACKOFF_TIME
 		}
-	} else {
-		// Reset backoff.
-		*backoff = 1 * time.Second
 	}
 	glog.Infof("Waiting for %v before starting %v again", *backoff, command)
-	time.Sleep(*backoff)
+	sleep(*backoff)
 }
 
 func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
@@ -407,7 +412,7 @@ func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Rea
 				},
 			}, &restarts)
 			glog.Errorf("Start() %v: %v", command, err)
-			maybeBackOff(err, command, &backoff)
+			maybeBackOff(err, command, &backoff, 0*time.Second)
 			continue
 		}
 		u.SetState(api.UnitState{
@@ -473,7 +478,7 @@ func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Rea
 			}, &restarts)
 			return procErr
 		}
-		maybeBackOff(procErr, command, &backoff)
+		maybeBackOff(procErr, command, &backoff, d)
 	}
 }
 

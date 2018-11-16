@@ -109,6 +109,18 @@ func TestUnitStdin(t *testing.T) {
 			[]string{}, 0, 0, inr, &stdout, nil, api.RestartPolicyNever)
 		ch <- err
 	}()
+	start := time.Now()
+	for {
+		status, err := unit.GetStatus()
+		assert.NoError(t, err)
+		assert.True(t,
+			time.Now().Before(start.Add(5*time.Second)),
+			"Timed out waiting for unit to start running")
+		if status.State.Running != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	msg := []byte("Hello Milpa\n")
 	_, err = inw.Write(msg)
 	assert.NoError(t, err)
@@ -293,4 +305,28 @@ func TestIsUnitExistEmpty(t *testing.T) {
 	assert.Nil(t, err)
 	defer os.RemoveAll(tmpdir)
 	assert.False(t, IsUnitExist(tmpdir, ""))
+}
+
+func TestMaybeBackoff(t *testing.T) {
+	sleep = func(d time.Duration) {}
+	// No error.
+	backoff := 1 * time.Second
+	runningTime := BACKOFF_RESET_TIME / 2
+	maybeBackOff(nil, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 1*time.Second)
+	// Error.
+	err := fmt.Errorf("Testing maybeBackOff()")
+	backoff = 1 * time.Second
+	maybeBackOff(err, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 2*time.Second)
+	// No error, backoff needs to be reset.
+	backoff = 1 * time.Second
+	runningTime = BACKOFF_RESET_TIME * 2
+	maybeBackOff(nil, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 1*time.Second)
+	// Error, backoff needs to be reset.
+	backoff = 1 * time.Second
+	runningTime = BACKOFF_RESET_TIME * 2
+	maybeBackOff(err, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 1*time.Second)
 }
