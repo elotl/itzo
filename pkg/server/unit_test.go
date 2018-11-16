@@ -109,6 +109,18 @@ func TestUnitStdin(t *testing.T) {
 			[]string{}, 0, 0, inr, &stdout, nil, api.RestartPolicyNever)
 		ch <- err
 	}()
+	start := time.Now()
+	for {
+		status, err := unit.GetStatus()
+		assert.NoError(t, err)
+		assert.True(t,
+			time.Now().Before(start.Add(5*time.Second)),
+			"Timed out waiting for unit to start running")
+		if status.State.Running != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	msg := []byte("Hello Milpa\n")
 	_, err = inw.Write(msg)
 	assert.NoError(t, err)
