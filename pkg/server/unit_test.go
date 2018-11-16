@@ -294,3 +294,27 @@ func TestIsUnitExistEmpty(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 	assert.False(t, IsUnitExist(tmpdir, ""))
 }
+
+func TestMaybeBackoff(t *testing.T) {
+	sleep = func(d time.Duration) {}
+	// No error.
+	backoff := 1 * time.Second
+	runningTime := BACKOFF_RESET_TIME / 2
+	maybeBackOff(nil, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 1*time.Second)
+	// Error.
+	err := fmt.Errorf("Testing maybeBackOff()")
+	backoff = 1 * time.Second
+	maybeBackOff(err, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 2*time.Second)
+	// No error, backoff needs to be reset.
+	backoff = 1 * time.Second
+	runningTime = BACKOFF_RESET_TIME * 2
+	maybeBackOff(nil, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 1*time.Second)
+	// Error, backoff needs to be reset.
+	backoff = 1 * time.Second
+	runningTime = BACKOFF_RESET_TIME * 2
+	maybeBackOff(err, []string{"mycmd"}, &backoff, runningTime)
+	assert.Equal(t, backoff, 1*time.Second)
+}
