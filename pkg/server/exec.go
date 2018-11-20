@@ -5,8 +5,8 @@ import (
 	"io"
 	"os/exec"
 	"strconv"
+	"sync"
 	"syscall"
-	"time"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/wsstream"
@@ -21,12 +21,14 @@ const (
 
 func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 	if len(params.Command) == 0 {
+		glog.Errorf("No command specified for exec")
 		writeWSError(ws, "No command specified")
 		return
 	}
 
 	unitName, err := s.podController.GetUnitName(params.UnitName)
 	if err != nil {
+		glog.Errorf("Getting unit %s: %v", params.UnitName, err)
 		writeWSError(ws, err.Error())
 		return
 	}
@@ -37,6 +39,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 	if !params.SkipNSEnter {
 		pid, exists := s.unitMgr.GetPid(unitName)
 		if !exists {
+			glog.Errorf("Error getting pid for unit %s", unitName)
 			writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
 			return
 		}
@@ -58,6 +61,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		err = s.runExecCmd(ws, cmd, params.Interactive)
 	}
 	if err != nil {
+		glog.Errorf("Error running exec command %v: %v", command, err)
 		writeWSError(ws, err.Error())
 		return
 	}
@@ -68,45 +72,61 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 		wsStdinReader := ws.CreateReader(0)
 		inPipe, err := cmd.StdinPipe()
 		if err != nil {
+			glog.Errorf("Error creating stdin pipe: %v", err)
 			return err
 		}
 		go io.Copy(inPipe, wsStdinReader)
 	}
 
+	var wg sync.WaitGroup
+
 	wsStdoutWriter := ws.CreateWriter(wsstream.StdoutChan)
 	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
+		glog.Errorf("Error creating stdout pipe: %v", err)
 		return err
 	}
-	go io.Copy(wsStdoutWriter, outPipe)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		io.Copy(wsStdoutWriter, outPipe)
+	}()
 
 	wsStderrWriter := ws.CreateWriter(wsstream.StderrChan)
 	errPipe, err := cmd.StderrPipe()
 	if err != nil {
+		glog.Errorf("Error creating stderr pipe: %v", err)
 		return err
 	}
-	go io.Copy(wsStderrWriter, errPipe)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		io.Copy(wsStderrWriter, errPipe)
+	}()
 
 	err = cmd.Start()
 	if err != nil {
+		glog.Errorf("Error starting command %+v: %v", cmd, err)
 		return err
 	}
 
 	go ws.RunDispatch()
 
-	waitForFinished(ws, cmd)
+	waitForFinished(ws, cmd, &wg)
 	return nil
 }
 
 func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactive bool) error {
 	tty, err := pty.Start(cmd)
 	if err != nil {
+		glog.Errorf("Error starting pty for exec command %+v: %v", cmd, err)
 		return err
 	}
 	defer tty.Close()
 	if interactive {
 		oldState, err := terminal.MakeRaw(int(tty.Fd()))
 		if err != nil {
+			glog.Errorf("Error setting up terminal for exec: %v", err)
 			return (err)
 		}
 		defer terminal.Restore(int(tty.Fd()), oldState)
@@ -143,33 +163,35 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 		}
 	}()
 
+	var wg sync.WaitGroup
 	wsStdoutWriter := ws.CreateWriter(1)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		io.Copy(wsStdoutWriter, tty)
 	}()
 
 	go ws.RunDispatch()
-	waitForFinished(ws, cmd)
+	waitForFinished(ws, cmd, &wg)
 	return nil
 }
 
-func waitForFinished(ws *wsstream.WSReadWriter, cmd *exec.Cmd) {
+func waitForFinished(ws *wsstream.WSReadWriter, cmd *exec.Cmd, wg *sync.WaitGroup) {
 	joinChan := make(chan struct{}, 1)
 	go func() {
+		// Wait until the goroutines copying stdout/stderr have received EOF
+		// and finished, otherwise we might end up sending the exitcode while
+		// there is still outstanding output.
+		wg.Wait()
 		procErr := cmd.Wait()
+		exitCodeStr := "0"
 		if exiterr, ok := procErr.(*exec.ExitError); ok {
 			if waitstatus, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 				exitCode := waitstatus.ExitStatus()
-				b := []byte(strconv.Itoa(exitCode))
-				_ = ws.WriteMsg(wsstream.ExitCodeChan, b)
+				exitCodeStr = strconv.Itoa(exitCode)
 			}
-
-		} else {
-			_ = ws.WriteMsg(wsstream.ExitCodeChan, []byte("0"))
 		}
-		// if we don't wait here the websocket closes before we can
-		// flush the final output
-		time.Sleep(1 * time.Second)
+		_ = ws.WriteMsg(wsstream.ExitCodeChan, []byte(exitCodeStr))
 		joinChan <- struct{}{}
 	}()
 

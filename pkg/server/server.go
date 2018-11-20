@@ -518,6 +518,7 @@ func (s *Server) serveAttach(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.doUpgrade(w, r)
 	if err != nil {
+		glog.Errorf("Failed to upgrade WS connection for exec: %v", err)
 		return
 	}
 	defer ws.CloseAndCleanup()
@@ -525,6 +526,7 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	var params api.ExecParams
 	err = getInitialParams(ws, &params)
 	if err != nil {
+		glog.Errorf("Failed to get initial parameters for exec: %v", err)
 		return
 	}
 
