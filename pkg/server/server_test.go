@@ -638,6 +638,14 @@ func TestPortForward(t *testing.T) {
 	timeout := 3 * time.Second
 	select {
 	case f := <-ws.ReadMsg():
+		_, m, err := wsstream.UnpackMessage(f)
+		assert.NoError(t, err)
+		assert.Len(t, m, 0)
+	case <-time.After(timeout):
+		assert.FailNow(t, "reading timed out")
+	}
+	select {
+	case f := <-ws.ReadMsg():
 		c, m, err := wsstream.UnpackMessage(f)
 		assert.NoError(t, err)
 		assert.Equal(t, 1, c)

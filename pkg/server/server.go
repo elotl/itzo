@@ -419,6 +419,12 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 		ws.CloseAndCleanup()
 	}()
 
+	// When starting port-forward, milpa will check that there is a
+	// process listening on the node by attempting a test port forward
+	// command. It speeds up a timeout if we send back an empty
+	// message here.  Since it's empty it shouldn't matter on the
+	// other end when this gets called for real.
+	ws.WriteMsg(wsstream.StdoutChan, []byte(""))
 	wsFromPort := ws.CreateWriter(wsstream.StdoutChan)
 	go func() {
 		io.Copy(wsFromPort, portReader)
