@@ -89,7 +89,7 @@ func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64) {
 	offset := lb.offset
 	nRead := int64(0)
 	entries := []LogEntry{}
-	if i > offset {
+	if i >= offset {
 		return entries, offset
 	}
 
