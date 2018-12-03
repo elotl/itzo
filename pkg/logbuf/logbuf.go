@@ -25,7 +25,7 @@ type LogEntry struct {
 type LogBuffer struct {
 	buf      []LogEntry
 	capacity int64
-	offset   int64
+	offset   int64 // Points to the next place we're going to write
 }
 
 func NewLogBuffer(capacity int) *LogBuffer {
