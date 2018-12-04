@@ -19,7 +19,7 @@ if [[ $CURRENT_TAG =~ ^v[0-9].* ]]; then
     make itzo
     echo "Making an itzo release at $versiontag"
     release_file=itzo-$versiontag
-    release_bucket=itzo-bcox-download
+    release_bucket=itzo-download
     aws s3 cp itzo s3://$release_bucket/$release_file --acl public-read
     aws s3 cp itzo s3://$release_bucket/itzo-latest --acl public-read
 fi
