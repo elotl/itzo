@@ -260,8 +260,18 @@ func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName s
 		case <-fileTicker.C:
 			unitRunning := s.unitMgr.UnitRunning(unitName)
 			if !unitRunning {
-				writeWSError(ws, "Unit %s is not running\n", unitName)
-				return
+				// We can finish running but still have some data left
+				// in the buffer. If that's the case, go through one
+				// more time and grab the last of hte data from the
+				// buffer.  When there's no more data getting put in
+				// the buffer, then we can exit. This is useful for CI
+				// setups where we want ALL the output from the
+				// subprocess.
+				entries, _ = logBuffer.ReadSince(lastOffset)
+				if len(entries) == 0 {
+					writeWSError(ws, "Unit %s is not running\n", unitName)
+					return
+				}
 			}
 			entries, lastOffset = logBuffer.ReadSince(lastOffset)
 			if len(entries) > 0 {

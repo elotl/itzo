@@ -8,13 +8,14 @@ ROOT_DIR=$SCRIPT_DIR/..
 cd $ROOT_DIR
 go test ./...
 
-# if our travis tag looks like a version and we're on a tagged branch
+CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)
+
 versiontag=""
-if [[ $TRAVIS_TAG =~ ^v[0-9].* ]] && [[ $TRAVIS_TAG == $TRAVIS_BRANCH ]]; then
+if [[ $CURRENT_TAG =~ ^v[0-9].* ]]; then
     echo "How can you say you wanna sit there With all this funk going on?"
     echo "Get up. Time to release the beast!"
     export PATH=$PATH:$HOME/.local/bin
-    versiontag=$TRAVIS_BRANCH
+    versiontag=$CURRENT_TAG
     make itzo
     echo "Making an itzo release at $versiontag"
     release_file=itzo-$versiontag

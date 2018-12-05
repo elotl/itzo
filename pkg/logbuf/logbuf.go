@@ -25,7 +25,7 @@ type LogEntry struct {
 type LogBuffer struct {
 	buf      []LogEntry
 	capacity int64
-	offset   int64
+	offset   int64 // Points to the next place we're going to write
 }
 
 func NewLogBuffer(capacity int) *LogBuffer {
@@ -89,7 +89,7 @@ func (lb *LogBuffer) ReadSince(i int64) ([]LogEntry, int64) {
 	offset := lb.offset
 	nRead := int64(0)
 	entries := []LogEntry{}
-	if i > offset {
+	if i >= offset {
 		return entries, offset
 	}
 
