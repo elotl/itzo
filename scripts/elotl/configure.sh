@@ -6,6 +6,9 @@ step() {
 	printf '\n\033[1;36m%d) %s\033[0m\n' $_step_counter "$@" >&2  # bold cyan
 }
 
+step "Update packages"
+apk update && apk upgrade
+
 step 'Set up timezone'
 setup-timezone -z US/Pacific
 
@@ -29,9 +32,8 @@ step 'Create ld-linux-x86-64.so.2 link'
 mkdir -p /lib64
 ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
-PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
-step "Setting root password to '$PW'"
-echo -en "$PW\n$PW\n" | passwd root
+step 'Set no (not empty, no) password for root'
+usermod -p '!!' root
 
 step 'Create itzo init script'
 cat > /etc/init.d/itzo <<-EOF
@@ -128,7 +130,24 @@ echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.mod
 sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
 /sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
 
+step "Setup Azure Linux Agent"
+wget https://github.com/Azure/WALinuxAgent/archive/v2.2.34.tar.gz && \
+tar xvzf v2.2.34.tar.gz && \
+cd WALinuxAgent-2.2.34 && \
+python setup.py install && \
+cd .. && \
+rm -rf WALinuxAgent-2.2.34 v2.2.34.tar.gz
 
+cat > /etc/init.d/waagent <<EOF
+#!/sbin/openrc-run
+export PATH=/usr/local/sbin:$PATH
+start() {
+        ebegin "Starting waagent"
+        start-stop-daemon --start --exec /usr/sbin/waagent --name waagent -- -start
+        eend $? "Failed to start waagent"
+}
+EOF
+chmod +x /etc/init.d/waagent
 
 # #
 # # Note: the driver and libcuda client libraries need to be in sync, e.g. both
@@ -246,3 +265,7 @@ rc-update add resizeroot default
 rc-update add net.lo boot
 rc-update add termencoding boot
 rc-update add haveged boot
+rc-update add waagent default
+rc-update add hv_fcopy_daemon default
+rc-update add hv_kvp_daemon default
+rc-update add hv_vss_daemon default
