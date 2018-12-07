@@ -104,6 +104,9 @@ wget -O /usr/local/bin/cloud-init http://itzo-download.s3.amazonaws.com/cloud-in
 chmod 755 /usr/local/bin/cloud-init
 
 
+echo "http://dl-3.alpinelinux.org/alpine/edge/community" > /etc/apk/repositories
+apk update
+apk add aws-ena-driver-virt
 
 # step 'Add aws-ena module'
 # wget http://itzo-packages.s3.amazonaws.com/aws-ena-module.tar.gz
@@ -114,16 +117,16 @@ chmod 755 /usr/local/bin/cloud-init
 #     depmod -a "$(basename ${kernel})"
 # done
 # rm aws-ena-module.tar.gz
-# echo ena > /etc/modules-load.d/ena.conf
+echo ena > /etc/modules-load.d/ena.conf
 
-# # Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
-# # Create ENA feature for mkinitfs
-# # Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
-# echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
-# # Enable ENA and NVME features these don't hurt for any instance and are
-# # hard requirements of the 5 series and i3 series of instances
-# sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
-# /sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
+# Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
+# Create ENA feature for mkinitfs
+# Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
+echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
+# Enable ENA and NVME features these don't hurt for any instance and are
+# hard requirements of the 5 series and i3 series of instances
+sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
+/sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
 
 
 
