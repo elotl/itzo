@@ -103,103 +103,107 @@ step 'Add cloud-init'
 wget -O /usr/local/bin/cloud-init http://itzo-download.s3.amazonaws.com/cloud-init
 chmod 755 /usr/local/bin/cloud-init
 
-step 'Add aws-ena module'
-wget http://itzo-packages.s3.amazonaws.com/aws-ena-module.tar.gz
-tar xvzf aws-ena-module.tar.gz
-for kernel in /lib/modules/*; do
-    mkdir -p "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
-    cp ena.ko "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
-    depmod -a "$(basename ${kernel})"
-done
-rm aws-ena-module.tar.gz
-echo ena > /etc/modules-load.d/ena.conf
 
-# Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
-# Create ENA feature for mkinitfs
-# Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
-echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
-# Enable ENA and NVME features these don't hurt for any instance and are
-# hard requirements of the 5 series and i3 series of instances
-sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
-/sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
 
-#
-# Note: the driver and libcuda client libraries need to be in sync, e.g. both
-# using the 387.26 interface.
-#
-step 'Add NVidia driver'
-wget http://itzo-packages.s3.amazonaws.com/nvidia.tar.gz
-tar xvzf nvidia.tar.gz
-for kernel in /lib/modules/*; do
-    mkdir -p "${kernel}/misc"
-    cp nvidia*.ko "${kernel}/misc/"
-    depmod -a "$(basename ${kernel})"
-done
-rm nvidia.tar.gz
+# step 'Add aws-ena module'
+# wget http://itzo-packages.s3.amazonaws.com/aws-ena-module.tar.gz
+# tar xvzf aws-ena-module.tar.gz
+# for kernel in /lib/modules/*; do
+#     mkdir -p "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
+#     cp ena.ko "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
+#     depmod -a "$(basename ${kernel})"
+# done
+# rm aws-ena-module.tar.gz
+# echo ena > /etc/modules-load.d/ena.conf
 
-cat > /etc/modprobe.d/nvidia.conf <<-EOF
-blacklist amd76x_edac
-blacklist vga16fb
-blacklist nouveau
-blacklist rivafb
-blacklist nvidiafb
-blacklist rivatv
-EOF
+# # Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
+# # Create ENA feature for mkinitfs
+# # Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
+# echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
+# # Enable ENA and NVME features these don't hurt for any instance and are
+# # hard requirements of the 5 series and i3 series of instances
+# sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
+# /sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
 
-cat > /etc/init.d/nvidia <<-EOF
-#!/sbin/openrc-run
 
-name=\$RC_SVCNAME
 
-depend() {
-        after bootmisc
-        need localmount
-}
+# #
+# # Note: the driver and libcuda client libraries need to be in sync, e.g. both
+# # using the 387.26 interface.
+# #
+# step 'Add NVidia driver'
+# wget http://itzo-packages.s3.amazonaws.com/nvidia.tar.gz
+# tar xvzf nvidia.tar.gz
+# for kernel in /lib/modules/*; do
+#     mkdir -p "${kernel}/misc"
+#     cp nvidia*.ko "${kernel}/misc/"
+#     depmod -a "$(basename ${kernel})"
+# done
+# rm nvidia.tar.gz
 
-start() {
-  #
-  # This is the recommended script from:
-  #
-  #   http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
-  #
-  /sbin/modprobe nvidia
-  if [ "\$?" -eq 0 ]; then
-    # Count the number of NVIDIA controllers found.
-    NVDEVS=\`lspci | grep -i NVIDIA\`
-    N3D=\`echo "\$NVDEVS" | grep "3D controller" | wc -l\`
-    NVGA=\`echo "\$NVDEVS" | grep "VGA compatible controller" | wc -l\`
-    N=\`expr \$N3D + \$NVGA - 1\`
-    for i in \`seq 0 \$N\`; do
-      if [[ ! -e "/dev/nvidia\$i" ]]; then
-        echo "Creating /dev/nvidia\$i c 195 \$i"
-        mknod -m 666 /dev/nvidia\$i c 195 \$i
-      fi
-    done
-    if [[ ! -e "/dev/nvidiactl" ]]; then
-      echo "Creating /dev/nvidiactl c 195 255"
-      mknod -m 666 /dev/nvidiactl c 195 255
-    fi
-  fi
+# cat > /etc/modprobe.d/nvidia.conf <<-EOF
+# blacklist amd76x_edac
+# blacklist vga16fb
+# blacklist nouveau
+# blacklist rivafb
+# blacklist nvidiafb
+# blacklist rivatv
+# EOF
 
-  /sbin/modprobe nvidia-uvm
-  if [ "\$?" -eq 0 ]; then
-    # Find out the major device number used by the nvidia-uvm driver
-    D=\`grep nvidia-uvm /proc/devices | awk '{print \$1}'\`
-    if [[ ! -e "/dev/nvidia-uvm" ]]; then
-      echo "Creating /dev/nvidia-uvm c \$D 0"
-      mknod -m 666 /dev/nvidia-uvm c \$D 0
-    fi
-  fi
-}
+# cat > /etc/init.d/nvidia <<-EOF
+# #!/sbin/openrc-run
 
-stop() {
-  for ko in nvidia-uvm nvidia-modeset nvidia-drm nvidia; do
-    /bin/lsmod | grep "\<\$ko\>" && /sbin/rmmod \$ko
-  done
-}
-EOF
-chmod 755 /etc/init.d/nvidia
-cat /etc/init.d/nvidia
+# name=\$RC_SVCNAME
+
+# depend() {
+#         after bootmisc
+#         need localmount
+# }
+
+# start() {
+#   #
+#   # This is the recommended script from:
+#   #
+#   #   http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
+#   #
+#   /sbin/modprobe nvidia
+#   if [ "\$?" -eq 0 ]; then
+#     # Count the number of NVIDIA controllers found.
+#     NVDEVS=\`lspci | grep -i NVIDIA\`
+#     N3D=\`echo "\$NVDEVS" | grep "3D controller" | wc -l\`
+#     NVGA=\`echo "\$NVDEVS" | grep "VGA compatible controller" | wc -l\`
+#     N=\`expr \$N3D + \$NVGA - 1\`
+#     for i in \`seq 0 \$N\`; do
+#       if [[ ! -e "/dev/nvidia\$i" ]]; then
+#         echo "Creating /dev/nvidia\$i c 195 \$i"
+#         mknod -m 666 /dev/nvidia\$i c 195 \$i
+#       fi
+#     done
+#     if [[ ! -e "/dev/nvidiactl" ]]; then
+#       echo "Creating /dev/nvidiactl c 195 255"
+#       mknod -m 666 /dev/nvidiactl c 195 255
+#     fi
+#   fi
+
+#   /sbin/modprobe nvidia-uvm
+#   if [ "\$?" -eq 0 ]; then
+#     # Find out the major device number used by the nvidia-uvm driver
+#     D=\`grep nvidia-uvm /proc/devices | awk '{print \$1}'\`
+#     if [[ ! -e "/dev/nvidia-uvm" ]]; then
+#       echo "Creating /dev/nvidia-uvm c \$D 0"
+#       mknod -m 666 /dev/nvidia-uvm c \$D 0
+#     fi
+#   fi
+# }
+
+# stop() {
+#   for ko in nvidia-uvm nvidia-modeset nvidia-drm nvidia; do
+#     /bin/lsmod | grep "\<\$ko\>" && /sbin/rmmod \$ko
+#   done
+# }
+# EOF
+# chmod 755 /etc/init.d/nvidia
+# cat /etc/init.d/nvidia
 
 step 'Load iptables modules at boot'
 echo 'iptable_nat' >> /etc/modules
@@ -235,6 +239,7 @@ rc-update add net.eth0 default
 rc-update add sshd default
 rc-update add itzo default
 rc-update add resizeroot default
-rc-update add nvidia default
+# rc-update add nvidia default
 rc-update add net.lo boot
 rc-update add termencoding boot
+rc-update add haveged boot
