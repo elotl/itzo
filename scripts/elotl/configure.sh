@@ -104,7 +104,7 @@ wget -O /usr/local/bin/cloud-init http://itzo-download.s3.amazonaws.com/cloud-in
 chmod 755 /usr/local/bin/cloud-init
 
 
-echo "http://dl-3.alpinelinux.org/alpine/edge/community" > /etc/apk/repositories
+echo "http://dl-3.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
 apk update
 apk add aws-ena-driver-virt
 
