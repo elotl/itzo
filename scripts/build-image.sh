@@ -115,7 +115,7 @@ echo "Creating image of size $IMAGE_SIZE at $IMAGE_ABSPATH."
 
 pushd alpine-make-vm-image > /dev/null
 
-git checkout 86e334
+git checkout 180de0d818f779c844c3f71939f754e477f07768
 git clean -fdx
 
 #
