@@ -32,9 +32,9 @@ step 'Create ld-linux-x86-64.so.2 link'
 mkdir -p /lib64
 ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
--PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
--step "Setting root password to '$PW'"
--echo -en "$PW\n$PW\n" | passwd root
+PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
+step "Setting root password to '$PW'"
+echo -en "$PW\n$PW\n" | passwd root
 
 # step 'Set no (not empty, no) password for root'
 # usermod -p '!!' root
@@ -167,6 +167,35 @@ start() {
 }
 EOF
 chmod +x /etc/init.d/waagent
+
+cat > /etc/waagent.conf <<EOF
+Provisioning.Enabled=y
+Extensions.Enabled=y
+Provisioning.UseCloudInit=n
+Provisioning.DeleteRootPassword=y
+Provisioning.RegenerateSshHostKeyPair=n
+Provisioning.SshHostKeyPairType=rsa
+Provisioning.MonitorHostName=y
+Provisioning.DecodeCustomData=y
+Provisioning.ExecuteCustomData=n
+Provisioning.AllowResetSysUser=n
+ResourceDisk.Format=y
+ResourceDisk.Filesystem=ext4
+ResourceDisk.MountPoint=/mnt/resource
+ResourceDisk.EnableSwap=n
+ResourceDisk.SwapSizeMB=0
+ResourceDisk.MountOptions=None
+Logs.Verbose=n
+OS.EnableFIPS=n
+OS.RootDeviceScsiTimeout=300
+OS.OpensslPath=None
+OS.SshClientAliveInterval=30
+OS.SshDir=/etc/ssh
+OS.EnableRDMA=y
+OS.EnableFirewall=n
+CGroups.EnforceLimits=n
+CGroups.Excluded=customscript,runcommand
+EOF
 
 # #
 # # Note: the driver and libcuda client libraries need to be in sync, e.g. both
