@@ -13,3 +13,7 @@ hvtools
 shadow
 python
 py-setuptools
+parted
+openssl
+iptables
+sfdisk
