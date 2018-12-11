@@ -176,7 +176,7 @@ EOF
 chmod +x /etc/init.d/waagent
 
 cat > /etc/waagent.conf <<EOF
-Provisioning.Enabled=n
+Provisioning.Enabled=y
 Extensions.Enabled=n
 Provisioning.UseCloudInit=n
 Provisioning.DeleteRootPassword=y
@@ -195,7 +195,6 @@ ResourceDisk.MountOptions=None
 Logs.Verbose=n
 OS.EnableFIPS=n
 OS.RootDeviceScsiTimeout=300
-OS.OpensslPath=None
 OS.SshClientAliveInterval=30
 OS.SshDir=/etc/ssh
 OS.EnableRDMA=y
