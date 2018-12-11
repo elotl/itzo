@@ -176,8 +176,8 @@ EOF
 chmod +x /etc/init.d/waagent
 
 cat > /etc/waagent.conf <<EOF
-Provisioning.Enabled=y
-Extensions.Enabled=y
+Provisioning.Enabled=n
+Extensions.Enabled=n
 Provisioning.UseCloudInit=n
 Provisioning.DeleteRootPassword=y
 Provisioning.RegenerateSshHostKeyPair=n
