@@ -32,6 +32,7 @@ step 'Create ld-linux-x86-64.so.2 link'
 mkdir -p /lib64
 ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
+# todo: consider using chpasswd root:!!
 PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
 step "Setting root password to '$PW'"
 echo -en "$PW\n$PW\n" | passwd root
@@ -121,7 +122,7 @@ wget -O /usr/local/bin/tosi http://tosi.s3.amazonaws.com/tosi
 chmod 755 /usr/local/bin/tosi
 
 step 'Add cloud-init'
-wget -O /usr/local/bin/itzo-cloud-init http://itzo-download.s3.amazonaws.com/itzo-cloud-init
+wget -O /usr/local/bin/itzo-cloud-init http://itzo-dev-download.s3.amazonaws.com/itzo-cloud-init
 chmod 755 /usr/local/bin/itzo-cloud-init
 
 

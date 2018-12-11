@@ -10,7 +10,6 @@ util-linux
 rng-tools
 haveged
 hvtools
-shadow
 python
 py-setuptools
 parted
