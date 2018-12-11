@@ -88,7 +88,7 @@ cat > /usr/local/bin/itzo_download.sh <<-EOF
 
 echo "-1000" > /proc/self/oom_score_adj
 itzo_dir=/usr/local/bin
-\${itzo_dir}/itzo-cloud-init --from-metadata-service >> /var/log/itzo/itzo.log 2>&1
+\${itzo_dir}/itzo-cloud-init -from-waagent /var/lib/waagent >> /var/log/itzo/itzo.log 2>&1
 
 itzo_url_file="/tmp/milpa/itzo_url"
 itzo_url="http://itzo-download.s3.amazonaws.com"
@@ -121,7 +121,7 @@ wget -O /usr/local/bin/tosi http://tosi.s3.amazonaws.com/tosi
 chmod 755 /usr/local/bin/tosi
 
 step 'Add cloud-init'
-wget -O /usr/local/bin/itzo-cloud-init http://itzo-download.s3.amazonaws.com/cloud-init
+wget -O /usr/local/bin/itzo-cloud-init http://itzo-download.s3.amazonaws.com/itzo-cloud-init
 chmod 755 /usr/local/bin/itzo-cloud-init
 
 
