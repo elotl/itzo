@@ -150,20 +150,20 @@ echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.mod
 sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
 /sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
 
-# step "Setup Azure Linux Agent"
-# wget https://github.com/Azure/WALinuxAgent/archive/waagent_v2.2.34.tar.gz && \
-# tar xvzf v2.2.34.tar.gz && \
-# cd WALinuxAgent-2.2.34 && \
-# python setup.py install && \
-# cd .. && \
-# rm -rf WALinuxAgent-2.2.34 v2.2.34.tar.gz
 step "Setup Azure Linux Agent"
-wget https://s3.amazonaws.com/itzo-bcox-download/waagent_v2.2.34.tar.gz && \
-tar xvzf waagent_v2.2.34.tar.gz && \
-cd WALinuxAgent && \
+wget -O ./waagent.tar.gz https://github.com/elotl/WALinuxAgent/archive/master.tar.gz && \
+tar xvzf ./waagent.tar.gz && \
+cd WALinuxAgent-master && \
 python setup.py install && \
 cd .. && \
-rm -rf WALinuxAgent waagent_v2.2.34.tar.gz
+rm -rf WALinuxAgent-master waagent.tar.gz
+# step "Setup Azure Linux Agent"
+# wget https://s3.amazonaws.com/itzo-bcox-download/waagent_v2.2.34.tar.gz && \
+# tar xvzf waagent_v2.2.34.tar.gz && \
+# cd WALinuxAgent && \
+# python setup.py install && \
+# cd .. && \
+# rm -rf WALinuxAgent waagent_v2.2.34.tar.gz
 
 cat > /etc/init.d/waagent <<EOF
 #!/sbin/openrc-run
