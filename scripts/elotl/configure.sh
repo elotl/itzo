@@ -202,6 +202,7 @@ OS.EnableRDMA=y
 OS.EnableFirewall=n
 CGroups.EnforceLimits=n
 CGroups.Excluded=customscript,runcommand
+AutoUpdate.Enabled=n
 EOF
 
 # #
