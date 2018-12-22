@@ -89,17 +89,16 @@ found=true
 # echo "OK"
 
 if [ "$NO_IMAGE" = false ]; then
-    if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
-        echo "Error: please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+    if [ -z "$GCE_SERVICE_ACCOUNT_FILE" ]; then
+        echo "Error: please set GCE_SERVICE_ACCOUNT_FILE."
         exit 1
     fi
 fi
 
 if [[ $EUID -ne 0 ]]; then
     echo "Warning: not running as root, certain operations might fail."
-    echo "Please retry as root if something fails:"
-    echo "    sudo AWS_ACCESS_KEY_ID=\$AWS_ACCESS_KEY_ID " \
-        "AWS_SECRET_ACCESS_KEY=\$AWS_SECRET_ACCESS_KEY $@"
+    echo "Please retry as root"
+    exit 0
 fi
 
 if [[ -f "$IMAGE" ]]; then
@@ -133,4 +132,4 @@ fi
 
 PRODUCT_NAME="milpadev"
 IMAGE_NAME=elotl-$PRODUCT_NAME-$BUILD_VERSION-$(date +"%Y%m%d-%H%M%S")
-# python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $AMI_NAME
+python gce-make-image.py --input "$IMAGE_ABSPATH" --name $IMAGE_NAME

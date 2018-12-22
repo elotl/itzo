@@ -5,6 +5,9 @@
 # Rest API: https://cloud.google.com/compute/docs/reference/rest/v1/
 # Python Oauth: https://developers.google.com/identity/protocols/OAuth2ServiceAccount#authorizingrequests
 
+# Acknowledgement: generously borrowed from Flocker GCE code:
+# https://github.com/ClusterHQ/flocker/blob/master/flocker/node/agents/gce.py
+
 import argparse, urllib, time, json, subprocess, os.path
 import requests
 from googleapiclient import discovery
@@ -83,7 +86,7 @@ def image_size(filename):
 def copy_image(img, out):
     subprocess.check_call(['sudo', 'qemu-img', 'convert', '-O', 'raw', img, out])
 
-def make_snapshot(metadata, operations, input, name, snapshot_name):
+def make_disk(metadata, operations, input, name):
     print('Connecting')
     size = Byte(image_size(input))
     gce_disk_type = u"pd-standard"
@@ -114,41 +117,27 @@ def make_snapshot(metadata, operations, input, name, snapshot_name):
                                     instance_name=metadata.instance_id(),
                                     disk_name=name)
     print('STEP 4: Took {} seconds to detach volume'.format(time.time() - time_point))
-    print('STEP 5: Creating snapshot from {}'.format(name))
-    time_point = time.time()
-    snapshot_body = {
-            'name': snapshot_name
-            }
-    result = operations.snapshot_disk(project=metadata.project(),
-                                      zone=metadata.zone(),
-                                      disk_name=name,
-                                      body=snapshot_body)
-    print('STEP 5: Took {} seconds to create snapshot'.format(time.time() - time_point))
-    print('STEP 6: Deleting volume {}'.format(name))
-    time_point = time.time()
-    # result = operations.destroy_disk(zone=metadata.zone(),
-    #                                 disk_name=name)
-    print('STEP 6: Took {} seconds to delete volume'.format(time.time() - time_point))
-    print('Snapshot {} created\n'.format(snapshot_name))
-    return snapshot_name
+    return
 
-def make_image_from_snapshot(metadata, operations, name, snapshot_name):
-    print('STEP 7: Registering image from {}'.format(snapshot_name))
+def make_image_from_disk(metadata, operations, name):
+    print('STEP 5: Registering image from {}'.format(name))
     time_point = time.time()
     body = {}
-    "projects/myechuri-project1/global/snapshots/test-image-snap"
-    sourceSnapshot = 'projects/' + metadata.project() + '/global/snapshots/' + snapshot_name
     sourceDisk = 'zones/' + metadata.zone() + '/disks/' + name
     image_body = {
             'name': name,
-            # 'sourceSnapshot': sourceSnapshot
             'sourceDisk': sourceDisk
             }
-    result = operations.create_image_from_snapshot(project=metadata.project(),
-                                                   body=image_body)
-    print('STEP 7: Took {} seconds to create image'.format(time.time() - time_point, name))
+    result = operations.create_image_from_disk(project=metadata.project(),
+                                               body=image_body)
+    print('STEP 5: Took {} seconds to create image'.format(time.time() - time_point, name))
     print('image {} created\n'.format(name))
-    return name
+    print('STEP 6: Deleting volume {}'.format(name))
+    time_point = time.time()
+    result = operations.destroy_disk(zone=metadata.zone(),
+                                     disk_name=name)
+    print('STEP 6: Took {} seconds to delete volume'.format(time.time() - time_point))
+    return
 
 def get_operations(metadata):
     project = metadata.project()
@@ -232,7 +221,6 @@ class GCEOperations(PClass):
             finally:
                 self._lock.acquire()
 
-        # args = dict(project=self._project, zone=self._zone)
         args = dict(project=self._project)
         args.update(kwargs)
         with self._lock:
@@ -283,17 +271,7 @@ class GCEOperations(PClass):
             timeout_sec=VOLUME_DETATCH_TIMEOUT
         )
 
-    def snapshot_disk(self, project, zone, disk_name, body):
-        return self._do_blocking_operation(
-            self._compute.disks().createSnapshot,
-            project=project,
-            zone=zone,
-            disk=disk_name,
-            body=body,
-            timeout_sec=SNAPSHOT_DISK_TIMEOUT
-        )
-
-    def create_image_from_snapshot(self, project, body):
+    def create_image_from_disk(self, project, body):
         return self._do_blocking_operation(
             self._compute.images().insert,
             project=project,
@@ -526,6 +504,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     metadata = Metadata()
     operations = get_operations(metadata)
-    snapshot_name = args.name + '-snap'
-    snapshot = make_snapshot(metadata, operations, args.input, args.name, snapshot_name)
-    make_image_from_snapshot(metadata, operations, args.name, snapshot_name)
+    make_disk(metadata, operations, args.input, args.name)
+    make_image_from_disk(metadata, operations, args.name)
