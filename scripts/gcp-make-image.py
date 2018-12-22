@@ -32,6 +32,7 @@ VOLUME_DELETE_TIMEOUT = 20
 VOLUME_INSERT_TIMEOUT = 20
 VOLUME_ATTACH_TIMEOUT = 90
 VOLUME_DETATCH_TIMEOUT = 120
+SNAPSHOT_DISK_TIMEOUT = 120
 
 class Metadata(object):
     def _get_metadata_path(self, path):
@@ -82,7 +83,7 @@ def image_size(filename):
 def copy_image(img, out):
     subprocess.check_call(['sudo', 'qemu-img', 'convert', '-O', 'raw', img, out])
 
-def make_snapshot(metadata, operations, input, name):
+def make_snapshot(metadata, operations, input, name, snapshot_name):
     print('Connecting')
     size = Byte(image_size(input))
     gce_disk_type = u"pd-standard"
@@ -90,14 +91,16 @@ def make_snapshot(metadata, operations, input, name):
 
     print('STEP 1: Creating volume')
     time_point = time.time()
-    operations.create_disk(name=name,
+    operations.create_disk(zone=metadata.zone(),
+                           name=name,
                            size=size,
                            description=disk_description,
                            gce_disk_type=gce_disk_type)
     print('STEP 1: Took {} seconds to create volume {}'.format(time.time() - time_point, name))
     disk = operations.get_disk_details(name)
     print('STEP 2: Attaching {} to {}'.format(name, metadata.instance_id()))
-    result = operations.attach_disk(disk_name=name,
+    result = operations.attach_disk(zone=metadata.zone(),
+                                    disk_name=name,
                                     instance_name=metadata.instance_id())
 
     device_path = u"/dev/disk/by-id/google-" + name
@@ -107,46 +110,45 @@ def make_snapshot(metadata, operations, input, name):
     print('STEP 3: Took {} seconds to copy image'.format(time.time() - time_point))
     print('STEP 4; Detaching volume {}'.format(name))
     time_point = time.time()
-    result = operations.detach_disk(instance_name=metadata.instance_id(),
+    result = operations.detach_disk(zone=metadata.zone(),
+                                    instance_name=metadata.instance_id(),
                                     disk_name=name)
     print('STEP 4: Took {} seconds to detach volume'.format(time.time() - time_point))
     print('STEP 5: Creating snapshot from {}'.format(name))
     time_point = time.time()
+    snapshot_body = {
+            'name': snapshot_name
+            }
     result = operations.snapshot_disk(project=metadata.project(),
                                       zone=metadata.zone(),
-                                      disk_name=name)
-    wait_for(snap, 'completed')
+                                      disk_name=name,
+                                      body=snapshot_body)
     print('STEP 5: Took {} seconds to create snapshot'.format(time.time() - time_point))
     print('STEP 6: Deleting volume {}'.format(name))
     time_point = time.time()
-    result = operations.destroy_disk(disk_name=name)
+    # result = operations.destroy_disk(zone=metadata.zone(),
+    #                                 disk_name=name)
     print('STEP 6: Took {} seconds to delete volume'.format(time.time() - time_point))
-    print('Snapshot {} created\n'.format(snap))
-    return snap
+    print('Snapshot {} created\n'.format(snapshot_name))
+    return snapshot_name
 
-def make_ami_from_snapshot(name,snapshot_id):
-    metadata = Metadata()
-    print('Connecting')
-    ec2 = boto3.resource('ec2',region_name=metadata.region())
-    print('STEP 7: Registering image from {}'.format(snapshot_id)) # aws ec2 register-image
+def make_image_from_snapshot(metadata, operations, name, snapshot_name):
+    print('STEP 7: Registering image from {}'.format(snapshot_name))
     time_point = time.time()
-    ami = ec2.register_image(Name=name,
-                             Architecture='x86_64',
-                             RootDeviceName='xvda',
-                             VirtualizationType='hvm',
-                             EnaSupport=True,
-                             BlockDeviceMappings=[
-                                 {
-                                     'DeviceName' : 'xvda',
-                                     'Ebs': {
-                                         'SnapshotId': snapshot_id,
-                                         'DeleteOnTermination': True
-                                     }
-                                 },
-                             ])
-    print('STEP 7: Took {} seconds to create ami'.format(time.time() - time_point,ami))
-    print('ami {} created\n'.format(ami))
-    return ami
+    body = {}
+    "projects/myechuri-project1/global/snapshots/test-image-snap"
+    sourceSnapshot = 'projects/' + metadata.project() + '/global/snapshots/' + snapshot_name
+    sourceDisk = 'zones/' + metadata.zone() + '/disks/' + name
+    image_body = {
+            'name': name,
+            # 'sourceSnapshot': sourceSnapshot
+            'sourceDisk': sourceDisk
+            }
+    result = operations.create_image_from_snapshot(project=metadata.project(),
+                                                   body=image_body)
+    print('STEP 7: Took {} seconds to create image'.format(time.time() - time_point, name))
+    print('image {} created\n'.format(name))
+    return name
 
 def get_operations(metadata):
     project = metadata.project()
@@ -230,14 +232,15 @@ class GCEOperations(PClass):
             finally:
                 self._lock.acquire()
 
-        args = dict(project=self._project, zone=self._zone)
+        # args = dict(project=self._project, zone=self._zone)
+        args = dict(project=self._project)
         args.update(kwargs)
         with self._lock:
             operation = function(**args).execute()
             return wait_for_operation(
                 self._compute, operation, [1]*timeout_sec, lock_dropped_sleep)
 
-    def create_disk(self, name, size, description, gce_disk_type):
+    def create_disk(self, zone, name, size, description, gce_disk_type):
         sizeGiB = int(size.to_GiB())
         config = dict(
             name=name,
@@ -248,11 +251,12 @@ class GCEOperations(PClass):
         )
         return self._do_blocking_operation(
             self._compute.disks().insert,
+            zone=zone,
             body=config,
             timeout_sec=VOLUME_INSERT_TIMEOUT,
         )
 
-    def attach_disk(self, disk_name, instance_name):
+    def attach_disk(self, zone, disk_name, instance_name):
         config = dict(
             deviceName=disk_name,
             autoDelete=False,
@@ -264,29 +268,41 @@ class GCEOperations(PClass):
         )
         return self._do_blocking_operation(
             self._compute.instances().attachDisk,
+            zone=zone,
             instance=instance_name,
             body=config,
             timeout_sec=VOLUME_ATTACH_TIMEOUT,
         )
 
-    def detach_disk(self, instance_name, disk_name):
+    def detach_disk(self, zone, instance_name, disk_name):
         return self._do_blocking_operation(
-            self._compute.instances().detachDisk, instance=instance_name,
-            deviceName=disk_name, timeout_sec=VOLUME_DETATCH_TIMEOUT
+            self._compute.instances().detachDisk,
+            zone=zone,
+            instance=instance_name,
+            deviceName=disk_name,
+            timeout_sec=VOLUME_DETATCH_TIMEOUT
         )
 
-    def snapshot_disk(self, project, zone, disk_name):
+    def snapshot_disk(self, project, zone, disk_name, body):
         return self._do_blocking_operation(
             self._compute.disks().createSnapshot,
             project=project,
             zone=zone,
             disk=disk_name,
-            timeout_sec=VOLUME_DETATCH_TIMEOUT
+            body=body,
+            timeout_sec=SNAPSHOT_DISK_TIMEOUT
         )
 
-    def destroy_disk(self, disk_name):
+    def create_image_from_snapshot(self, project, body):
+        return self._do_blocking_operation(
+            self._compute.images().insert,
+            project=project,
+            body=body)
+
+    def destroy_disk(self, zone, disk_name):
         return self._do_blocking_operation(
             self._compute.disks().delete,
+            zone=zone,
             disk=disk_name,
             timeout_sec=VOLUME_DELETE_TIMEOUT,
         )
@@ -510,5 +526,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     metadata = Metadata()
     operations = get_operations(metadata)
-    snapshot = make_snapshot(metadata, operations, args.input, args.name)
-    make_ami_from_snapshot(args.name,snapshot.id)
+    snapshot_name = args.name + '-snap'
+    snapshot = make_snapshot(metadata, operations, args.input, args.name, snapshot_name)
+    make_image_from_snapshot(metadata, operations, args.name, snapshot_name)
