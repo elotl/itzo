@@ -3,23 +3,35 @@
 # Defaults.
 IMAGE="alpine.qcow2"
 IMAGE_SIZE="1G"
-NO_AMI=false
+NO_IMAGE=false
 BUILD_VERSION=""
+CLOUD_PROVIDER=""
 
 while [[ -n "$1" ]]; do
     case "$1" in
         "-h"|"--help")
             echo "Usage:"
             echo "    $0 [-h|--help] [-s|--size image size] " \
-                "[-o|--out image path] [-n|--no-ami]"
+                "[-o|--out image path] [-n|--no-image] [-c|--cloud cloud provider]"
+	    echo "    -c|--cloud <provider>: Target cloud (aws|azure)"
             echo "    -s|--size <size>: image size, default is 2G"
             echo "    -o|--out <output path>: image output path, " \
                 "default is alpine.qcow2"
-            echo "    -n|--no-ami: don't create AMI from qcow2 image"
+            echo "    -n|--no-image: don't create AMI from qcow2 image"
+	    
             echo "    -v|--version <buildnumber>: version of the image, used in image name" \
             echo "Example:"
-            echo "    $0 -o my-alpine-image.qcow2 -s 2G -e prod -v 16"
+            echo "    $0 -c aws -o my-alpine-image.qcow2 -s 2G -e prod -v 16"
             exit 0
+            ;;
+        "-c"|"--cloud")
+            shift
+            CLOUD_PROVIDER="$1"
+            if [[ "$CLOUD_PROVIDER" != "aws" ]] && [[ "$CLOUD_PROVIDER" == "azure" ]]; then
+                echo "Error, invalid cloud provider specified."
+                exit 1
+            fi
+            shift
             ;;
         "-s"|"--size")
             shift
@@ -39,9 +51,9 @@ while [[ -n "$1" ]]; do
             fi
             shift
             ;;
-        "-n"|"--no-ami")
+        "-n"|"--no-image")
             shift
-            NO_AMI=true
+            NO_IMAGE=true
             ;;
 	"-v"|"--version")
 	    shift
@@ -67,6 +79,30 @@ fi
 
 IMAGE_ABSPATH="$(readlink -f $IMAGE)"
 
+if [[ "$CLOUD_PROVIDER" == "aws" ]] && [[ "$NO_IMAGE" = false ]]; then
+    found=true
+    echo -n "boto3..."
+    python -c "import boto3" > /dev/null 2>&1 || found=false
+    if [[ $found = false ]]; then
+	echo "MISSING boto3"
+	exit 1
+    fi
+    if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
+        echo "Error: please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+        exit 1
+    fi
+    echo "OK"
+fi
+
+if [[ "$CLOUD_PROVIDER" == "azure" ]] && [[ "$NO_IMAGE" = false ]]; then
+    REQUIRED_PROGRAMS="$REQUIRED_PROGRAMS az"
+    if [[ -z "$AZURE_TENANT_ID" ]] || [[ -z "$AZURE_CLIENT_ID" ]] || [[ -z "$AZURE_CLIENT_SECRET" ]]; then
+        echo "Error: please set AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET."
+        exit 1
+    fi
+    echo "OK"
+fi
+
 REQUIRED_PROGRAMS="qemu-img qemu-nbd"
 echo "Checking if required programs are installed."
 for prg in $REQUIRED_PROGRAMS; do
@@ -79,27 +115,11 @@ for prg in $REQUIRED_PROGRAMS; do
     fi
     echo "OK"
 done
-# found=true
-# echo -n "boto3..."
-# python -c "import boto3" > /dev/null 2>&1 || found=false
-# if [[ $found = false ]]; then
-#     echo "MISSING boto3"
-#     exit 1
-# fi
-# echo "OK"
-
-if [ "$NO_AMI" = false ]; then
-    if [[ -z "$AWS_ACCESS_KEY_ID" ]] || [[ -z "$AWS_SECRET_ACCESS_KEY" ]]; then
-        echo "Error: please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
-        exit 1
-    fi
-fi
 
 if [[ $EUID -ne 0 ]]; then
     echo "Warning: not running as root, certain operations might fail."
     echo "Please retry as root if something fails:"
-    echo "    sudo AWS_ACCESS_KEY_ID=\$AWS_ACCESS_KEY_ID " \
-        "AWS_SECRET_ACCESS_KEY=\$AWS_SECRET_ACCESS_KEY $@"
+    echo "    sudo $@"
 fi
 
 if [[ -f "$IMAGE" ]]; then
@@ -123,14 +143,23 @@ git clean -fdx
 #
 #     kvm -m 512 -net nic,model=virtio -net user,hostfwd=tcp:127.0.0.1:9222-:22 -drive file=alpine.qcow2,if=virtio
 #
-./alpine-make-vm-image --kernel-flavor virt --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$(cat ../elotl/packages)" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh
+PACKAGES="$(cat ../elotl/packages-$CLOUD_PROVIDER)"
+./alpine-make-vm-image --kernel-flavor virt --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$PACKAGES" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh
+"$CLOUD_PROVIDER"
 
 popd > /dev/null
 
-if $NO_AMI; then
+if $NO_IMAGE; then
     exit 0
 fi
 
 PRODUCT_NAME="milpadev"
 IMAGE_NAME=elotl-$PRODUCT_NAME-$BUILD_VERSION-$(date +"%Y%m%d-%H%M%S")
-#python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $AMI_NAME
+
+if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
+    python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $AMI_NAME
+elif [[ "$CLOUD_PROVIDER" == "azure" ]]; then
+    echo "Azure not implemented quite yet..."
+else
+    echo "Unknown cloud provider: $CLOUD_PROVIDER"
+fi
