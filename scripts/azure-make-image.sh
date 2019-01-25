@@ -24,15 +24,17 @@ RESOURCE_GROUP="elotl-resources"
 STORAGE_ACCOUNT="elotlimages"
 STORAGE_CONTAINER="itzodisks"
 
+echo "building from $IMAGE_ABSPATH into $IMAGE_NAME"
+
 az login --service-principal --tenant=$AZURE_TENANT_ID --username=$AZURE_CLIENT_ID --password=$AZURE_CLIENT_SECRET
 
-qemu-img convert -f qcow2 -O raw alpine.qcow2 $IMAGE_ABSPATH
+qemu-img convert -f qcow2 -O raw $IMAGE_ABSPATH alpine.img
 MB=$((1024 * 1024))
-SIZE=$(qemu-img info -f raw --output json $IMAGE_ABSPATH |  gawk 'match($0, /"virtual-size": ([0-9]+),/, val) {print val[1]}')
+SIZE=$(qemu-img info -f raw --output json alpine.img |  gawk 'match($0, /"virtual-size": ([0-9]+),/, val) {print val[1]}')
 ROUNDED_SIZE=$((($SIZE/$MB + 1) * $MB))
-echo $ROUNDED_SIZE
-qemu-img resize -f raw $IMAGE_ABSPATH $ROUNDED_SIZE
-qemu-img convert -f raw -O vpc -o subformat=fixed,force_size $IMAGE_ABSPATH alpine.vhd
+echo "resizing to $ROUNDED_SIZE"
+qemu-img resize -f raw alpine.img $ROUNDED_SIZE
+qemu-img convert -f raw -O vpc -o subformat=fixed,force_size alpine.img alpine.vhd
 
 STORAGE_KEY=$(az storage account keys list --resource-group $RESOURCE_GROUP --account-name $STORAGE_ACCOUNT | jq -r '.[0].value')
 
