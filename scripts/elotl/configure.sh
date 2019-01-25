@@ -32,13 +32,13 @@ step 'Create ld-linux-x86-64.so.2 link'
 mkdir -p /lib64
 ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
-# todo: consider using chpasswd root:!!
-PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
-step "Setting root password to '$PW'"
-echo -en "$PW\n$PW\n" | passwd root
+# todo: consider using
+# step "Setting root password to '$PW'"
+# PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
+# echo -en "$PW\n$PW\n" | passwd root
 
-# step 'Set no (not empty, no) password for root'
-# usermod -p '!!' root
+step 'Set password for root'
+echo 'root:*' | chpasswd -e
 
 step 'Install ssh authorized keys'
 mkdir -p /root/.ssh

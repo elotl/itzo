@@ -2,7 +2,7 @@
 
 # Defaults.
 IMAGE="alpine.qcow2"
-IMAGE_SIZE="2G"
+IMAGE_SIZE="1G"
 NO_AMI=false
 BUILD_VERSION=""
 
