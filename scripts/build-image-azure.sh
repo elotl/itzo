@@ -27,7 +27,7 @@ while [[ -n "$1" ]]; do
         "-c"|"--cloud")
             shift
             CLOUD_PROVIDER="$1"
-            if [[ "$CLOUD_PROVIDER" != "aws" ]] && [[ "$CLOUD_PROVIDER" == "azure" ]]; then
+            if [[ "$CLOUD_PROVIDER" != "aws" ]] && [[ "$CLOUD_PROVIDER" != "azure" ]]; then
                 echo "Error, invalid cloud provider specified."
                 exit 1
             fi
@@ -95,7 +95,7 @@ if [[ "$CLOUD_PROVIDER" == "aws" ]] && [[ "$NO_IMAGE" = false ]]; then
 fi
 
 if [[ "$CLOUD_PROVIDER" == "azure" ]] && [[ "$NO_IMAGE" = false ]]; then
-    REQUIRED_PROGRAMS="$REQUIRED_PROGRAMS az"
+    REQUIRED_PROGRAMS="$REQUIRED_PROGRAMS az jq"
     if [[ -z "$AZURE_TENANT_ID" ]] || [[ -z "$AZURE_CLIENT_ID" ]] || [[ -z "$AZURE_CLIENT_SECRET" ]]; then
         echo "Error: please set AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET."
         exit 1
@@ -144,8 +144,7 @@ git clean -fdx
 #     kvm -m 512 -net nic,model=virtio -net user,hostfwd=tcp:127.0.0.1:9222-:22 -drive file=alpine.qcow2,if=virtio
 #
 PACKAGES="$(cat ../elotl/packages-$CLOUD_PROVIDER)"
-./alpine-make-vm-image --kernel-flavor virt --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$PACKAGES" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh
-"$CLOUD_PROVIDER"
+./alpine-make-vm-image --kernel-flavor virt --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$PACKAGES" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh "$CLOUD_PROVIDER"
 
 popd > /dev/null
 
@@ -157,9 +156,9 @@ PRODUCT_NAME="milpadev"
 IMAGE_NAME=elotl-$PRODUCT_NAME-$BUILD_VERSION-$(date +"%Y%m%d-%H%M%S")
 
 if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
-    python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $AMI_NAME
+    python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $IMAGE_NAME
 elif [[ "$CLOUD_PROVIDER" == "azure" ]]; then
-    echo "Azure not implemented quite yet..."
+    ./azure-make-image.sh "$IMAGE_ABSPATH" $IMAGE_NAME
 else
     echo "Unknown cloud provider: $CLOUD_PROVIDER"
 fi
