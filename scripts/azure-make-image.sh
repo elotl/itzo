@@ -2,13 +2,13 @@
 
 set -e
 
+# To use this, we need a resource group, a storage account and a storage container
+# these commands create those:
 # az storage account create --resource-group $RESOURCE_GROUP --location $LOCATION --name $STORAGE_ACCOUNT --kind Storage --sku Standard_LRS
 # az storage container create --account-name $STORAGE_ACCOUNT --name $STORAGE_CONTAINER
 # az storage account keys list --resource-group $RESOURCE_GROUP --account-name $STORAGE_ACCOUNT
 
 # Args:
-# input image name
-# name of image in azure
 if [ $# -lt 2 ]; then
     script_name=`basename $0`
     echo "Usage: $script_name <input_image_path> <cloud_image_name>"
