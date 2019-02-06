@@ -163,7 +163,7 @@ func TestCreateMountMultipleVolumes(t *testing.T) {
 		Name: "test-createmount",
 		VolumeSource: api.VolumeSource{
 			EmptyDir: &api.EmptyDir{},
-			HostPath: &api.HostPath{
+			PackagePath: &api.PackagePath{
 				Path: "/a/b/c",
 			},
 		},
@@ -196,7 +196,7 @@ func TestDeleteMountMultipleVolumes(t *testing.T) {
 		Name: "test-deletemount",
 		VolumeSource: api.VolumeSource{
 			EmptyDir: &api.EmptyDir{},
-			HostPath: &api.HostPath{
+			PackagePath: &api.PackagePath{
 				Path: "/a/b/c",
 			},
 		},

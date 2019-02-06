@@ -55,9 +55,9 @@ type Volume struct {
 type VolumeSource struct {
 	// If specified, an emptyDir will be created to back this volume.
 	EmptyDir *EmptyDir `json:"emptyDir,omitempty"`
-	// This is a file or directory that will be mapped into the rootfs of a
-	// unit.
-	HostPath *HostPath `json:"hostPath,omitempty"`
+	// This is a file or directory from a package that will be mapped into the
+	// rootfs of a unit.
+	PackagePath *PackagePath `json:"packagePath,omitempty"`
 }
 
 // Backing storage for volumes.
@@ -84,9 +84,9 @@ type EmptyDir struct {
 	SizeLimit int64 `json:"sizeLimit,omitempty"`
 }
 
-// Source for a file or directory that will be mapped into the rootfs of a
-// unit.
-type HostPath struct {
+// Source for a file or directory from a package that will be mapped into the
+// rootfs of a unit.
+type PackagePath struct {
 	// Path of the directory or file on the host.
 	Path string `json:"path"`
 }
