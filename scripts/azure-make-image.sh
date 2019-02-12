@@ -39,9 +39,3 @@ qemu-img convert -f raw -O vpc -o subformat=fixed,force_size alpine.img alpine.v
 STORAGE_KEY=$(az storage account keys list --resource-group $RESOURCE_GROUP --account-name $STORAGE_ACCOUNT | jq -r '.[0].value')
 
 az storage blob upload --account-name $STORAGE_ACCOUNT --account-key $STORAGE_KEY --container-name $STORAGE_CONTAINER --type page --file ./alpine.vhd --name ${IMAGE_NAME}.vhd
-
-# note that zone resiliant disks can only be created in
-# locations/regions that support Zone Redundant Storage we will likely
-# need this to be able to support launching VMs across availability
-# zones when an AZ is down
-az image create --storage-sku StandardSSD_LRS --zone-resilient true --os-disk-caching ReadWrite --resource-group $RESOURCE_GROUP --os-type=Linux --source https://$STORAGE_ACCOUNT.blob.core.windows.net/$STORAGE_CONTAINER/${IMAGE_NAME}.vhd --name $IMAGE_NAME
