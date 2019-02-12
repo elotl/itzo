@@ -11,7 +11,7 @@ go test ./...
 CURRENT_BRANCH=$(echo $GIT_BRANCH | sed -e "s|origin/||g")
 CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)
 
-if [[ $CURRENT_TAG =~ ^v[0-9].* ]] || [[ $CURRENT_BRANCH == "master" ]] || [[ $CURRENT_BRANCH == "bcox-upload-dev-builds" ]]; then
+if [[ $CURRENT_TAG =~ ^v[0-9].* ]] || [[ $CURRENT_BRANCH == "master" ]]; then
     echo "Building itzo binary"
     export PATH=$PATH:$HOME/.local/bin
     make itzo
