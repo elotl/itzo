@@ -1,10 +1,19 @@
 #!/bin/sh
 
+# At this time, this script takes only 1 argument: what cloud we're running on
+CLOUD_PROVIDER=$1
+
 _step_counter=0
 step() {
 	_step_counter=$(( _step_counter + 1 ))
 	printf '\n\033[1;36m%d) %s\033[0m\n' $_step_counter "$@" >&2  # bold cyan
 }
+
+
+echo "Running configure.sh for cloud provider $CLOUD_PROVIDER"
+
+step "Update packages"
+apk update && apk upgrade
 
 step 'Set up timezone'
 setup-timezone -z US/Pacific
@@ -29,9 +38,8 @@ step 'Create ld-linux-x86-64.so.2 link'
 mkdir -p /lib64
 ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
-PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
-step "Setting root password to '$PW'"
-echo -en "$PW\n$PW\n" | passwd root
+step 'Set password for root'
+echo 'root:*' | chpasswd -e
 
 step 'Create itzo init script'
 cat > /etc/init.d/itzo <<-EOF
@@ -67,7 +75,7 @@ cat > /usr/local/bin/itzo_download.sh <<-EOF
 
 echo "-1000" > /proc/self/oom_score_adj
 itzo_dir=/usr/local/bin
-\${itzo_dir}/cloud-init --from-metadata-service >> /var/log/itzo/itzo.log 2>&1
+\${itzo_dir}/itzo-cloud-init --from-metadata-service --from-waagent /var/lib/waagent >> /var/log/itzo/itzo.log 2>&1
 
 itzo_url_file="/tmp/milpa/itzo_url"
 itzo_url="http://itzo-download.s3.amazonaws.com"
@@ -100,106 +108,155 @@ wget -O /usr/local/bin/tosi http://tosi.s3.amazonaws.com/tosi
 chmod 755 /usr/local/bin/tosi
 
 step 'Add cloud-init'
-wget -O /usr/local/bin/cloud-init http://itzo-download.s3.amazonaws.com/cloud-init
-chmod 755 /usr/local/bin/cloud-init
+wget -O /usr/local/bin/itzo-cloud-init http://itzo-dev-download.s3.amazonaws.com/itzo-cloud-init
+chmod 755 /usr/local/bin/itzo-cloud-init
 
-step 'Add aws-ena module'
-wget http://itzo-packages.s3.amazonaws.com/aws-ena-module.tar.gz
-tar xvzf aws-ena-module.tar.gz
-for kernel in /lib/modules/*; do
-    mkdir -p "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
-    cp ena.ko "${kernel}/kernel/drivers/net/ethernet/amazon/ena/"
-    depmod -a "$(basename ${kernel})"
-done
-rm aws-ena-module.tar.gz
-echo ena > /etc/modules-load.d/ena.conf
+if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
+    echo "http://dl-3.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+    apk update
+    apk add aws-ena-driver-virt
 
-# Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
-# Create ENA feature for mkinitfs
-# Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
-echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
-# Enable ENA and NVME features these don't hurt for any instance and are
-# hard requirements of the 5 series and i3 series of instances
-sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
-/sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
+    step 'Add aws-ena module'
+    echo ena > /etc/modules-load.d/ena.conf
 
-#
-# Note: the driver and libcuda client libraries need to be in sync, e.g. both
-# using the 387.26 interface.
-#
-step 'Add NVidia driver'
-wget http://itzo-packages.s3.amazonaws.com/nvidia.tar.gz
-tar xvzf nvidia.tar.gz
-for kernel in /lib/modules/*; do
-    mkdir -p "${kernel}/misc"
-    cp nvidia*.ko "${kernel}/misc/"
-    depmod -a "$(basename ${kernel})"
-done
-rm nvidia.tar.gz
+    # Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
+    # Create ENA feature for mkinitfs
+    # Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
+    echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
+    # Enable ENA and NVME features these don't hurt for any instance and are
+    # hard requirements of the 5 series and i3 series of instances
+    sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
+    /sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
+fi
 
-cat > /etc/modprobe.d/nvidia.conf <<-EOF
-blacklist amd76x_edac
-blacklist vga16fb
-blacklist nouveau
-blacklist rivafb
-blacklist nvidiafb
-blacklist rivatv
-EOF
-
-cat > /etc/init.d/nvidia <<-EOF
+if [[ "$CLOUD_PROVIDER" == "azure" ]]; then
+    step "Setup Azure Linux Agent"
+    wget -O ./waagent.tar.gz https://github.com/elotl/WALinuxAgent/archive/master.tar.gz && \
+	tar xvzf ./waagent.tar.gz && \
+	cd WALinuxAgent-master && \
+	python setup.py install && \
+	cd .. && \
+	rm -rf WALinuxAgent-master waagent.tar.gz
+    
+    cat > /etc/init.d/waagent <<EOF
 #!/sbin/openrc-run
-
-name=\$RC_SVCNAME
-
-depend() {
-        after bootmisc
-        need localmount
-}
-
+export PATH=/usr/local/sbin:$PATH
 start() {
-  #
-  # This is the recommended script from:
-  #
-  #   http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
-  #
-  /sbin/modprobe nvidia
-  if [ "\$?" -eq 0 ]; then
-    # Count the number of NVIDIA controllers found.
-    NVDEVS=\`lspci | grep -i NVIDIA\`
-    N3D=\`echo "\$NVDEVS" | grep "3D controller" | wc -l\`
-    NVGA=\`echo "\$NVDEVS" | grep "VGA compatible controller" | wc -l\`
-    N=\`expr \$N3D + \$NVGA - 1\`
-    for i in \`seq 0 \$N\`; do
-      if [[ ! -e "/dev/nvidia\$i" ]]; then
-        echo "Creating /dev/nvidia\$i c 195 \$i"
-        mknod -m 666 /dev/nvidia\$i c 195 \$i
-      fi
-    done
-    if [[ ! -e "/dev/nvidiactl" ]]; then
-      echo "Creating /dev/nvidiactl c 195 255"
-      mknod -m 666 /dev/nvidiactl c 195 255
-    fi
-  fi
-
-  /sbin/modprobe nvidia-uvm
-  if [ "\$?" -eq 0 ]; then
-    # Find out the major device number used by the nvidia-uvm driver
-    D=\`grep nvidia-uvm /proc/devices | awk '{print \$1}'\`
-    if [[ ! -e "/dev/nvidia-uvm" ]]; then
-      echo "Creating /dev/nvidia-uvm c \$D 0"
-      mknod -m 666 /dev/nvidia-uvm c \$D 0
-    fi
-  fi
-}
-
-stop() {
-  for ko in nvidia-uvm nvidia-modeset nvidia-drm nvidia; do
-    /bin/lsmod | grep "\<\$ko\>" && /sbin/rmmod \$ko
-  done
+        ebegin "Starting waagent"
+        start-stop-daemon --start --exec /usr/sbin/waagent --name waagent -- -start
+        eend $? "Failed to start waagent"
 }
 EOF
-chmod 755 /etc/init.d/nvidia
-cat /etc/init.d/nvidia
+    chmod +x /etc/init.d/waagent
+
+    cat > /etc/waagent.conf <<EOF
+Provisioning.Enabled=y
+Extensions.Enabled=n
+Provisioning.UseCloudInit=n
+Provisioning.DeleteRootPassword=y
+Provisioning.RegenerateSshHostKeyPair=n
+Provisioning.SshHostKeyPairType=rsa
+Provisioning.MonitorHostName=y
+Provisioning.DecodeCustomData=y
+Provisioning.ExecuteCustomData=n
+Provisioning.AllowResetSysUser=n
+ResourceDisk.Format=y
+ResourceDisk.Filesystem=ext4
+ResourceDisk.MountPoint=/mnt/resource
+ResourceDisk.EnableSwap=n
+ResourceDisk.SwapSizeMB=0
+ResourceDisk.MountOptions=None
+Logs.Verbose=n
+OS.EnableFIPS=n
+OS.RootDeviceScsiTimeout=300
+OS.SshClientAliveInterval=30
+OS.SshDir=/etc/ssh
+OS.EnableRDMA=y
+OS.EnableFirewall=n
+CGroups.EnforceLimits=n
+CGroups.Excluded=customscript,runcommand
+AutoUpdate.Enabled=n
+EOF
+
+fi
+
+# #
+# # Note: the driver and libcuda client libraries need to be in sync, e.g. both
+# # using the 387.26 interface.
+# #
+# step 'Add NVidia driver'
+# wget http://itzo-packages.s3.amazonaws.com/nvidia.tar.gz
+# tar xvzf nvidia.tar.gz
+# for kernel in /lib/modules/*; do
+#     mkdir -p "${kernel}/misc"
+#     cp nvidia*.ko "${kernel}/misc/"
+#     depmod -a "$(basename ${kernel})"
+# done
+# rm nvidia.tar.gz
+
+# cat > /etc/modprobe.d/nvidia.conf <<-EOF
+# blacklist amd76x_edac
+# blacklist vga16fb
+# blacklist nouveau
+# blacklist rivafb
+# blacklist nvidiafb
+# blacklist rivatv
+# EOF
+
+# cat > /etc/init.d/nvidia <<-EOF
+# #!/sbin/openrc-run
+
+# name=\$RC_SVCNAME
+
+# depend() {
+#         after bootmisc
+#         need localmount
+# }
+
+# start() {
+#   #
+#   # This is the recommended script from:
+#   #
+#   #   http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
+#   #
+#   /sbin/modprobe nvidia
+#   if [ "\$?" -eq 0 ]; then
+#     # Count the number of NVIDIA controllers found.
+#     NVDEVS=\`lspci | grep -i NVIDIA\`
+#     N3D=\`echo "\$NVDEVS" | grep "3D controller" | wc -l\`
+#     NVGA=\`echo "\$NVDEVS" | grep "VGA compatible controller" | wc -l\`
+#     N=\`expr \$N3D + \$NVGA - 1\`
+#     for i in \`seq 0 \$N\`; do
+#       if [[ ! -e "/dev/nvidia\$i" ]]; then
+#         echo "Creating /dev/nvidia\$i c 195 \$i"
+#         mknod -m 666 /dev/nvidia\$i c 195 \$i
+#       fi
+#     done
+#     if [[ ! -e "/dev/nvidiactl" ]]; then
+#       echo "Creating /dev/nvidiactl c 195 255"
+#       mknod -m 666 /dev/nvidiactl c 195 255
+#     fi
+#   fi
+
+#   /sbin/modprobe nvidia-uvm
+#   if [ "\$?" -eq 0 ]; then
+#     # Find out the major device number used by the nvidia-uvm driver
+#     D=\`grep nvidia-uvm /proc/devices | awk '{print \$1}'\`
+#     if [[ ! -e "/dev/nvidia-uvm" ]]; then
+#       echo "Creating /dev/nvidia-uvm c \$D 0"
+#       mknod -m 666 /dev/nvidia-uvm c \$D 0
+#     fi
+#   fi
+# }
+
+# stop() {
+#   for ko in nvidia-uvm nvidia-modeset nvidia-drm nvidia; do
+#     /bin/lsmod | grep "\<\$ko\>" && /sbin/rmmod \$ko
+#   done
+# }
+# EOF
+# chmod 755 /etc/init.d/nvidia
+# cat /etc/init.d/nvidia
 
 step 'Load iptables modules at boot'
 echo 'iptable_nat' >> /etc/modules
@@ -235,6 +292,13 @@ rc-update add net.eth0 default
 rc-update add sshd default
 rc-update add itzo default
 rc-update add resizeroot default
-rc-update add nvidia default
+# rc-update add nvidia default
 rc-update add net.lo boot
 rc-update add termencoding boot
+rc-update add haveged boot
+if [[ "$CLOUD_PROVIDER" == "azure" ]]; then
+    rc-update add waagent default
+    rc-update add hv_fcopy_daemon default
+    rc-update add hv_kvp_daemon default
+    rc-update add hv_vss_daemon default
+fi
