@@ -18,7 +18,7 @@ while [[ -n "$1" ]]; do
             echo "    -o|--out <output path>: image output path, " \
                 "default is alpine.qcow2"
             echo "    -n|--no-image: don't create AMI from qcow2 image"
-	    
+
             echo "    -v|--version <buildnumber>: version of the image, used in image name" \
             echo "Example:"
             echo "    $0 -c aws -o my-alpine-image.qcow2 -s 2G -e prod -v 16"
@@ -135,7 +135,7 @@ echo "Creating image of size $IMAGE_SIZE at $IMAGE_ABSPATH."
 
 pushd alpine-make-vm-image > /dev/null
 
-git checkout 180de0d818f779c844c3f71939f754e477f07768
+git checkout ea6dcfe63580dc3c4aa14c7bb362c9bb67f23e01
 git clean -fdx
 
 #

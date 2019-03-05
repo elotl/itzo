@@ -111,23 +111,23 @@ step 'Add cloud-init'
 wget -O /usr/local/bin/itzo-cloud-init http://itzo-dev-download.s3.amazonaws.com/itzo-cloud-init
 chmod 755 /usr/local/bin/itzo-cloud-init
 
-if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
-    echo "http://dl-3.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
-    apk update
-    apk add aws-ena-driver-virt
+# if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
+#     echo "http://dl-3.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
+#     apk update
+#     apk add aws-ena-driver-virt
 
-    step 'Add aws-ena module'
-    echo ena > /etc/modules-load.d/ena.conf
+#     step 'Add aws-ena module'
+#     echo ena > /etc/modules-load.d/ena.conf
 
-    # Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
-    # Create ENA feature for mkinitfs
-    # Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
-    echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
-    # Enable ENA and NVME features these don't hurt for any instance and are
-    # hard requirements of the 5 series and i3 series of instances
-    sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
-    /sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
-fi
+#     # Taken from https://github.com/mcrute/alpine-ec2-ami/blob/master/make_ami.sh
+#     # Create ENA feature for mkinitfs
+#     # Submitted upstream: https://github.com/alpinelinux/mkinitfs/pull/19
+#     echo "kernel/drivers/net/ethernet/amazon/ena" > /etc/mkinitfs/features.d/ena.modules
+#     # Enable ENA and NVME features these don't hurt for any instance and are
+#     # hard requirements of the 5 series and i3 series of instances
+#     sed -Ei 's/^features="([^"]+)"/features="\1 nvme ena"/' /etc/mkinitfs/mkinitfs.conf
+#     /sbin/mkinitfs $(basename $(find /lib/modules/* -maxdepth 0))
+# fi
 
 if [[ "$CLOUD_PROVIDER" == "azure" ]]; then
     step "Setup Azure Linux Agent"
@@ -137,7 +137,7 @@ if [[ "$CLOUD_PROVIDER" == "azure" ]]; then
 	python setup.py install && \
 	cd .. && \
 	rm -rf WALinuxAgent-master waagent.tar.gz
-    
+
     cat > /etc/init.d/waagent <<EOF
 #!/sbin/openrc-run
 export PATH=/usr/local/sbin:$PATH
