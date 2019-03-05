@@ -112,9 +112,7 @@ wget -O /usr/local/bin/itzo-cloud-init http://itzo-dev-download.s3.amazonaws.com
 chmod 755 /usr/local/bin/itzo-cloud-init
 
 if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
-    echo "http://dl-3.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
-    apk update
-    apk add aws-ena-driver-virt
+    # AWS ENA module is included in 4.19 kernels, we just need to enable it
 
     step 'Add aws-ena module'
     echo ena > /etc/modules-load.d/ena.conf
@@ -137,7 +135,7 @@ if [[ "$CLOUD_PROVIDER" == "azure" ]]; then
 	python setup.py install && \
 	cd .. && \
 	rm -rf WALinuxAgent-master waagent.tar.gz
-    
+
     cat > /etc/init.d/waagent <<EOF
 #!/sbin/openrc-run
 export PATH=/usr/local/sbin:$PATH
