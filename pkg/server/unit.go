@@ -612,7 +612,12 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 			u.setStateToStartFailure(err)
 			return err
 		}
-		if err := mount.ShareMount("/.oldrootfs", uintptr(syscall.MS_PRIVATE|syscall.MS_REC)); err != nil {
+		// Mark the old root mount sharing as private so we don't
+		// unmount any volumes living in the root that are shared
+		// between namespaces as emptyDirs when we unmount the old
+		// root.
+		shareFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
+		if err := mount.ShareMount("/.oldrootfs", shareFlags); err != nil {
 			glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
 			u.setStateToStartFailure(err)
 			return err
