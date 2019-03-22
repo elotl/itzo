@@ -257,6 +257,34 @@ func resolveLinks(base, target string) (string, error) {
 	return path, nil
 }
 
+func ShareMount(target string, flags uintptr) error {
+	glog.Infoln("Setting sharing of mount at %s to %d", target, flags)
+	return mounter("none", target, "", flags, "")
+}
+
+// func RemountPrivate(target string) error {
+// 	glog.Infoln("remounting private")
+// 	err := mounter("none", target, "", uintptr(syscall.MS_PRIVATE|syscall.MS_REC), "")
+// 	if err != nil {
+// 		return err
+// 	}
+// 	cmd := exec.Command("findmnt", "-o", "TARGET,PROPAGATION")
+// 	stdoutStderr, err := cmd.CombinedOutput()
+// 	glog.Infof("findmnt output: %s, err %v\n", stdoutStderr, err)
+// 	return nil
+// }
+
+// func makeSharedMount(source, target string) error {
+// 	cmd := exec.Command("mount", "--rbind", "--make-rshared", source, target)
+// 	stdoutStderr, err := cmd.CombinedOutput()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	glog.Infof("shared mount output: %s\n", stdoutStderr)
+
+// 	return nil
+// }
+
 func (om *OSMounter) AttachMount(unit, src, dst string) error {
 	glog.Infof("Mounting %s->%s", src, dst)
 	// Directory for mount source.
@@ -303,9 +331,15 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 		f.Close()
 	}
 	// Bind mount source to target.
-	err = mounter(source, target, "", uintptr(syscall.MS_BIND), "")
+	// err = makeSharedMount(source, target)
+	err = mounter(source, target, "", uintptr(syscall.MS_BIND|syscall.MS_REC), "")
 	if err != nil {
 		glog.Errorf("Error mounting %s->%s: %v", source, target, err)
+		return err
+	}
+	err = ShareMount(target, uintptr(syscall.MS_SHARED|syscall.MS_REC))
+	if err != nil {
+		glog.Errorf("Error sharing mount %s: %v", target, err)
 		return err
 	}
 	return nil
@@ -343,6 +377,24 @@ func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
 	if err != nil && !os.IsExist(err) {
 		glog.Errorf("Error creating emptyDir mount point %s: %v", dir, err)
 		return err
+	}
+
+	glog.Infof("Bind mounting Emptydir onto itself")
+	err = mounter(dir, dir, "", uintptr(syscall.MS_BIND|syscall.MS_REC), "")
+	if err != nil {
+		glog.Errorf("Error bindmounting emptydir at %s: %v", dir, err)
+		return err
+	}
+	err = ShareMount(dir, uintptr(syscall.MS_SHARED|syscall.MS_REC))
+	if err != nil {
+		glog.Errorf("Error sharing emptydir mount at %s: %v", dir, err)
+		return err
+	}
+
+	//err = mounter(dir, dir, "", uintptr(syscall.MS_BIND|syscall.MS_SHARED|syscall.MS_REC), "")
+
+	if err != nil {
+		glog.Errorf("Error making emptydir %s a shared mount point: %v", dir, err)
 	}
 	switch emptyDir.Medium {
 	case api.StorageMediumDefault:
