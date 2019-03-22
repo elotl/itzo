@@ -257,6 +257,11 @@ func resolveLinks(base, target string) (string, error) {
 	return path, nil
 }
 
+func ShareMount(target string, flags uintptr) error {
+	glog.Infoln("Setting sharing of mount at %s to %d", target, flags)
+	return mounter("none", target, "", flags, "")
+}
+
 func (om *OSMounter) AttachMount(unit, src, dst string) error {
 	glog.Infof("Mounting %s->%s", src, dst)
 	// Directory for mount source.
@@ -302,10 +307,18 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 		}
 		f.Close()
 	}
-	// Bind mount source to target.
-	err = mounter(source, target, "", uintptr(syscall.MS_BIND), "")
+	err = mounter(source, target, "", uintptr(syscall.MS_BIND|syscall.MS_REC), "")
 	if err != nil {
 		glog.Errorf("Error mounting %s->%s: %v", source, target, err)
+		return err
+	}
+	// Mark the mount as shared. This ensures we can share devices
+	// mounted into emptyDirs between namespaces.  Shouldn't be too
+	// strange for packagePaths unless people start mounting things
+	// into their packages...
+	err = ShareMount(target, uintptr(syscall.MS_SHARED|syscall.MS_REC))
+	if err != nil {
+		glog.Errorf("Error sharing mount %s: %v", target, err)
 		return err
 	}
 	return nil
@@ -343,6 +356,24 @@ func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
 	if err != nil && !os.IsExist(err) {
 		glog.Errorf("Error creating emptyDir mount point %s: %v", dir, err)
 		return err
+	}
+
+	// rbind mount the emptydir onto itself so we can set mount
+	// sharing parameters for anything mounted within the emptydir and
+	// share mounted volumes through the emptydir.
+	glog.Infof("Bind mounting Emptydir onto itself")
+	err = mounter(dir, dir, "", uintptr(syscall.MS_BIND|syscall.MS_REC), "")
+	if err != nil {
+		glog.Errorf("Error bindmounting emptydir at %s: %v", dir, err)
+		return err
+	}
+	err = ShareMount(dir, uintptr(syscall.MS_SHARED|syscall.MS_REC))
+	if err != nil {
+		glog.Errorf("Error sharing emptydir mount at %s: %v", dir, err)
+		return err
+	}
+	if err != nil {
+		glog.Errorf("Error making emptydir %s a shared mount point: %v", dir, err)
 	}
 	switch emptyDir.Medium {
 	case api.StorageMediumDefault:

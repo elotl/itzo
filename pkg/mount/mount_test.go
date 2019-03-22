@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/elotl/itzo/pkg/api"
@@ -73,8 +75,10 @@ func TestAttachMount(t *testing.T) {
 	mountSrc := ""
 	mountDst := ""
 	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		mountSrc = source
-		mountDst = target
+		if source != "none" {
+			mountSrc = source
+			mountDst = target
+		}
 		return nil
 	}
 	tmpdir := createTmpDir(t)
@@ -137,9 +141,11 @@ func TestDetachMountFail(t *testing.T) {
 }
 
 func testCreateMount(t *testing.T, vol *api.Volume) {
-	mountCalled := false
+	var mountSource string
 	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		mountCalled = true
+		if source != "none" {
+			mountSource = source
+		}
 		return nil
 	}
 	tmpdir := createTmpDir(t)
@@ -151,7 +157,12 @@ func testCreateMount(t *testing.T, vol *api.Volume) {
 	m := NewOSMounter(tmpdir + "/units")
 	err = m.CreateMount(vol)
 	assert.Error(t, err)
-	assert.False(t, mountCalled)
+	expectedFP := path.Join(tmpdir, "mounts/", vol.Name)
+	if vol.Name != "" {
+		assert.Equal(t, expectedFP, mountSource)
+	} else {
+		assert.Equal(t, "", mountSource)
+	}
 }
 
 func TestCreateMountNoVolume(t *testing.T) {
@@ -205,9 +216,16 @@ func TestDeleteMountMultipleVolumes(t *testing.T) {
 }
 
 func TestCreateMountEmptyDirDisk(t *testing.T) {
-	mountCalled := false
+	//mountCalled := false
+	var mountSource, mountTarget string
+	var shareFlags uintptr
 	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		mountCalled = true
+		if source == "none" {
+			shareFlags = flags
+		} else {
+			mountSource = source
+			mountTarget = target
+		}
 		return nil
 	}
 	tmpdir := createTmpDir(t)
@@ -225,7 +243,10 @@ func TestCreateMountEmptyDirDisk(t *testing.T) {
 	m := NewOSMounter(tmpdir + "/units")
 	err = m.CreateMount(&vol)
 	assert.Nil(t, err)
-	assert.False(t, mountCalled)
+	expectedFP := path.Join(tmpdir, "mounts/test-mount-name")
+	assert.Equal(t, expectedFP, mountSource)
+	assert.Equal(t, expectedFP, mountTarget)
+	assert.Equal(t, uintptr(syscall.MS_SHARED|syscall.MS_REC), shareFlags)
 }
 
 func TestCreateMountEmptyDirTmpfs(t *testing.T) {
@@ -318,9 +339,12 @@ func TestCreateTmpfsFail(t *testing.T) {
 }
 
 func TestCreateEmptydirDisk(t *testing.T) {
-	mountCalled := false
+	var mountSource, mountTarget string
 	mounter = func(source, target, fstype string, flags uintptr, data string) error {
-		mountCalled = true
+		if source != "none" {
+			mountSource = source
+			mountTarget = target
+		}
 		return nil
 	}
 	tmpdir := createTmpDir(t)
@@ -328,7 +352,8 @@ func TestCreateEmptydirDisk(t *testing.T) {
 	err := createEmptydir(tmpdir, &api.EmptyDir{})
 	fmt.Printf("createEmptydir(): %v\n", err)
 	assert.Nil(t, err)
-	assert.False(t, mountCalled)
+	assert.Equal(t, tmpdir, mountSource)
+	assert.Equal(t, tmpdir, mountTarget)
 }
 
 func TestCreateEmptydirTmpfs(t *testing.T) {
