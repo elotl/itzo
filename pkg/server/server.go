@@ -23,6 +23,7 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
@@ -63,6 +64,7 @@ type Server struct {
 	// Packages will be installed under this directory (created if it does not
 	// exist).
 	installRootdir string
+	metrics        *metrics.Metrics
 }
 
 func New(rootdir string) *Server {
@@ -86,6 +88,7 @@ func New(rootdir string) *Server {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		},
+		metrics: metrics.New(),
 	}
 }
 
@@ -100,6 +103,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 		reply := api.PodStatusReply{
 			UnitStatuses:     status,
 			InitUnitStatuses: initStatus,
+			Metrics:          s.metrics.GetSystemMetrics(),
 		}
 		buf, err := json.Marshal(&reply)
 		if err != nil {

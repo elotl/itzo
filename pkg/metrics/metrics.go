@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
@@ -16,15 +17,11 @@ func New() *Metrics {
 }
 
 // There are a couple of measurements of CPU we could use
-// 1. Avg CPU% across all CPUs
+// 1. cpuPercent(): Avg CPU% across all CPUs (cpuPercent())
 // 2. Max CPU% across all CPUs
-// 3. Utilization. (Think of this as percent of the machine's
-//    reported power that is actually used.
-// 4. Something better???
-//
-// I'm going with Utilization since that makes sense for
-// burstable instances in AWS.  Note: Azure burstable instances
-// never show stolen CPU so they behave a bit differently.
+// 3. cpuUtilization(): percent of the machine's reported power that
+//    is actually used. Not reported correctly on Azure
+
 func (m *Metrics) cpuUtilization() float32 {
 	cpuTimes, err := cpu.Times(false)
 	if err != nil || len(cpuTimes) == 0 {
@@ -54,18 +51,19 @@ func (m *Metrics) cpuPercent() float32 {
 // constant for an autoscaler when you change your instance type.
 // Thus, if you vertically scale your application to double the CPU
 // count, but keep the autoscaling values the same, you should still
-// scale at the right place (double the load on the system).
+// scale at the right place.
 //
 // At this time, We don't use cpuUtilization (including steal) like
-// AWS since steal values dont come through in Azure (hyper-v).
-func (m *Metrics) GetSystemMetrics() map[string]float32 {
-	metrics := make(map[string]float32)
+// AWS reports in cloudWatch since steal values dont come through in
+// Azure (hyper-v).
+func (m *Metrics) GetSystemMetrics() api.PodMetrics {
+	metrics := api.PodMetrics{}
 	if memoryStats, err := mem.VirtualMemory(); err == nil {
-		metrics["Memory"] = float32(memoryStats.UsedPercent)
+		metrics.Memory = float32(memoryStats.UsedPercent)
 	}
 	if diskStats, err := disk.Usage("/"); err == nil {
-		metrics["Disk"] = float32(diskStats.UsedPercent)
+		metrics.Disk = float32(diskStats.UsedPercent)
 	}
-	metrics["CPU"] = m.cpuPercent()
+	metrics.CPU = m.cpuPercent()
 	return metrics
 }
