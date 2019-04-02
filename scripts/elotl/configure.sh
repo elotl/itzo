@@ -53,6 +53,7 @@ command_user="root"
 pidfile="/run/\$RC_SVCNAME/\$RC_SVCNAME.pid"
 start_stop_daemon_args=""
 command_background="yes"
+rc_ulimit='-n 1024000 -p 30112'
 
 depend() {
         need net localmount
@@ -281,6 +282,11 @@ step 'Enable vsyscall emulation'
 sed -Ei -e "s|^[# ]*(default_kernel_opts)=.*|\1=\"vsyscall=emulate\"|" \
 	/etc/update-extlinux.conf
 update-extlinux --warn-only 2>&1 | grep -Fv 'extlinux: cannot open device /dev' >&2
+
+step 'Sysctl tweaks'
+cat > /etc/sysctl.d/local.conf <<-EOF
+fs.file-max = 1024000
+EOF
 
 step 'Enable services'
 rc-update add acpid default
