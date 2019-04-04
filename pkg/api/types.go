@@ -294,3 +294,9 @@ type UnitStatus struct {
 	RestartCount int32     `json:"restartCount"`
 	Image        string    `json:"image"`
 }
+
+type ResourceMetrics struct {
+	CPU    float64 `json:"cpu,omitempty"`
+	Memory float64 `json:"memory,omitempty"`
+	Disk   float64 `json:"disk,omitempty"`
+}

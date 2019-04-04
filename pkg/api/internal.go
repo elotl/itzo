@@ -16,15 +16,9 @@ type RegistryCredentials struct {
 }
 
 type PodStatusReply struct {
-	UnitStatuses     []UnitStatus `json:"unitStatus"`
-	InitUnitStatuses []UnitStatus `json:"initUnitStatus"`
-	Metrics          PodMetrics   `json:"metrics"`
-}
-
-type PodMetrics struct {
-	CPU    float32 `json:"cpu"`
-	Memory float32 `json:"memory"`
-	Disk   float32 `json:"disk"`
+	UnitStatuses     []UnitStatus    `json:"unitStatus"`
+	InitUnitStatuses []UnitStatus    `json:"initUnitStatus"`
+	Usage            ResourceMetrics `json:"usage"`
 }
 
 type PortForwardParams struct {

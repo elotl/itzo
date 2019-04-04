@@ -103,7 +103,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 		reply := api.PodStatusReply{
 			UnitStatuses:     status,
 			InitUnitStatuses: initStatus,
-			Metrics:          s.metrics.GetSystemMetrics(),
+			Usage:            s.metrics.GetSystemMetrics(),
 		}
 		buf, err := json.Marshal(&reply)
 		if err != nil {

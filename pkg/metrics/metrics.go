@@ -39,12 +39,12 @@ func (m *Metrics) cpuUtilization() float32 {
 	return utilizationPercent
 }
 
-func (m *Metrics) cpuPercent() float32 {
+func (m *Metrics) cpuPercent() float64 {
 	percents, err := cpu.Percent(0, true)
 	if err != nil || len(percents) == 0 {
 		return 0.0
 	}
-	return float32(percents[0])
+	return percents[0]
 }
 
 // We choose percents over quantities since those values remain
@@ -56,13 +56,13 @@ func (m *Metrics) cpuPercent() float32 {
 // At this time, We don't use cpuUtilization (including steal) like
 // AWS reports in cloudWatch since steal values dont come through in
 // Azure (hyper-v).
-func (m *Metrics) GetSystemMetrics() api.PodMetrics {
-	metrics := api.PodMetrics{}
+func (m *Metrics) GetSystemMetrics() api.ResourceMetrics {
+	metrics := api.ResourceMetrics{}
 	if memoryStats, err := mem.VirtualMemory(); err == nil {
-		metrics.Memory = float32(memoryStats.UsedPercent)
+		metrics.Memory = memoryStats.UsedPercent
 	}
 	if diskStats, err := disk.Usage("/"); err == nil {
-		metrics.Disk = float32(diskStats.UsedPercent)
+		metrics.Disk = diskStats.UsedPercent
 	}
 	metrics.CPU = m.cpuPercent()
 	return metrics
