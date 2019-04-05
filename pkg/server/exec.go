@@ -12,7 +12,6 @@ import (
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
 	"github.com/kr/pty"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 const (
@@ -124,13 +123,6 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 	}
 	defer tty.Close()
 	if interactive {
-		oldState, err := terminal.MakeRaw(int(tty.Fd()))
-		if err != nil {
-			glog.Errorf("Error setting up terminal for exec: %v", err)
-			return (err)
-		}
-		defer terminal.Restore(int(tty.Fd()), oldState)
-
 		wsStdinReader := ws.CreateReader(0)
 		go func() {
 			io.Copy(tty, wsStdinReader)
