@@ -295,8 +295,4 @@ type UnitStatus struct {
 	Image        string    `json:"image"`
 }
 
-type ResourceMetrics struct {
-	CPU    float64 `json:"cpu,omitempty"`
-	Memory float64 `json:"memory,omitempty"`
-	Disk   float64 `json:"disk,omitempty"`
-}
+type ResourceMetrics map[string]float64

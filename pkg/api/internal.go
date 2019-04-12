@@ -18,7 +18,7 @@ type RegistryCredentials struct {
 type PodStatusReply struct {
 	UnitStatuses     []UnitStatus    `json:"unitStatus"`
 	InitUnitStatuses []UnitStatus    `json:"initUnitStatus"`
-	Usage            ResourceMetrics `json:"usage"`
+	ResourceUsage    ResourceMetrics `json:"resourceUsage,omitempty"`
 }
 
 type PortForwardParams struct {

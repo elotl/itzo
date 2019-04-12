@@ -59,11 +59,11 @@ func (m *Metrics) cpuPercent() float64 {
 func (m *Metrics) GetSystemMetrics() api.ResourceMetrics {
 	metrics := api.ResourceMetrics{}
 	if memoryStats, err := mem.VirtualMemory(); err == nil {
-		metrics.Memory = memoryStats.UsedPercent
+		metrics["memory"] = memoryStats.UsedPercent
 	}
 	if diskStats, err := disk.Usage("/"); err == nil {
-		metrics.Disk = diskStats.UsedPercent
+		metrics["disk"] = diskStats.UsedPercent
 	}
-	metrics.CPU = m.cpuPercent()
+	metrics["cpu"] = m.cpuPercent()
 	return metrics
 }
