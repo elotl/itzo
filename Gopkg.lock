@@ -2,83 +2,152 @@
 
 
 [[projects]]
+  digest = "1:e92f5581902c345eb4ceffdcd4a854fb8f73cf436d47d837d1ec98ef1fe0a214"
+  name = "github.com/StackExchange/wmi"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "5d049714c4a64225c3c79a7cf7d02f7fb5b96338"
+  version = "1.0.0"
+
+[[projects]]
+  digest = "1:a2c1d0e43bd3baaa071d1b9ed72c27d78169b2b269f71c105ac4ba34b1be4a39"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
+  pruneopts = "UT"
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
   version = "v1.1.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:962bb9e64adb39123435a82e88485dc86d135db77c1402f4a0e1f4632f7ca740"
   name = "github.com/elotl/wsstream"
   packages = ["."]
+  pruneopts = "UT"
   revision = "a88a26dd5a786dfa2f13d85847c85fa2ae383188"
 
 [[projects]]
+  digest = "1:440028f55cb322d8cb5b9d5ebec298a00b7d74690a658fe6b1c0c0b44341bfae"
+  name = "github.com/go-ole/go-ole"
+  packages = [
+    ".",
+    "oleutil",
+  ]
+  pruneopts = "UT"
+  revision = "97b6244175ae18ea6eef668034fd6565847501c9"
+  version = "v1.2.4"
+
+[[projects]]
   branch = "master"
+  digest = "1:1ba1d79f2810270045c328ae5d674321db34e3aae468eb4233883b473c5c0467"
   name = "github.com/golang/glog"
   packages = ["."]
+  pruneopts = "UT"
   revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
 
 [[projects]]
+  digest = "1:43dd08a10854b2056e615d1b1d22ac94559d822e1f8b6fcc92c1a1057e85188e"
   name = "github.com/gorilla/websocket"
   packages = ["."]
+  pruneopts = "UT"
   revision = "ea4d1f681babbce9545c9c5f3d5194a789c89f5b"
   version = "v1.2.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:f438d91be142877c3ad83157992c91de787ddfbddcc2a7da1ef6ef61606cadc4"
   name = "github.com/justnoise/genny"
   packages = ["generic"]
+  pruneopts = "UT"
   revision = "9127e812e1e9e501ce899a18121d316ecb52e4ba"
 
 [[projects]]
   branch = "master"
+  digest = "1:400e113a367b511b9b09ca642ee11d9885485a93838526d697033af334a2fdde"
   name = "github.com/kballard/go-shellquote"
   packages = ["."]
+  pruneopts = "UT"
   revision = "95032a82bc518f77982ea72343cc1ade730072f0"
 
 [[projects]]
+  digest = "1:f6b82ed403c30a49dccca6f9fad2b1ecd16fbb0b75a251848041d0b73c33ab8b"
   name = "github.com/kr/pty"
   packages = ["."]
+  pruneopts = "UT"
   revision = "282ce0e5322c82529687d609ee670fac7c7d917c"
   version = "v1.1.1"
 
 [[projects]]
+  digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
   name = "github.com/pmezard/go-difflib"
   packages = ["difflib"]
+  pruneopts = "UT"
   revision = "792786c7400a136282c1664665ae0a8db921c6c2"
   version = "v1.0.0"
 
 [[projects]]
+  digest = "1:ba5b13dd523555370672ed82facbcfe033a8c657f67049ec6b0dcf5b25f0ac69"
+  name = "github.com/shirou/gopsutil"
+  packages = [
+    "cpu",
+    "disk",
+    "internal/common",
+    "mem",
+  ]
+  pruneopts = "UT"
+  revision = "2cbc9195c892b304060269ef280375236d2fcac9"
+  version = "v2.19.03"
+
+[[projects]]
+  digest = "1:f85e109eda8f6080877185d1c39e98dd8795e1780c08beca28304b87fd855a1c"
   name = "github.com/stretchr/testify"
   packages = ["assert"]
+  pruneopts = "UT"
   revision = "12b6f73e6084dad08a7c6e575284b177ecafbc71"
   version = "v1.2.1"
 
 [[projects]]
   branch = "master"
+  digest = "1:3f3a05ae0b95893d90b9b3b5afdb79a9b3d96e4e36e099d841ae602e4aca0da8"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
+  pruneopts = "UT"
   revision = "df8d4716b3472e4a531c33cedbe537dae921a1a9"
 
 [[projects]]
   branch = "master"
+  digest = "1:76ee51c3f468493aff39dbacc401e8831fbb765104cbf613b89bef01cf4bad70"
   name = "golang.org/x/net"
   packages = ["context"]
+  pruneopts = "UT"
   revision = "8a410e7b638dca158bf9e766925842f6651ff828"
 
 [[projects]]
   branch = "master"
+  digest = "1:8fbfc6ea1a8a078697633be97f07dd83a83d32a96959d42195464c13c25be374"
   name = "golang.org/x/sys"
   packages = [
     "unix",
-    "windows"
+    "windows",
   ]
+  pruneopts = "UT"
   revision = "c11f84a56e43e20a78cee75a7c034031ecf57d1f"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7bfba3387b4abbf31761ec7c3d90178092ebe2c23757da24ba3c8b2067d84064"
+  input-imports = [
+    "github.com/elotl/wsstream",
+    "github.com/golang/glog",
+    "github.com/gorilla/websocket",
+    "github.com/justnoise/genny/generic",
+    "github.com/kballard/go-shellquote",
+    "github.com/kr/pty",
+    "github.com/shirou/gopsutil/cpu",
+    "github.com/shirou/gopsutil/disk",
+    "github.com/shirou/gopsutil/mem",
+    "github.com/stretchr/testify/assert",
+    "golang.org/x/crypto/ssh/terminal",
+    "golang.org/x/net/context",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
