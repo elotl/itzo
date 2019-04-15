@@ -23,6 +23,7 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
@@ -37,6 +38,9 @@ const (
 	FILE_BYTES_LIMIT  = 4096
 	// Screw it, I'm changing to go convention, no captials...
 	logTailPeriod = 250 * time.Millisecond
+	// We really want metrics every 15s but this allows a bit of
+	// wiggle room on the timing
+	minMetricPeriod = 14 * time.Second
 )
 
 // Some kind of invalid input from the user. Useful here to decide when to
@@ -63,6 +67,8 @@ type Server struct {
 	// Packages will be installed under this directory (created if it does not
 	// exist).
 	installRootdir string
+	lastMetricTime time.Time
+	metrics        *metrics.Metrics
 }
 
 func New(rootdir string) *Server {
@@ -86,6 +92,8 @@ func New(rootdir string) *Server {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		},
+		metrics:        metrics.New(),
+		lastMetricTime: time.Now().Add(-minMetricPeriod),
 	}
 }
 
@@ -97,9 +105,16 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
+		var resourceUsage api.ResourceMetrics
+		if time.Since(s.lastMetricTime) > minMetricPeriod {
+			resourceUsage = s.metrics.GetSystemMetrics()
+			s.lastMetricTime = time.Now()
+		}
+
 		reply := api.PodStatusReply{
 			UnitStatuses:     status,
 			InitUnitStatuses: initStatus,
+			ResourceUsage:    resourceUsage,
 		}
 		buf, err := json.Marshal(&reply)
 		if err != nil {
@@ -280,7 +295,6 @@ func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName s
 					msg = append(msg, []byte(entries[i].Line)...)
 				}
 				if err := ws.WriteMsg(wsstream.StdoutChan, msg); err != nil {
-					fmt.Println("error writing logs to buffer")
 					glog.Errorln("Error writing logs to buffer:", err)
 					return
 				}
