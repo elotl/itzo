@@ -33,7 +33,11 @@ func (m *Metrics) cpuUtilization() float32 {
 	if curAll <= m.prevAll || curBusy < m.prevBusy {
 		return float32(0.0)
 	}
-	utilizationPercent := (curBusy - m.prevBusy) / (curAll - m.prevAll) * 100
+	delta := curAll - m.prevAll
+	var utilizationPercent float32
+	if delta > 0.0 {
+		utilizationPercent = (curBusy - m.prevBusy) / delta * 100
+	}
 	m.prevBusy = curBusy
 	m.prevAll = curAll
 	return utilizationPercent
