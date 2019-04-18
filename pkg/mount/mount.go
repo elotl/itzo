@@ -258,7 +258,7 @@ func resolveLinks(base, target string) (string, error) {
 }
 
 func ShareMount(target string, flags uintptr) error {
-	glog.Infoln("Setting sharing of mount at %s to %d", target, flags)
+	glog.Infof("Setting sharing of mount at %s to %d", target, flags)
 	return mounter("none", target, "", flags, "")
 }
 
