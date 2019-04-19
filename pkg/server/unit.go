@@ -300,29 +300,39 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	if err != nil {
 		return err
 	}
-	err = u.copyResolvConf()
+	// Make sure that there is a working resolv.conf inside the unit.
+	err = u.copyFileFromHost("/etc/resolv.conf", true)
+	if err != nil {
+		return err
+	}
+	// Copy /etc/passwd and /etc/group if they are missing in the unit.
+	err = u.copyFileFromHost("/etc/passwd", false)
+	if err != nil {
+		return err
+	}
+	err = u.copyFileFromHost("/etc/group", false)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (u *Unit) copyResolvConf() error {
-	// Let's make sure there's a functioning resolv.conf inside the unit. Here
-	// we will overwrite /etc/resolv.conf with the one from the host system.
-	dpath := filepath.Join(u.GetRootfs(), "/etc")
+func (u *Unit) copyFileFromHost(hostpath string, overwrite bool) error {
+	dpath := filepath.Join(u.GetRootfs(), filepath.Dir(hostpath))
 	if _, err := os.Stat(dpath); os.IsNotExist(err) {
 		glog.Infof("Creating directory %s", dpath)
-		if err := os.Mkdir(dpath, 0755); err != nil {
+		if err := os.MkdirAll(dpath, 0755); err != nil {
 			glog.Errorf("Could not create new directory %s: %v", dpath, err)
 			return err
 		}
 	}
-	fpath := filepath.Join(u.GetRootfs(), "/etc/resolv.conf")
-	glog.Infof("Copying system resolv.conf to %s", fpath)
-	if err := copyFile("/etc/resolv.conf", fpath); err != nil {
-		glog.Errorf("copyFile() resolv.conf to %s: %v", fpath, err)
-		return err
+	fpath := filepath.Join(u.GetRootfs(), hostpath)
+	if _, err := os.Stat(fpath); os.IsNotExist(err) || overwrite {
+		glog.Infof("Copying %s from host to %s", hostpath, fpath)
+		if err := copyFile(hostpath, fpath); err != nil {
+			glog.Errorf("copyFile() %s to %s: %v", hostpath, fpath, err)
+			return err
+		}
 	}
 	return nil
 }
