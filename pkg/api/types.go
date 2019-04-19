@@ -42,6 +42,28 @@ type PodSpec struct {
 	// List of volumes that will be made available to the pod. Units can then
 	// attach any of these mounts.
 	Volumes []Volume `json:"volumes,omitempty"`
+	// Pod security context.
+	SecurityContext *PodSecurityContext `json:"securityContext,omitempty"`
+}
+
+type PodSecurityContext struct {
+	// UID to run pod processes as.
+	RunAsUser *int64 `json:"runAsUser,omitempty"`
+	// GID to run pod processes as.
+	RunAsGroup *int64 `json:"runAsGroup,omitempty"`
+	// List of groups applied to the first process run in the sandbox, in
+	// addition to the pod's primary GID.
+	SupplementalGroups []int64 `json:"supplementalGroups,omitempty"`
+	// Set these sysctls in the pod.
+	Sysctls []Sysctl `json:"sysctls,omitempty"`
+}
+
+// Sysctl defines a kernel parameter to be set.
+type Sysctl struct {
+	// Name of a property to set.
+	Name string `json:"name"`
+	// Value of a property to set.
+	Value string `json:"value"`
 }
 
 // Defintion for volumes.
@@ -149,6 +171,36 @@ type Unit struct {
 	Ports []ServicePort `json:"ports,omitempty"`
 	// Working directory to change to before running the command for the unit.
 	WorkingDir string `json:"workingDir,omitempty"`
+	// Unit security context.
+	SecurityContext *SecurityContext `json:"securityContext,omitempty"`
+}
+
+// Optional security context that overrides whatever is set for the pod.
+//
+// Example yaml:
+//
+// securityContext:
+//           capabilities:
+//             add:
+//             - NET_BIND_SERVICE
+//             drop:
+//             - ALL
+//
+type SecurityContext struct {
+	// Capabilities to add or drop.
+	Capabilities *Capabilities `json:"capabilities,omitempty"`
+	// UID to run unit processes as.
+	RunAsUser *int64 `json:"runAsUser,omitempty"`
+	// Username to run unit processes as.
+	RunAsGroup *int64 `json:"runAsGroup,omitempty"`
+}
+
+// Capability contains the capabilities to add or drop.
+type Capabilities struct {
+	// List of capabilities to add.
+	Add []string `json:"add,omitempty"`
+	// List of capabilities to drop.
+	Drop []string `protobuf:"json:"drop,omitempty"`
 }
 
 // VolumeMount specifies what volumes to attach to the unit and the path where
