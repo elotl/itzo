@@ -107,11 +107,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:3f3a05ae0b95893d90b9b3b5afdb79a9b3d96e4e36e099d841ae602e4aca0da8"
-  name = "golang.org/x/crypto"
-  packages = ["ssh/terminal"]
-  pruneopts = "UT"
-  revision = "df8d4716b3472e4a531c33cedbe537dae921a1a9"
 
 [[projects]]
   branch = "master"
@@ -146,7 +141,6 @@
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
     "github.com/stretchr/testify/assert",
-    "golang.org/x/crypto/ssh/terminal",
     "golang.org/x/net/context",
   ]
   solver-name = "gps-cdcl"
