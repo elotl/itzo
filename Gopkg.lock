@@ -107,6 +107,11 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:e14e467ed00ab98665623c5060fa17e3d7079be560ffc33cabafd05d35894f05"
+  name = "github.com/syndtr/gocapability"
+  packages = ["capability"]
+  pruneopts = "UT"
+  revision = "d98352740cb2c55f81556b63d4a1ec64c5a319c2"
 
 [[projects]]
   branch = "master"
@@ -141,7 +146,9 @@
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
     "github.com/stretchr/testify/assert",
+    "github.com/syndtr/gocapability/capability",
     "golang.org/x/net/context",
+    "golang.org/x/sys/unix",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
