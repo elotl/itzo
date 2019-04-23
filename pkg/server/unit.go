@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/caps"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
+	"github.com/syndtr/gocapability/capability"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -24,6 +27,28 @@ const (
 )
 
 var (
+	// List of capabilities granted to units by default. We use the same set as
+	// Docker and rkt. See
+	// https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities
+	// and
+	// https://github.com/appc/spec/blob/master/spec/ace.md#oslinuxcapabilities-remove-set
+	// for more information.
+	defaultCapabilities = []string{
+		"CAP_AUDIT_WRITE",
+		"CAP_CHOWN",
+		"CAP_DAC_OVERRIDE",
+		"CAP_FOWNER",
+		"CAP_FSETID",
+		"CAP_KILL",
+		"CAP_MKNOD",
+		"CAP_NET_BIND_SERVICE",
+		"CAP_NET_RAW",
+		"CAP_SETFCAP",
+		"CAP_SETGID",
+		"CAP_SETPCAP",
+		"CAP_SETUID",
+		"CAP_SYS_CHROOT",
+	}
 	sleep = time.Sleep // Allow time.Sleep() to be mocked out in tests.
 )
 
@@ -65,6 +90,12 @@ type Config struct {
 	Shell           []string `json:",omitempty"`
 }
 
+// This is the combination of the pod's and the unit's security context.
+type securityContext struct {
+	api.PodSecurityContext `json:"podSecurityContext"`
+	api.SecurityContext    `json:"securityContext"`
+}
+
 func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 	return &api.UnitStatus{
 		Name: name,
@@ -80,13 +111,14 @@ func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 
 type Unit struct {
 	*LogPipe
-	Directory   string
-	Name        string
-	Image       string
-	statusPath  string
-	config      *Config
-	stdinPath   string
-	stdinCloser chan struct{}
+	Directory       string
+	Name            string
+	Image           string
+	statusPath      string
+	config          *Config
+	securityContext *securityContext
+	stdinPath       string
+	stdinCloser     chan struct{}
 }
 
 func IsUnitExist(rootdir, name string) bool {
@@ -125,6 +157,13 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 		return nil, err
 	}
 	u.config, err = u.getConfig()
+	if err != nil && !os.IsNotExist(err) {
+		glog.Warningf("Failed to get unit %s config: %v", name, err)
+	}
+	u.securityContext, err = u.getSecurityContext()
+	if err != nil && !os.IsNotExist(err) {
+		glog.Warningf("Failed to get unit %s security context: %v", name, err)
+	}
 	// We need to get the image, that's saved in the status
 	s, err := u.GetStatus()
 	if err != nil {
@@ -186,6 +225,25 @@ func (u *Unit) closeStdin() {
 	default:
 		glog.Warningf("Stdin for unit %s has already been closed", u.Name)
 	}
+}
+
+func (u *Unit) getSecurityContext() (*securityContext, error) {
+	path := filepath.Join(u.Directory, "securityContext")
+	buf, err := ioutil.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			glog.Errorf("Error reading image securityContext for %s\n", u.Name)
+		}
+		return nil, err
+	}
+	var sc securityContext
+	err = json.Unmarshal(buf, &sc)
+	if err != nil {
+		glog.Errorf("Error deserializing securityContext '%v' for %s: %v\n",
+			buf, u.Name, err)
+		return nil, err
+	}
+	return &sc, nil
 }
 
 func (u *Unit) getConfig() (*Config, error) {
@@ -317,6 +375,26 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	return nil
 }
 
+func (u *Unit) getUser() (uint32, uint32, []uint32, error) {
+	var err error
+	uid := uint32(0)
+	gid := uint32(0)
+	groups := make([]uint32, 0)
+	// Check the image config for user/group.
+	if u.config.User != "" {
+		oul := &util.OsUserLookup{}
+		uid, gid, err = util.LookupUser(u.config.User, oul)
+		if err != nil {
+			return 0, 0, nil, err
+		}
+	}
+	// Next, pod security context for uid/gid/groups.
+	// TODO
+	// Last, unit security context for uid/gid.
+	// TODO
+	return uid, gid, groups, nil
+}
+
 func (u *Unit) copyFileFromHost(hostpath string, overwrite bool) error {
 	dpath := filepath.Join(u.GetRootfs(), filepath.Dir(hostpath))
 	if _, err := os.Stat(dpath); os.IsNotExist(err) {
@@ -391,7 +469,7 @@ func maybeBackOff(err error, command []string, backoff *time.Duration, runningTi
 	sleep(*backoff)
 }
 
-func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
+func (u *Unit) runUnitLoop(command, env, caplist []string, uid, gid uint32, groups []uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
 	backoff := 1 * time.Second
 	restarts := -1
 	for {
@@ -402,12 +480,22 @@ func (u *Unit) runUnitLoop(command, env []string, uid, gid uint32, unitin io.Rea
 		cmd.Stdin = unitin
 		cmd.Stdout = unitout
 		cmd.Stderr = uniterr
-		if uid > 0 || gid > 0 {
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Credential: &syscall.Credential{
-					Uid: uid,
-					Gid: gid,
-				},
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		if len(caplist) > 0 {
+			err := u.setCapabilities(caplist)
+			if err != nil {
+				u.setStateToStartFailure(err)
+				glog.Errorf("Setting capabilities %v: %v", caplist, err)
+				maybeBackOff(err, command, &backoff, 0*time.Second)
+				continue
+			}
+			cmd.SysProcAttr.AmbientCaps = mapUintptrCapabilities(caplist)
+		}
+		if uid > 0 || gid > 0 || groups != nil {
+			cmd.SysProcAttr.Credential = &syscall.Credential{
+				Uid:    uid,
+				Gid:    gid,
+				Groups: groups,
 			}
 		}
 
@@ -535,6 +623,61 @@ func (u *Unit) setStateToStartFailure(err error) {
 			StartFailure: true,
 		},
 	}, nil)
+}
+
+func mapCapabilities(keys []string) []capability.Cap {
+	cs := make([]capability.Cap, 0)
+	for _, key := range keys {
+		v := caps.GetCapability(key)
+		if v != nil {
+			cs = append(cs, v.Value)
+		}
+	}
+	return cs
+}
+
+func mapUintptrCapabilities(keys []string) []uintptr {
+	cs := mapCapabilities(keys)
+	uintptrCs := make([]uintptr, len(cs))
+	for i, c := range cs {
+		uintptrCs[i] = uintptr(c)
+	}
+	return uintptrCs
+}
+
+func (u *Unit) getCapabilities() ([]string, error) {
+	addCaps := []string{}
+	dropCaps := []string{}
+	if u.securityContext != nil && u.securityContext.SecurityContext.Capabilities != nil {
+		addCaps = u.securityContext.SecurityContext.Capabilities.Add
+		dropCaps = u.securityContext.SecurityContext.Capabilities.Drop
+	}
+	capStringList, err := caps.TweakCapabilities(
+		defaultCapabilities, addCaps, dropCaps, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	return capStringList, nil
+}
+
+func (u *Unit) setCapabilities(capStringList []string) error {
+	c, err := capability.NewPid2(0)
+	if err != nil {
+		return err
+	}
+	err = c.Load()
+	if err != nil {
+		return err
+	}
+	capList := mapCapabilities(capStringList)
+	c.Set(capability.CAPS|capability.BOUNDS|capability.AMBIENT, capList...)
+	if err := c.Apply(capability.CAPS | capability.BOUNDS | capability.AMBIENT); err != nil {
+		return err
+	}
+	if err := unix.Prctl(unix.PR_SET_KEEPCAPS, 1, 0, 0, 0); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (u *Unit) Run(podname string, command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
@@ -665,15 +808,10 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		return err
 	}
 
-	uid := uint32(0)
-	gid := uint32(0)
-	if u.config.User != "" {
-		oul := &util.OsUserLookup{}
-		uid, gid, err = util.LookupUser(u.config.User, oul)
-		if err != nil {
-			u.setStateToStartFailure(err)
-			return err
-		}
+	uid, gid, groups, err := u.getUser()
+	if err != nil {
+		u.setStateToStartFailure(err)
+		return err
 	}
 
 	for vol, _ := range u.config.Volumes {
@@ -692,5 +830,11 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		}
 	}
 
-	return u.runUnitLoop(command, env, uid, gid, unitin, unitout, uniterr, policy)
+	caplist, err := u.getCapabilities()
+	if err != nil {
+		u.setStateToStartFailure(err)
+		return err
+	}
+
+	return u.runUnitLoop(command, env, caplist, uid, gid, groups, unitin, unitout, uniterr, policy)
 }
