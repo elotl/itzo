@@ -31,6 +31,16 @@ def image_size(filename):
 def copy_image(img, out):
     subprocess.check_call(['sudo', 'qemu-img', 'convert', '-O', 'raw', img, out])
 
+def wait_for_device(dev):
+    lsblk_output = subprocess.check_output(['lsblk'])
+    for line in lsblk_output.split('\n'):
+        if line.startswith('nvme'):
+            dev = '/dev/nvme1n1'
+    while not os.path.exists(dev):
+        print('waiting for volume to attach')
+        time.sleep(1)
+    return dev
+
 def make_snapshot(input, name):
     metadata = Metadata()
     print('Connecting')
@@ -47,13 +57,11 @@ def make_snapshot(input, name):
     print('STEP 2: Attaching {} to {}'.format(vol.id, metadata.instance_id())) # aws ec2 attach-volume
     time_point = time.time()
     vol.attach_to_instance(InstanceId=metadata.instance_id(), Device='xvdf')
-    while not os.path.exists('/dev/xvdf'):
-        print('waiting for volume to attach')
-        time.sleep(1)
-    print('STEP 2: Took {} seconds to attach volume to instance {}'.format(time.time() - time_point,metadata.instance_id()))
+    dev = wait_for_device('/dev/xvdf')
+    print('STEP 2: Took {} seconds to attach volume to instance {} device {}'.format(time.time() - time_point,metadata.instance_id(),dev))
     print('STEP 3: Copying image')
     time_point = time.time()
-    copy_image(input, '/dev/xvdf')
+    copy_image(input, dev)
     print('STEP 3: Took {} seconds to copy image'.format(time.time() - time_point))
     print('STEP 4; Detaching volume {}'.format(vol.id))
     time_point = time.time()
