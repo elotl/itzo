@@ -26,6 +26,8 @@ const (
 	CHILD_OOM_SCORE    = 15 // chosen arbitrarily... kernel will adjust this value
 )
 
+const defaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 var (
 	// List of capabilities granted to units by default. We use the same set as
 	// Docker and rkt. See
@@ -366,24 +368,25 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	return nil
 }
 
-func (u *Unit) getUser() (uint32, uint32, []uint32, error) {
+func (u *Unit) getUser() (uint32, uint32, []uint32, string, error) {
 	var err error
 	uid := uint32(0)
 	gid := uint32(0)
 	groups := make([]uint32, 0)
+	homedir := "/"
 	// Check the image config for user/group.
 	if u.config.User != "" {
 		oul := &util.OsUserLookup{}
-		uid, gid, err = util.LookupUser(u.config.User, oul)
+		uid, gid, homedir, err = util.LookupUser(u.config.User, oul)
 		if err != nil {
-			return 0, 0, nil, err
+			return 0, 0, nil, "", err
 		}
 	}
-	// Next, pod security context for uid/gid/groups.
+	// Next, pod security context for uid/groups.
 	// TODO
-	// Last, unit security context for uid/gid.
+	// Last, unit security context for uid.
 	// TODO
-	return uid, gid, groups, nil
+	return uid, gid, groups, homedir, nil
 }
 
 func (u *Unit) copyFileFromHost(hostpath string, overwrite bool) error {
@@ -782,6 +785,16 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		u.statusPath = "/status"
 	}
 
+	uid, gid, groups, homedir, err := u.getUser()
+	if err != nil {
+		u.setStateToStartFailure(err)
+		return err
+	}
+
+	// Make user HOME, HOSTNAME, PATH and TERM are set (same variables Docker
+	// ensures are set). See
+	// https://docs.docker.com/v17.09/engine/reference/run/#env-environment-variables
+	// for more information.
 	if podname != "" {
 		err = syscall.Sethostname([]byte(podname))
 		if err != nil {
@@ -789,18 +802,15 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 			u.setStateToStartFailure(err)
 			return err
 		}
-		env = append(env, fmt.Sprintf("HOSTNAME=%s", podname))
+		env = util.AddToEnvList(env, "HOSTNAME", podname, true)
 	}
+	env = util.AddToEnvList(env, "TERM", "xterm", false)
+	env = util.AddToEnvList(env, "HOME", homedir, false)
+	env = util.AddToEnvList(env, "PATH", defaultPath, false)
 
 	err = os.Chmod("/", 0755)
 	if err != nil {
 		glog.Errorf("Failed to chmod / to 0755: %v", err)
-		u.setStateToStartFailure(err)
-		return err
-	}
-
-	uid, gid, groups, err := u.getUser()
-	if err != nil {
 		u.setStateToStartFailure(err)
 		return err
 	}

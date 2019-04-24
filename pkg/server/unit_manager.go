@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/itzo/pkg/util/conmap"
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
@@ -145,7 +147,14 @@ func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, 
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
 
-	env := append(unit.GetEnv(), appenv...)
+	env := unit.GetEnv() // Default environment from image config.
+	for _, e := range appenv {
+		// Add environment variables from the spec, overwriting default ones if
+		// necessary.
+		items := strings.SplitN(e, "=", 2)
+		key, value := items[0], items[1]
+		env = util.AddToEnvList(env, key, value, true)
+	}
 	cmd.Env = env
 
 	glog.Infof("Unit %s workingdir %s command %v %v env %v policy %v",
