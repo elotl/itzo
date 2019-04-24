@@ -363,15 +363,6 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	if err != nil {
 		return err
 	}
-	// Copy /etc/passwd and /etc/group if they are missing in the unit.
-	err = u.copyFileFromHost("/etc/passwd", false)
-	if err != nil {
-		return err
-	}
-	err = u.copyFileFromHost("/etc/group", false)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
