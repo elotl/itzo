@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"os/user"
 	"strconv"
 	"strings"
@@ -26,11 +27,48 @@ func (oul *OsUserLookup) LookupGroup(name string) (*user.Group, error) {
 }
 
 func (oul *OsUserLookup) LookupId(username string) (*user.User, error) {
-	return user.LookupId(username)
+	usr, err := user.LookupId(username)
+	if err == nil {
+		return usr, err
+	}
+	i, err := strconv.ParseInt(username, 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	if i < 0 {
+		return nil, fmt.Errorf("Invalid user ID %q", username)
+	}
+	// User is not in /etc/passwd, but it's a valid integer as an UID.
+	homedir := "/"
+	if username == "0" {
+		homedir = "/root"
+	}
+	usr = &user.User{
+		Username: username,
+		Uid:      username,
+		Gid:      username,
+		HomeDir:  homedir,
+	}
+	return usr, nil
 }
 
 func (oul *OsUserLookup) LookupGroupId(name string) (*user.Group, error) {
-	return user.LookupGroupId(name)
+	grp, err := user.LookupGroupId(name)
+	if err == nil {
+		return grp, err
+	}
+	i, err := strconv.ParseInt(name, 10, 32)
+	if err != nil {
+		return nil, err
+	}
+	if i < 0 {
+		return nil, fmt.Errorf("Invalid group ID %q", name)
+	}
+	// Group is not in /etc/group, but it's a valid integer as a GID.
+	grp = &user.Group{
+		Gid: name,
+	}
+	return grp, nil
 }
 
 func LookupUser(userspec string, lookup UserLookup) (uint32, uint32, error) {
