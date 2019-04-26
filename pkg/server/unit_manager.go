@@ -86,7 +86,7 @@ func (um *UnitManager) StopUnit(name string) error {
 		return fmt.Errorf("Could not stop unit %s: Unit does not exist", name)
 	}
 
-	unit, err := OpenUnit(um.rootDir, name)
+	_, err := OpenUnit(um.rootDir, name)
 	if err != nil {
 		return fmt.Errorf("Error opening unit %s for termination: %s", name, err)
 	}
@@ -95,7 +95,7 @@ func (um *UnitManager) StopUnit(name string) error {
 		// This happens if the process has already exited. Keep calm, log it
 		// and carry on.
 		glog.Warningf("Couldn't kill %s pid %d: %v (process terminated?)",
-			unit, proc.Pid, err)
+			name, proc.Pid, err)
 	}
 	um.runningUnits.Delete(name)
 	return nil
