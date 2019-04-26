@@ -272,7 +272,7 @@ func (u *Unit) CreateCommand(command []string, args []string) []string {
 	// https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
 	// for more information on the possible interactions between k8s
 	// command/args and docker entrypoint/cmd.
-	if len(command) == 0 {
+	if len(command) == 0 && u.config != nil {
 		command = u.config.Entrypoint
 		if len(args) == 0 {
 			args = u.config.Cmd
@@ -285,10 +285,16 @@ func (u *Unit) CreateCommand(command []string, args []string) []string {
 }
 
 func (u *Unit) GetEnv() []string {
+	if u.config == nil {
+		return nil
+	}
 	return u.config.Env
 }
 
 func (u *Unit) GetWorkingDir() string {
+	if u.config == nil {
+		return ""
+	}
 	return u.config.WorkingDir
 }
 
@@ -375,7 +381,7 @@ func (u *Unit) getUser() (uint32, uint32, []uint32, string, error) {
 	groups := make([]uint32, 0)
 	homedir := "/"
 	// Check the image config for user/group.
-	if u.config.User != "" {
+	if u.config != nil && u.config.User != "" {
 		oul := &util.OsUserLookup{}
 		uid, gid, homedir, err = util.LookupUser(u.config.User, oul)
 		if err != nil {
@@ -815,11 +821,13 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		return err
 	}
 
-	for vol, _ := range u.config.Volumes {
-		err = createDir(vol, int(uid), int(gid))
-		if err != nil {
-			u.setStateToStartFailure(err)
-			return err
+	if u.config != nil {
+		for vol, _ := range u.config.Volumes {
+			err = createDir(vol, int(uid), int(gid))
+			if err != nil {
+				u.setStateToStartFailure(err)
+				return err
+			}
 		}
 	}
 
