@@ -157,7 +157,7 @@ func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, 
 	}
 	cmd.Env = env
 
-	glog.Infof("Unit %s workingdir %s command %v %v env %v policy %v",
+	glog.Infof("Unit %q workingdir %q command %v %v env %v policy %v",
 		unitname, workingdir, command, args, env, policy)
 
 	// Check if a chroot exists for the unit. If it does, a package has been
