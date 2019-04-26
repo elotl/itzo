@@ -144,12 +144,12 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 			var s pty.Winsize
 			err = json.Unmarshal(buf[0:n], &s)
 			if err != nil {
-				glog.Warning("error unmarshalling pty resize: %s", err)
+				glog.Warningf("error unmarshalling pty resize: %s", err)
 				// should we send these errors back on stderr?
 				return
 			}
 			if err := pty.Setsize(tty, &s); err != nil {
-				glog.Warning("error resizing pty: %s", err)
+				glog.Warningf("error resizing pty: %s", err)
 				return
 			}
 		}
