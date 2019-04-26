@@ -106,7 +106,8 @@ func TestUnitStdin(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"cat", "-"},
-			[]string{}, 0, 0, inr, &stdout, nil, api.RestartPolicyNever)
+			[]string{},
+			nil, 0, 0, nil, inr, &stdout, nil, api.RestartPolicyNever)
 		ch <- err
 	}()
 	start := time.Now()
@@ -150,7 +151,8 @@ func TestUnitRestartPolicyAlways(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, 0, 0, nil, nil, nil, api.RestartPolicyAlways)
+			[]string{},
+			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyAlways)
 		ch <- err
 	}()
 	pid := 0
@@ -199,7 +201,8 @@ func TestUnitRestartPolicyNever(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, 0, 0, nil, nil, nil, api.RestartPolicyNever)
+			[]string{},
+			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyNever)
 		ch <- err
 	}()
 	select {
@@ -231,7 +234,8 @@ func TestUnitRestartPolicyOnFailureHappy(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 0", tmpfile.Name())},
-			[]string{}, 0, 0, nil, nil, nil, api.RestartPolicyOnFailure)
+			[]string{},
+			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
 	}()
 	select {
@@ -261,7 +265,8 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 	go func() {
 		err = unit.runUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
-			[]string{}, 0, 0, nil, nil, nil, api.RestartPolicyOnFailure)
+			[]string{},
+			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
 	}()
 	pid := 0

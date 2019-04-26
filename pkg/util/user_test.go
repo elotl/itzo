@@ -9,11 +9,12 @@ import (
 )
 
 type TestUserLookup struct {
-	uid    uint32
-	uidGid uint32
-	uidErr error
-	gid    uint32
-	gidErr error
+	uid     uint32
+	uidGid  uint32
+	uidErr  error
+	gid     uint32
+	gidErr  error
+	homedir string
 }
 
 func (tul *TestUserLookup) Lookup(username string) (*user.User, error) {
@@ -49,6 +50,7 @@ func TestLookupUser(t *testing.T) {
 		lookup  UserLookup
 		uid     uint32
 		gid     uint32
+		homedir string
 		err     error
 		failure bool
 	}
@@ -93,7 +95,7 @@ func TestLookupUser(t *testing.T) {
 		},
 	}
 	for _, tc := range tcs {
-		uid, gid, err := LookupUser(tc.user, tc.lookup)
+		uid, gid, homedir, err := LookupUser(tc.user, tc.lookup)
 		if tc.failure {
 			assert.Error(t, err)
 		} else {
@@ -101,5 +103,8 @@ func TestLookupUser(t *testing.T) {
 		}
 		assert.Equal(t, tc.uid, uid)
 		assert.Equal(t, tc.gid, gid)
+		if tc.homedir != "" {
+			assert.Equal(t, tc.homedir, homedir)
+		}
 	}
 }
