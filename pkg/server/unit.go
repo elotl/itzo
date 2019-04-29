@@ -388,10 +388,30 @@ func (u *Unit) getUser() (uint32, uint32, []uint32, string, error) {
 			return 0, 0, nil, "", err
 		}
 	}
+	if u.securityContext == nil {
+		return uid, gid, groups, homedir, nil
+	}
 	// Next, pod security context for uid/groups.
-	// TODO
+	if u.securityContext.PodSecurityContext.RunAsUser != nil {
+		uid = uint32(*u.securityContext.PodSecurityContext.RunAsUser)
+	}
+	if u.securityContext.PodSecurityContext.RunAsGroup != nil {
+		gid = uint32(*u.securityContext.PodSecurityContext.RunAsGroup)
+	}
+	if len(u.securityContext.PodSecurityContext.SupplementalGroups) > 0 {
+		groups = make([]uint32,
+			len(u.securityContext.PodSecurityContext.SupplementalGroups))
+		for i, g := range groups {
+			groups[i] = uint32(g)
+		}
+	}
 	// Last, unit security context for uid.
-	// TODO
+	if u.securityContext.SecurityContext.RunAsUser != nil {
+		uid = uint32(*u.securityContext.SecurityContext.RunAsUser)
+	}
+	if u.securityContext.SecurityContext.RunAsGroup != nil {
+		gid = uint32(*u.securityContext.SecurityContext.RunAsGroup)
+	}
 	return uid, gid, groups, homedir, nil
 }
 
