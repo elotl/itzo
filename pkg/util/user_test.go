@@ -2,46 +2,10 @@ package util
 
 import (
 	"fmt"
-	"os/user"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
-
-type TestUserLookup struct {
-	uid     uint32
-	uidGid  uint32
-	uidErr  error
-	gid     uint32
-	gidErr  error
-	homedir string
-}
-
-func (tul *TestUserLookup) Lookup(username string) (*user.User, error) {
-	usr := user.User{}
-	usr.Uid = fmt.Sprintf("%d", tul.uid)
-	usr.Gid = fmt.Sprintf("%d", tul.uidGid)
-	return &usr, tul.uidErr
-}
-
-func (tul *TestUserLookup) LookupId(username string) (*user.User, error) {
-	usr := user.User{}
-	usr.Uid = fmt.Sprintf("%d", tul.uid)
-	usr.Gid = fmt.Sprintf("%d", tul.uidGid)
-	return &usr, tul.uidErr
-}
-
-func (tul *TestUserLookup) LookupGroup(name string) (*user.Group, error) {
-	grp := user.Group{}
-	grp.Gid = fmt.Sprintf("%d", tul.gid)
-	return &grp, tul.uidErr
-}
-
-func (tul *TestUserLookup) LookupGroupId(name string) (*user.Group, error) {
-	grp := user.Group{}
-	grp.Gid = fmt.Sprintf("%d", tul.gid)
-	return &grp, tul.uidErr
-}
 
 //func LookupUser(userspec string, lookup UserLookup) (uint32, uint32, error)
 func TestLookupUser(t *testing.T) {
@@ -57,17 +21,17 @@ func TestLookupUser(t *testing.T) {
 	tcs := []testcase{
 		{
 			user: "",
-			lookup: &TestUserLookup{
-				uidErr: fmt.Errorf("Testing lookup error"),
-				gidErr: fmt.Errorf("Testing lookup error"),
+			lookup: &FakeUserLookup{
+				UidErr: fmt.Errorf("Testing lookup error"),
+				GidErr: fmt.Errorf("Testing lookup error"),
 			},
 			failure: true,
 		},
 		{
 			user: "myuser",
-			lookup: &TestUserLookup{
-				uid:    1,
-				uidGid: 1,
+			lookup: &FakeUserLookup{
+				Uid:    1,
+				UidGid: 1,
 			},
 			uid:     1,
 			gid:     1,
@@ -75,9 +39,9 @@ func TestLookupUser(t *testing.T) {
 		},
 		{
 			user: "myuser:mygroup",
-			lookup: &TestUserLookup{
-				uid: 1,
-				gid: 1,
+			lookup: &FakeUserLookup{
+				Uid: 1,
+				Gid: 1,
 			},
 			uid:     1,
 			gid:     1,
@@ -85,9 +49,9 @@ func TestLookupUser(t *testing.T) {
 		},
 		{
 			user: "1001",
-			lookup: &TestUserLookup{
-				uid:    1001,
-				uidGid: 1001,
+			lookup: &FakeUserLookup{
+				Uid:    1001,
+				UidGid: 1001,
 			},
 			uid:     1001,
 			gid:     1001,
