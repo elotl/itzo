@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/syndtr/gocapability/capability"
 )
 
 func TestOpenUnit(t *testing.T) {
@@ -334,4 +336,173 @@ func TestMaybeBackoff(t *testing.T) {
 	runningTime = BACKOFF_RESET_TIME * 2
 	maybeBackOff(err, []string{"mycmd"}, &backoff, runningTime)
 	assert.Equal(t, backoff, 1*time.Second)
+}
+
+func int64ptr(i int64) *int64 {
+	return &i
+}
+
+//getUser(lookup util.UserLookup) (uint32, uint32, []uint32, string, error)
+func TestGetUser(t *testing.T) {
+	unit := Unit{}
+	unit.config = &Config{
+		User: "foobar",
+	}
+	ful := util.FakeUserLookup{}
+	ful.Uid = 1234
+	ful.UidGid = 5678
+	// Looking up user from image config.
+	uid, gid, groups, _, err := unit.getUser(&ful)
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(1234), uid)
+	assert.Equal(t, uint32(5678), gid)
+	assert.Empty(t, groups)
+	// Looking up user from pod security context.
+	unit.securityContext = &securityContext{
+		PodSecurityContext: api.PodSecurityContext{
+			RunAsUser:          int64ptr(1111),
+			RunAsGroup:         int64ptr(2222),
+			SupplementalGroups: []int64{1, 2, 3},
+		},
+	}
+	uid, gid, groups, _, err = unit.getUser(&ful)
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(1111), uid)
+	assert.Equal(t, uint32(2222), gid)
+	assert.ElementsMatch(t, []uint32{1, 2, 3}, groups)
+	// Looking up user from unit security context.
+	unit.securityContext.SecurityContext = api.SecurityContext{
+		RunAsUser:  int64ptr(3333),
+		RunAsGroup: int64ptr(4444),
+	}
+	uid, gid, groups, _, err = unit.getUser(&ful)
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(3333), uid)
+	assert.Equal(t, uint32(4444), gid)
+	assert.ElementsMatch(t, []uint32{1, 2, 3}, groups)
+	// Error looking up user.
+	ful.UidErr = fmt.Errorf("Testing user lookup error")
+	_, _, _, _, err = unit.getUser(&ful)
+	assert.Error(t, err)
+}
+
+//getCapabilities() ([]string, error)
+func TestGetCapabilities(t *testing.T) {
+	unit := Unit{}
+	// Default capabilities.
+	caps, err := unit.getCapabilities()
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, defaultCapabilities, caps)
+	// Add capability.
+	unit.securityContext = &securityContext{
+		SecurityContext: api.SecurityContext{
+			Capabilities: &api.Capabilities{
+				Add:  []string{"CAP_NET_ADMIN"},
+				Drop: []string{},
+			},
+		},
+	}
+	caps, err = unit.getCapabilities()
+	assert.NoError(t, err)
+	assert.ElementsMatch(t, append(defaultCapabilities, "CAP_NET_ADMIN"), caps)
+	// Drop capability.
+	unit.securityContext = &securityContext{
+		SecurityContext: api.SecurityContext{
+			Capabilities: &api.Capabilities{
+				Add:  []string{},
+				Drop: []string{"CAP_CHOWN"},
+			},
+		},
+	}
+	caps, err = unit.getCapabilities()
+	assert.NoError(t, err)
+	assert.NotContains(t, caps, "CAP_CHOWN")
+	for _, c := range defaultCapabilities {
+		if c == "CAP_CHOWN" {
+			continue
+		}
+		assert.Contains(t, caps, c)
+	}
+	// Add and drop capabilities.
+	unit.securityContext = &securityContext{
+		SecurityContext: api.SecurityContext{
+			Capabilities: &api.Capabilities{
+				Add:  []string{"CAP_NET_ADMIN", "CAP_MKNOD"},
+				Drop: []string{"CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
+			},
+		},
+	}
+	caps, err = unit.getCapabilities()
+	assert.NoError(t, err)
+	assert.NotContains(t, caps, "CAP_NET_BIND_SERVICE")
+	assert.NotContains(t, caps, "CAP_NET_RAW")
+	assert.Contains(t, caps, "CAP_NET_ADMIN")
+	for _, c := range defaultCapabilities {
+		if c == "CAP_NET_BIND_SERVICE" || c == "CAP_NET_RAW" {
+			continue
+		}
+		assert.Contains(t, caps, c)
+	}
+	// Drop all.
+	unit.securityContext = &securityContext{
+		SecurityContext: api.SecurityContext{
+			Capabilities: &api.Capabilities{
+				Add:  []string{},
+				Drop: []string{"ALL"},
+			},
+		},
+	}
+	caps, err = unit.getCapabilities()
+	assert.NoError(t, err)
+	assert.Empty(t, caps)
+	// Add all.
+	unit.securityContext = &securityContext{
+		SecurityContext: api.SecurityContext{
+			Capabilities: &api.Capabilities{
+				Add:  []string{"ALL"},
+				Drop: []string{},
+			},
+		},
+	}
+	caps, err = unit.getCapabilities()
+	assert.NoError(t, err)
+	assert.Len(t, caps, 38)
+	for _, c := range defaultCapabilities {
+		assert.Contains(t, caps, c)
+	}
+}
+
+//mapCapabilities(keys []string) []capability.Cap
+//mapUintptrCapabilities(keys []string) []uintptr
+func TestMapCapabilities(t *testing.T) {
+	type testCase struct {
+		stringCaps []string
+		caps       []capability.Cap
+	}
+	testCases := []testCase{
+		{
+			[]string{"CAP_NET_ADMIN", "CAP_MKNOD", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
+			[]capability.Cap{capability.CAP_NET_ADMIN, capability.CAP_MKNOD, capability.CAP_NET_BIND_SERVICE, capability.CAP_NET_RAW},
+		},
+		{
+			[]string{"CAP_FOOBAR", "CAP_MKNOD", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
+			[]capability.Cap{capability.CAP_MKNOD, capability.CAP_NET_BIND_SERVICE, capability.CAP_NET_RAW},
+		},
+		{
+			[]string{},
+			[]capability.Cap{},
+		},
+	}
+	for _, tc := range testCases {
+		caps := mapCapabilities(tc.stringCaps)
+		assert.Len(t, caps, len(tc.caps))
+		assert.ElementsMatch(t, tc.caps, caps)
+		uintptrSet := make([]uintptr, len(tc.caps))
+		for i, c := range tc.caps {
+			uintptrSet[i] = uintptr(c)
+		}
+		uintptrCaps := mapUintptrCapabilities(tc.stringCaps)
+		assert.Len(t, uintptrCaps, len(uintptrSet))
+		assert.ElementsMatch(t, uintptrSet, uintptrCaps)
+	}
 }
