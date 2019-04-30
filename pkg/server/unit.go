@@ -398,9 +398,9 @@ func (u *Unit) getUser(lookup util.UserLookup) (uint32, uint32, []uint32, string
 		gid = uint32(*u.securityContext.PodSecurityContext.RunAsGroup)
 	}
 	if len(u.securityContext.PodSecurityContext.SupplementalGroups) > 0 {
-		groups = make([]uint32,
-			len(u.securityContext.PodSecurityContext.SupplementalGroups))
-		for i, g := range groups {
+		suppGroups := u.securityContext.PodSecurityContext.SupplementalGroups
+		groups = make([]uint32, len(suppGroups))
+		for i, g := range suppGroups {
 			groups[i] = uint32(g)
 		}
 	}
