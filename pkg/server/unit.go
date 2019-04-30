@@ -374,7 +374,7 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	return nil
 }
 
-func (u *Unit) getUser() (uint32, uint32, []uint32, string, error) {
+func (u *Unit) getUser(lookup util.UserLookup) (uint32, uint32, []uint32, string, error) {
 	var err error
 	uid := uint32(0)
 	gid := uint32(0)
@@ -382,8 +382,7 @@ func (u *Unit) getUser() (uint32, uint32, []uint32, string, error) {
 	homedir := "/"
 	// Check the image config for user/group.
 	if u.config != nil && u.config.User != "" {
-		oul := &util.OsUserLookup{}
-		uid, gid, homedir, err = util.LookupUser(u.config.User, oul)
+		uid, gid, homedir, err = util.LookupUser(u.config.User, lookup)
 		if err != nil {
 			return 0, 0, nil, "", err
 		}
@@ -811,7 +810,7 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		u.statusPath = "/status"
 	}
 
-	uid, gid, groups, homedir, err := u.getUser()
+	uid, gid, groups, homedir, err := u.getUser(&util.OsUserLookup{})
 	if err != nil {
 		u.setStateToStartFailure(err)
 		return err
