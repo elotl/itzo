@@ -16,6 +16,7 @@ import (
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
+	sysctl "github.com/lorenzosaino/go-sysctl"
 	"github.com/syndtr/gocapability/capability"
 	"golang.org/x/sys/unix"
 )
@@ -699,6 +700,20 @@ func (u *Unit) setCapabilities(capStringList []string) error {
 	return nil
 }
 
+func (u *Unit) applySysctls() error {
+	if u.securityContext == nil || len(u.securityContext.Sysctls) == 0 {
+		return nil
+	}
+	for _, sc := range u.securityContext.Sysctls {
+		err := sysctl.Set(sc.Name, sc.Value)
+		if err != nil {
+			glog.Errorf("Applying sysctl %q=%q: %v", sc.Name, sc.Value, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (u *Unit) Run(podname string, command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -859,6 +874,12 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 	}
 
 	caplist, err := u.getCapabilities()
+	if err != nil {
+		u.setStateToStartFailure(err)
+		return err
+	}
+
+	err = u.applySysctls()
 	if err != nil {
 		u.setStateToStartFailure(err)
 		return err
