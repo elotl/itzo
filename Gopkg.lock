@@ -77,6 +77,14 @@
   version = "v1.1.1"
 
 [[projects]]
+  digest = "1:0b4fb1054e80fa2f7f4ea8cfcabe00714e60696d4937480737ad1b0eb9f68a08"
+  name = "github.com/lorenzosaino/go-sysctl"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "85d72f4a1e9a16973bc105e892ba1335220a95d2"
+  version = "v0.1.0"
+
+[[projects]]
   digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
   name = "github.com/pmezard/go-difflib"
   packages = ["difflib"]
@@ -142,6 +150,7 @@
     "github.com/justnoise/genny/generic",
     "github.com/kballard/go-shellquote",
     "github.com/kr/pty",
+    "github.com/lorenzosaino/go-sysctl",
     "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
