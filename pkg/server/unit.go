@@ -235,14 +235,14 @@ func (u *Unit) getSecurityContext() (*securityContext, error) {
 	buf, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error reading image securityContext for %s\n", u.Name)
+			glog.Errorf("Error reading securityContext file for %q", u.Name)
 		}
 		return nil, err
 	}
 	var sc securityContext
 	err = json.Unmarshal(buf, &sc)
 	if err != nil {
-		glog.Errorf("Error deserializing securityContext '%v' for %s: %v\n",
+		glog.Errorf("Error deserializing securityContext '%v' for %q: %v",
 			buf, u.Name, err)
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func (u *Unit) getConfig() (*Config, error) {
 	buf, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error reading image config for %s\n", u.Name)
+			glog.Errorf("Error reading config for %s\n", u.Name)
 		}
 		return nil, err
 	}
@@ -710,6 +710,7 @@ func (u *Unit) applySysctls() error {
 			glog.Errorf("Applying sysctl %q=%q: %v", sc.Name, sc.Value, err)
 			return err
 		}
+		glog.Infof("Applied sysctl %q=%q", sc.Name, sc.Value)
 	}
 	return nil
 }
