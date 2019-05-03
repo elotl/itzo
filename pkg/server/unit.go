@@ -114,11 +114,12 @@ func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 
 type Unit struct {
 	*LogPipe
-	Directory       string
-	Name            string
-	Image           string
-	statusPath      string
-	config          *Config
+	Directory  string
+	Name       string
+	Image      string
+	statusPath string
+	config     *Config
+	// For saving pod and unit security contexts.
 	securityContext *securityContext
 	stdinPath       string
 	stdinCloser     chan struct{}
