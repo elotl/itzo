@@ -249,6 +249,32 @@ func (u *Unit) getSecurityContext() (*securityContext, error) {
 	return &sc, nil
 }
 
+func (u *Unit) SaveSecurityContext(podSecurityContext *api.PodSecurityContext, unitSecurityContext *api.SecurityContext) error {
+	sc := securityContext{}
+	if podSecurityContext != nil {
+		sc.PodSecurityContext = *podSecurityContext
+	}
+	if unitSecurityContext != nil {
+		sc.SecurityContext = *unitSecurityContext
+	}
+	path := filepath.Join(u.Directory, "securityContext")
+	buf, err := json.Marshal(&sc)
+	if err != nil {
+		glog.Errorf("Error serializing securityContext '%v' for %q: %v",
+			buf, u.Name, err)
+		return err
+	}
+	err = ioutil.WriteFile(path, buf, 0755)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			glog.Errorf("Error reading securityContext for %s\n", u.Name)
+		}
+		return err
+	}
+	u.securityContext = &sc
+	return nil
+}
+
 func (u *Unit) getConfig() (*Config, error) {
 	path := filepath.Join(u.Directory, "config")
 	buf, err := ioutil.ReadFile(path)
