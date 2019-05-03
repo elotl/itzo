@@ -402,12 +402,8 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	return nil
 }
 
-func (u *Unit) getUser(lookup util.UserLookup) (uint32, uint32, []uint32, string, error) {
-	var err error
-	uid := uint32(0)
-	gid := uint32(0)
-	groups := make([]uint32, 0)
-	homedir := "/"
+func (u *Unit) getUser(lookup util.UserLookup) (uid, gid uint32, groups []uint32, homedir string, err error) {
+	homedir = "/"
 	// Check the image config for user/group.
 	if u.config != nil && u.config.User != "" {
 		uid, gid, homedir, err = util.LookupUser(u.config.User, lookup)
