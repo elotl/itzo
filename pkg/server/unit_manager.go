@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/itzo/pkg/util/conmap"
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
@@ -84,7 +86,7 @@ func (um *UnitManager) StopUnit(name string) error {
 		return fmt.Errorf("Could not stop unit %s: Unit does not exist", name)
 	}
 
-	unit, err := OpenUnit(um.rootDir, name)
+	_, err := OpenUnit(um.rootDir, name)
 	if err != nil {
 		return fmt.Errorf("Error opening unit %s for termination: %s", name, err)
 	}
@@ -93,7 +95,7 @@ func (um *UnitManager) StopUnit(name string) error {
 		// This happens if the process has already exited. Keep calm, log it
 		// and carry on.
 		glog.Warningf("Couldn't kill %s pid %d: %v (process terminated?)",
-			unit, proc.Pid, err)
+			name, proc.Pid, err)
 	}
 	um.runningUnits.Delete(name)
 	return nil
@@ -145,10 +147,17 @@ func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, 
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
 
-	env := append(unit.GetEnv(), appenv...)
+	env := unit.GetEnv() // Default environment from image config.
+	for _, e := range appenv {
+		// Add environment variables from the spec, overwriting default ones if
+		// necessary.
+		items := strings.SplitN(e, "=", 2)
+		key, value := items[0], items[1]
+		env = util.AddToEnvList(env, key, value, true)
+	}
 	cmd.Env = env
 
-	glog.Infof("Unit %s workingdir %s command %v %v env %v policy %v",
+	glog.Infof("Unit %q workingdir %q command %v %v env %v policy %v",
 		unitname, workingdir, command, args, env, policy)
 
 	// Check if a chroot exists for the unit. If it does, a package has been

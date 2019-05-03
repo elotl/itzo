@@ -77,6 +77,14 @@
   version = "v1.1.1"
 
 [[projects]]
+  digest = "1:0b4fb1054e80fa2f7f4ea8cfcabe00714e60696d4937480737ad1b0eb9f68a08"
+  name = "github.com/lorenzosaino/go-sysctl"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "85d72f4a1e9a16973bc105e892ba1335220a95d2"
+  version = "v0.1.0"
+
+[[projects]]
   digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
   name = "github.com/pmezard/go-difflib"
   packages = ["difflib"]
@@ -107,11 +115,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:3f3a05ae0b95893d90b9b3b5afdb79a9b3d96e4e36e099d841ae602e4aca0da8"
-  name = "golang.org/x/crypto"
-  packages = ["ssh/terminal"]
+  digest = "1:e14e467ed00ab98665623c5060fa17e3d7079be560ffc33cabafd05d35894f05"
+  name = "github.com/syndtr/gocapability"
+  packages = ["capability"]
   pruneopts = "UT"
-  revision = "df8d4716b3472e4a531c33cedbe537dae921a1a9"
+  revision = "d98352740cb2c55f81556b63d4a1ec64c5a319c2"
 
 [[projects]]
   branch = "master"
@@ -142,12 +150,14 @@
     "github.com/justnoise/genny/generic",
     "github.com/kballard/go-shellquote",
     "github.com/kr/pty",
+    "github.com/lorenzosaino/go-sysctl",
     "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
     "github.com/stretchr/testify/assert",
-    "golang.org/x/crypto/ssh/terminal",
+    "github.com/syndtr/gocapability/capability",
     "golang.org/x/net/context",
+    "golang.org/x/sys/unix",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

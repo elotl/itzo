@@ -27,8 +27,9 @@ func main() {
 	var workingdir = flag.String("workingdir", "", "Working directory for unit")
 	// todo, ability to log to a file instead of stdout
 
+	flag.Set("logtostderr", "true")
 	flag.Parse()
-	flag.Lookup("logtostderr").Value.Set("true")
+
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
 		glog.Infof("Starting %s for pod %s unit %s; restart policy is %v",

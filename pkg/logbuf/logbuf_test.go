@@ -8,7 +8,7 @@ import (
 )
 
 func mklogsrc(format string, a ...interface{}) LogSource {
-	return LogSource(fmt.Sprintf(format, a))
+	return LogSource(fmt.Sprintf(format, a...))
 }
 
 func TestLogBufferLength(t *testing.T) {

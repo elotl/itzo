@@ -350,13 +350,28 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		pc.waitGroup = sync.WaitGroup{}
 		pc.waitGroup.Add(1)
 		go func() {
-			pc.startAllUnits(ctx, allCreds, addInits, addUnits, spec.RestartPolicy)
+			pc.startAllUnits(ctx, allCreds, addInits, addUnits, spec.RestartPolicy, spec.SecurityContext)
 			pc.waitGroup.Done()
 		}()
 	}
 }
 
-func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds map[string]api.RegistryCredentials, policy api.RestartPolicy) {
+func (pc *PodController) saveSecurityContext(unitName string, podSecurityContext *api.PodSecurityContext, unitSecurityContext *api.SecurityContext) error {
+	glog.Infof("Saving security context for unit %q in %q", unitName, pc.rootdir)
+	u, err := OpenUnit(pc.rootdir, unitName)
+	if err != nil {
+		return fmt.Errorf("Opening unit %q for saving security context: %v",
+			unitName, err)
+	}
+	err = u.SaveSecurityContext(podSecurityContext, unitSecurityContext)
+	if err != nil {
+		return fmt.Errorf("Saving security context for unit %q: %v",
+			unitName, err)
+	}
+	return nil
+}
+
+func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds map[string]api.RegistryCredentials, policy api.RestartPolicy, podSecurityContext *api.PodSecurityContext) {
 	// pull image
 	server, imageRepo, err := util.ParseImageSpec(unit.Image)
 	if err != nil {
@@ -368,6 +383,18 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 	err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, creds.Username, creds.Password)
 	if err != nil {
 		msg := fmt.Sprintf("Error pulling image for unit %s: %v",
+			unit.Name, err)
+		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+		return
+	}
+
+	// Save security context.
+	err = pc.saveSecurityContext(
+		unit.Name,
+		podSecurityContext,
+		unit.SecurityContext)
+	if err != nil {
+		msg := fmt.Sprintf("Error saving security context for unit %s: %v",
 			unit.Name, err)
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
@@ -408,7 +435,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 	delete(pc.syncErrors, unit.Name)
 }
 
-func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]api.RegistryCredentials, initUnits []api.Unit, addUnits []api.Unit, policy api.RestartPolicy) {
+func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]api.RegistryCredentials, initUnits []api.Unit, addUnits []api.Unit, policy api.RestartPolicy, podSecurityContext *api.PodSecurityContext) {
 	ipolicy := policy
 	if ipolicy == api.RestartPolicyAlways {
 		// Restart policy "Always" is nonsensical for init units.
@@ -416,13 +443,13 @@ func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]
 	}
 	for _, unit := range initUnits {
 		// Start init units first, one by one, and wait for each to finish.
-		pc.startUnit(ctx, unit, allCreds, ipolicy)
+		pc.startUnit(ctx, unit, allCreds, ipolicy, podSecurityContext)
 		if !pc.waitForUnit(ctx, unit.Name) {
 			return
 		}
 	}
 	for _, unit := range addUnits {
-		pc.startUnit(ctx, unit, allCreds, policy)
+		pc.startUnit(ctx, unit, allCreds, policy, podSecurityContext)
 	}
 }
 
