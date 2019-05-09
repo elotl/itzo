@@ -54,6 +54,21 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:207adbd3bf30084db288db95cf09faef3bbdf92d7462c53629d4ed8b7c87f78e"
+  name = "github.com/jandre/procfs"
+  packages = [
+    ".",
+    "limits",
+    "stat",
+    "statm",
+    "status",
+    "util",
+  ]
+  pruneopts = "UT"
+  revision = "f645421657bb18912e57313ab14573213ae3f3dc"
+
+[[projects]]
+  branch = "master"
   digest = "1:f438d91be142877c3ad83157992c91de787ddfbddcc2a7da1ef6ef61606cadc4"
   name = "github.com/justnoise/genny"
   packages = ["generic"]
@@ -147,6 +162,7 @@
     "github.com/elotl/wsstream",
     "github.com/golang/glog",
     "github.com/gorilla/websocket",
+    "github.com/jandre/procfs",
     "github.com/justnoise/genny/generic",
     "github.com/kballard/go-shellquote",
     "github.com/kr/pty",
