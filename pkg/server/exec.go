@@ -103,9 +103,18 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 	}
 	if err != nil {
 		glog.Errorf("Error running exec command %v: %v", command, err)
-		writeWSError(ws, err.Error())
+		writeWSErrorExitcode(ws, err.Error())
 		return
 	}
+}
+
+type logWriter struct {
+	Prefix string
+}
+
+func (lw *logWriter) Write(p []byte) (n int, err error) {
+	glog.Infof("%s %s", lw.Prefix, string(p))
+	return len(p), nil
 }
 
 func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactive bool) error {
@@ -121,7 +130,11 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 
 	var wg sync.WaitGroup
 
+	outLogger := &logWriter{
+		Prefix: "[exec stdout]",
+	}
 	wsStdoutWriter := ws.CreateWriter(wsstream.StdoutChan)
+	outWriter := io.MultiWriter(wsStdoutWriter, outLogger)
 	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		glog.Errorf("Error creating stdout pipe: %v", err)
@@ -130,10 +143,14 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(wsStdoutWriter, outPipe)
+		io.Copy(outWriter, outPipe)
 	}()
 
+	errLogger := &logWriter{
+		Prefix: "[exec stderr]",
+	}
 	wsStderrWriter := ws.CreateWriter(wsstream.StderrChan)
+	errWriter := io.MultiWriter(wsStderrWriter, errLogger)
 	errPipe, err := cmd.StderrPipe()
 	if err != nil {
 		glog.Errorf("Error creating stderr pipe: %v", err)
@@ -142,7 +159,7 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(wsStderrWriter, errPipe)
+		io.Copy(errWriter, errPipe)
 	}()
 
 	err = cmd.Start()
