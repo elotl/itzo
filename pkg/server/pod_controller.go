@@ -209,6 +209,8 @@ func DiffVolumes(spec []api.Volume, status []api.Volume) (map[string]api.Volume,
 	specMap := volumesToMap(spec)
 	statusMap := volumesToMap(status)
 	add, update, delete := util.MapDiff(specMap, statusMap)
+	glog.Infof("Added volumes: %v updated volumes: %v deleted volumes: %v",
+		add, update, delete)
 
 	// Updates need to be deleted and then added
 	delete = append(delete, update...)
@@ -284,6 +286,7 @@ func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.Strin
 		}
 	}
 
+	glog.Infof("Added units: %v deleted units: %v", addList, deleteList)
 	return addList, deleteList
 }
 
