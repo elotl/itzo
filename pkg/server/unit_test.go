@@ -352,7 +352,7 @@ func TestGetUser(t *testing.T) {
 	ful.Uid = 1234
 	ful.UidGid = 5678
 	// Looking up user from image config.
-	uid, gid, groups, _, err := unit.getUser(&ful)
+	uid, gid, groups, _, err := unit.GetUser(&ful)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(1234), uid)
 	assert.Equal(t, uint32(5678), gid)
@@ -365,7 +365,7 @@ func TestGetUser(t *testing.T) {
 			SupplementalGroups: []int64{1, 2, 3},
 		},
 	}
-	uid, gid, groups, _, err = unit.getUser(&ful)
+	uid, gid, groups, _, err = unit.GetUser(&ful)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(1111), uid)
 	assert.Equal(t, uint32(2222), gid)
@@ -375,14 +375,14 @@ func TestGetUser(t *testing.T) {
 		RunAsUser:  int64ptr(3333),
 		RunAsGroup: int64ptr(4444),
 	}
-	uid, gid, groups, _, err = unit.getUser(&ful)
+	uid, gid, groups, _, err = unit.GetUser(&ful)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(3333), uid)
 	assert.Equal(t, uint32(4444), gid)
 	assert.ElementsMatch(t, []uint32{1, 2, 3}, groups)
 	// Error looking up user.
 	ful.UidErr = fmt.Errorf("Testing user lookup error")
-	_, _, _, _, err = unit.getUser(&ful)
+	_, _, _, _, err = unit.GetUser(&ful)
 	assert.Error(t, err)
 }
 
