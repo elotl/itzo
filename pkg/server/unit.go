@@ -854,6 +854,12 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		u.setStateToStartFailure(err)
 		return err
 	}
+	if uid != 0 || gid != 0 {
+		err = lp.Chown(int(uid), int(gid))
+		if err != nil {
+			glog.Warningf("Chown %d:%d for pipes: %v", uid, gid, err)
+		}
+	}
 
 	// Make user HOME, HOSTNAME, PATH and TERM are set (same variables Docker
 	// ensures are set). See
