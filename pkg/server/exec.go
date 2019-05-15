@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os/exec"
 	"strconv"
@@ -9,8 +10,10 @@ import (
 	"syscall"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
+	"github.com/jandre/procfs"
 	"github.com/kr/pty"
 )
 
@@ -21,26 +24,54 @@ const (
 func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 	if len(params.Command) == 0 {
 		glog.Errorf("No command specified for exec")
-		writeWSError(ws, "No command specified")
+		writeWSErrorExitcode(ws, "No command specified")
 		return
 	}
 
 	unitName, err := s.podController.GetUnitName(params.UnitName)
 	if err != nil {
 		glog.Errorf("Getting unit %s: %v", params.UnitName, err)
-		writeWSError(ws, err.Error())
+		writeWSErrorExitcode(ws, err.Error())
 		return
 	}
 
 	command := params.Command
 
+	var env []string
+
 	// allow us to skip entering namespace for testing
 	if !params.SkipNSEnter {
+		unit, err := OpenUnit(s.installRootdir, unitName)
+		if err != nil {
+			errmsg := fmt.Errorf("Error opening unit %s for exec: %v",
+				unitName, err)
+			glog.Errorf("%v", errmsg)
+			writeWSErrorExitcode(ws, "%v\n", errmsg)
+			return
+		}
+		uid, gid, _, _, err := unit.GetUser(&util.OsUserLookup{})
+		if err != nil {
+			errmsg := fmt.Errorf("Error getting unit %s user for exec: %v",
+				unitName, err)
+			glog.Errorf("%v", errmsg)
+			writeWSErrorExitcode(ws, "%v\n", errmsg)
+			return
+		}
 		pid, exists := s.unitMgr.GetPid(unitName)
 		if !exists {
 			glog.Errorf("Error getting pid for unit %s", unitName)
-			writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
+			writeWSErrorExitcode(ws, "Could not find running process for unit named %s\n", unitName)
 			return
+		}
+		proc, err := procfs.NewProcess(pid, false)
+		if err != nil {
+			glog.Errorf("Error getting process for unit %s", unitName)
+			writeWSErrorExitcode(ws, "Could not find process %d for unit named %s\n",
+				pid, unitName)
+			return
+		}
+		for k, v := range proc.Environ {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
 		nsenterCmd := []string{
 			"/usr/bin/nsenter",
@@ -50,10 +81,21 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 			"-u",
 			"-m",
 		}
+		if uid != 0 || gid != 0 {
+			userSpec := []string{
+				"-S",
+				fmt.Sprintf("%d", uid),
+				"-G",
+				fmt.Sprintf("%d", gid),
+			}
+			nsenterCmd = append(nsenterCmd, userSpec...)
+		}
 		command = append(nsenterCmd, command...)
 	}
 
+	glog.Infof("exec command: %v", command)
 	cmd := exec.Command(command[0], command[1:]...)
+	cmd.Env = env
 	if params.TTY {
 		err = s.runExecTTY(ws, cmd, params.Interactive)
 	} else {
@@ -61,9 +103,18 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 	}
 	if err != nil {
 		glog.Errorf("Error running exec command %v: %v", command, err)
-		writeWSError(ws, err.Error())
+		writeWSErrorExitcode(ws, err.Error())
 		return
 	}
+}
+
+type logWriter struct {
+	Prefix string
+}
+
+func (lw *logWriter) Write(p []byte) (n int, err error) {
+	glog.Infof("%s %s", lw.Prefix, string(p))
+	return len(p), nil
 }
 
 func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactive bool) error {
@@ -79,7 +130,11 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 
 	var wg sync.WaitGroup
 
+	outLogger := &logWriter{
+		Prefix: "[exec stdout]",
+	}
 	wsStdoutWriter := ws.CreateWriter(wsstream.StdoutChan)
+	outWriter := io.MultiWriter(wsStdoutWriter, outLogger)
 	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		glog.Errorf("Error creating stdout pipe: %v", err)
@@ -88,10 +143,14 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(wsStdoutWriter, outPipe)
+		io.Copy(outWriter, outPipe)
 	}()
 
+	errLogger := &logWriter{
+		Prefix: "[exec stderr]",
+	}
 	wsStderrWriter := ws.CreateWriter(wsstream.StderrChan)
+	errWriter := io.MultiWriter(wsStderrWriter, errLogger)
 	errPipe, err := cmd.StderrPipe()
 	if err != nil {
 		glog.Errorf("Error creating stderr pipe: %v", err)
@@ -100,7 +159,7 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(wsStderrWriter, errPipe)
+		io.Copy(errWriter, errPipe)
 	}()
 
 	err = cmd.Start()
@@ -181,7 +240,10 @@ func waitForFinished(ws *wsstream.WSReadWriter, cmd *exec.Cmd, wg *sync.WaitGrou
 			if waitstatus, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 				exitCode := waitstatus.ExitStatus()
 				exitCodeStr = strconv.Itoa(exitCode)
+				glog.Infof("Exec process exit code: %d", exitCode)
 			}
+		} else if procErr != nil {
+			glog.Warningf("Exec error waiting for process: %v", procErr)
 		}
 		_ = ws.WriteMsg(wsstream.ExitCodeChan, []byte(exitCodeStr))
 		joinChan <- struct{}{}
@@ -191,7 +253,7 @@ func waitForFinished(ws *wsstream.WSReadWriter, cmd *exec.Cmd, wg *sync.WaitGrou
 	case <-ws.Closed():
 		if cmd.Process != nil {
 			cmd.Process.Kill()
-			glog.Infoln("killed process")
+			glog.Infoln("Exec WS stream closed, killed process")
 		}
 	case <-joinChan:
 		glog.Info("Exec process ended")

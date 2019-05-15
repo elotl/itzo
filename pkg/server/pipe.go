@@ -33,6 +33,16 @@ func checkName(name string) {
 	panic(fmt.Sprintf("Invalid pipe name %s", name))
 }
 
+func (l *LogPipe) Chown(uid, gid int) error {
+	for _, p := range l.Pipes {
+		err := p.Chown(int(uid), int(gid))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (l *LogPipe) OpenWriter(name string, redirect bool) (fp *os.File, err error) {
 	// Open pipe with name "name" for writing. The reader side was created and
 	// connected in New().

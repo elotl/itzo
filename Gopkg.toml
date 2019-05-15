@@ -41,6 +41,10 @@
   branch = "master"
   name = "github.com/elotl/wsstream"
 
+[[constraint]]
+  branch = "master"
+  name = "github.com/jandre/procfs"
+
 [prune]
   go-tests = true
   unused-packages = true

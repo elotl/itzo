@@ -402,7 +402,7 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	return nil
 }
 
-func (u *Unit) getUser(lookup util.UserLookup) (uid, gid uint32, groups []uint32, homedir string, err error) {
+func (u *Unit) GetUser(lookup util.UserLookup) (uid, gid uint32, groups []uint32, homedir string, err error) {
 	homedir = "/"
 	// Check the image config for user/group.
 	if u.config != nil && u.config.User != "" {
@@ -849,10 +849,16 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		u.statusPath = "/status"
 	}
 
-	uid, gid, groups, homedir, err := u.getUser(&util.OsUserLookup{})
+	uid, gid, groups, homedir, err := u.GetUser(&util.OsUserLookup{})
 	if err != nil {
 		u.setStateToStartFailure(err)
 		return err
+	}
+	if uid != 0 || gid != 0 {
+		err = lp.Chown(int(uid), int(gid))
+		if err != nil {
+			glog.Warningf("Chown %d:%d for pipes: %v", uid, gid, err)
+		}
 	}
 
 	// Make user HOME, HOSTNAME, PATH and TERM are set (same variables Docker

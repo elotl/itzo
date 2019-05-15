@@ -29,6 +29,14 @@ func writeWSError(ws *wsstream.WSReadWriter, format string, a ...interface{}) {
 	}
 }
 
+func writeWSErrorExitcode(ws *wsstream.WSReadWriter, format string, a ...interface{}) {
+	writeWSError(ws, format, a...)
+	err := ws.WriteMsg(wsstream.ExitCodeChan, []byte("-1"))
+	if err != nil {
+		glog.Errorf("Error writing exitcode to websocket: %v", err)
+	}
+}
+
 func getInitialParams(ws *wsstream.WSReadWriter, params interface{}) error {
 	select {
 	case <-ws.Closed():
