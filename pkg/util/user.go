@@ -107,6 +107,9 @@ func LookupUser(userspec string, lookup UserLookup) (uint32, uint32, string, err
 	}
 	if gidStr == "" {
 		gidStr = usr.Gid
+		if gidStr == "" {
+			gidStr = "0"
+		}
 	}
 	gid, err := strconv.Atoi(gidStr)
 	if err != nil {
