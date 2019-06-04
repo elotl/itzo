@@ -41,6 +41,9 @@ ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 step 'Set password for root'
 echo 'root:*' | chpasswd -e
 
+step 'Add itzo group'
+addgroup -g 600 -S itzo
+
 step 'Create itzo init script'
 cat > /etc/init.d/itzo <<-EOF
 #!/sbin/openrc-run
@@ -278,6 +281,24 @@ EOF
 chmod 755 /etc/init.d/resizeroot
 cat /etc/init.d/resizeroot
 
+step 'Adding itzo iptables rules'
+cat > /etc/init.d/itzo_iptables <<-EOF
+#!/sbin/openrc-run
+
+name=\$RC_SVCNAME
+
+depend() {
+        need net localmount
+}
+
+start() {
+  iptables -t nat -A PREROUTING -p tcp --dport 6421 -j RETURN
+  iptables -t nat -A OUTPUT -p tcp -m owner --gid-owner 600 -j RETURN
+}
+EOF
+chmod 755 /etc/init.d/itzo_iptables
+cat /etc/init.d/itzo_iptables
+
 step 'Enable vsyscall emulation'
 sed -Ei -e "s|^[# ]*(default_kernel_opts)=.*|\1=\"vsyscall=emulate\"|" \
 	/etc/update-extlinux.conf
@@ -296,6 +317,7 @@ rc-update add net.eth0 default
 rc-update add sshd default
 rc-update add itzo default
 rc-update add resizeroot default
+rc-update add itzo_iptables default
 # rc-update add nvidia default
 rc-update add net.lo boot
 rc-update add termencoding boot
