@@ -292,8 +292,8 @@ depend() {
 }
 
 start() {
-  iptables -t nat -A PREROUTING -p tcp --dport 6421 -j RETURN
-  iptables -t nat -A OUTPUT -p tcp -m owner --gid-owner 600 -j RETURN
+  iptables -t nat -A PREROUTING -p tcp --dport 6421 -j ACCEPT
+  iptables -t nat -A OUTPUT -p tcp -m owner --gid-owner 600 -j ACCEPT
 }
 EOF
 chmod 755 /etc/init.d/itzo_iptables

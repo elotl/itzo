@@ -25,7 +25,7 @@ var (
 	MaxBufferSize     int64 = 1024 * 1024 * 10 // 10MB
 	TOSI_PRG                = "tosi"
 	TOSI_OUTPUT_LIMIT       = 4096
-	ITZO_GROUP_ID           = 600
+	ITZO_GROUP_ID           = 600 // Group is created when the image is created
 )
 
 func copyFile(src, dst string) error {
