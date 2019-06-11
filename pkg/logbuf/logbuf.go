@@ -2,7 +2,6 @@ package logbuf
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/elotl/itzo/pkg/util"
@@ -19,17 +18,21 @@ type LogSource string
 type LogEntry struct {
 	Timestamp string
 	Source    LogSource
-	Partial   bool
 	Line      string
 }
 
 func (le *LogEntry) String() string {
+	// Since we read our log lines line-by-line and have no way
+	// to determine if the current line is a continuation of the
+	// previous line, our tag is always "F" for a full line. The
+	// other known tag is "P" for partial
 	tags := "F"
-	if le.Partial {
-		tags = "P"
+	line := le.Line
+	if line[len(line)-1] != '\n' {
+		line += "\n"
 	}
 	return fmt.Sprintf(
-		"%s %s %s %s\n",
+		"%s %s %s %s",
 		le.Timestamp,
 		string(le.Source),
 		tags,
@@ -58,23 +61,14 @@ func (lb *LogBuffer) GetOffset() int64 {
 }
 
 func (lb *LogBuffer) Write(source LogSource, line string) {
-	if line[len(line)-1] == '\n' {
-		line = line[:len(line)-1]
+	e := LogEntry{
+		Timestamp: time.Now().Format(time.RFC3339Nano),
+		Source:    source,
+		Line:      line,
 	}
-	parts := strings.Split(line, "\n")
-	ts := time.Now().Format(time.RFC3339Nano)
-	for i := range parts {
-		partial := i != len(parts)-1
-		e := LogEntry{
-			Timestamp: ts,
-			Source:    source,
-			Partial:   partial,
-			Line:      parts[i],
-		}
-		bufLoc := lb.offset % lb.capacity
-		lb.buf[bufLoc] = e
-		lb.offset++
-	}
+	bufLoc := lb.offset % lb.capacity
+	lb.buf[bufLoc] = e
+	lb.offset++
 }
 
 func (lb *LogBuffer) Length() int {

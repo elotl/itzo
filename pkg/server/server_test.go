@@ -411,6 +411,14 @@ func TestGetLogsFunctional(t *testing.T) {
 	assert.True(t, 2 <= len(lines))
 }
 
+func parseCRILogLine(line string) (string, string, string, string) {
+	parts := strings.SplitN(line, " ", 4)
+	if len(parts) != 4 {
+		return "", "", "", ""
+	}
+	return parts[0], parts[1], parts[2], parts[3]
+}
+
 func TestGetLogsLinesFunctional(t *testing.T) {
 	if !*runFunctional {
 		return
@@ -436,7 +444,8 @@ func TestGetLogsLinesFunctional(t *testing.T) {
 	}
 	assert.True(t, 4 <= len(lines))
 	for _, line := range lines[:len(lines)-1] {
-		assert.Equal(t, "y", line)
+		_, _, _, msg := parseCRILogLine(line)
+		assert.Equal(t, "y", msg)
 	}
 }
 
@@ -576,7 +585,12 @@ func TestGetLogs(t *testing.T) {
 		responseBody = responseBody[:len(responseBody)-1]
 	}
 	lines := strings.Split(responseBody, "\n")
-	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
+	msgs := make([]string, 0, nLines)
+	for _, line := range lines {
+		_, _, _, msg := parseCRILogLine(line)
+		msgs = append(msgs, msg)
+	}
+	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, msgs)
 }
 
 func runServer() (*Server, func(), int) {
