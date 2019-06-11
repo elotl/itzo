@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/elotl/itzo/pkg/util"
@@ -24,6 +25,7 @@ var (
 	MaxBufferSize     int64 = 1024 * 1024 * 10 // 10MB
 	TOSI_PRG                = "tosi"
 	TOSI_OUTPUT_LIMIT       = 4096
+	ITZO_GROUP_ID           = 600 // Group is created when the image is created
 )
 
 func copyFile(src, dst string) error {
@@ -173,6 +175,11 @@ func runTosi(tp string, args ...string) error {
 		n++
 		var stderr bytes.Buffer
 		cmd := exec.Command(tp, args...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		cmd.SysProcAttr.Credential = &syscall.Credential{
+			Gid: uint32(ITZO_GROUP_ID),
+		}
+
 		cmd.Stderr = &stderr
 		err := cmd.Run()
 		if err == nil {

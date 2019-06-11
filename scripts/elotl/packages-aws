@@ -10,3 +10,4 @@ util-linux
 rng-tools
 haveged
 hvtools
+iptables
