@@ -45,6 +45,10 @@
   branch = "master"
   name = "github.com/jandre/procfs"
 
+[[override]]
+  name = "github.com/opencontainers/runtime-spec"
+  branch = "master"
+
 [prune]
   go-tests = true
   unused-packages = true
