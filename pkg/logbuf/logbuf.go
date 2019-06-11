@@ -1,15 +1,17 @@
 package logbuf
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/elotl/itzo/pkg/util"
 )
 
 const (
-	StdoutLogSource LogSource = "[Stdout]"
-	StderrLogSource LogSource = "[Stderr]"
-	HelperLogSource LogSource = "[Helper]"
+	StdoutLogSource LogSource = "stdout"
+	StderrLogSource LogSource = "stderr"
+	HelperLogSource LogSource = "helper"
 )
 
 type LogSource string
@@ -17,7 +19,22 @@ type LogSource string
 type LogEntry struct {
 	Timestamp string
 	Source    LogSource
+	Partial   bool
 	Line      string
+}
+
+func (le *LogEntry) String() string {
+	tags := "F"
+	if le.Partial {
+		tags = "P"
+	}
+	return fmt.Sprintf(
+		"%s %s %s %s\n",
+		le.Timestamp,
+		string(le.Source),
+		tags,
+		le.Line,
+	)
 }
 
 // Lets play a fast and loose with our locking...  There isn't a lot of
@@ -41,14 +58,23 @@ func (lb *LogBuffer) GetOffset() int64 {
 }
 
 func (lb *LogBuffer) Write(source LogSource, line string) {
-	e := LogEntry{
-		Timestamp: time.Now().String(),
-		Source:    source,
-		Line:      line,
+	if line[len(line)-1] == '\n' {
+		line = line[:len(line)-1]
 	}
-	bufLoc := lb.offset % lb.capacity
-	lb.buf[bufLoc] = e
-	lb.offset++
+	parts := strings.Split(line, "\n")
+	ts := time.Now().Format(time.RFC3339Nano)
+	for i := range parts {
+		partial := i != len(parts)-1
+		e := LogEntry{
+			Timestamp: ts,
+			Source:    source,
+			Partial:   partial,
+			Line:      parts[i],
+		}
+		bufLoc := lb.offset % lb.capacity
+		lb.buf[bufLoc] = e
+		lb.offset++
+	}
 }
 
 func (lb *LogBuffer) Length() int {

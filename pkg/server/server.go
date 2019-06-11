@@ -243,7 +243,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var buffer bytes.Buffer
 		for _, entry := range logs {
-			buffer.WriteString(entry.Line)
+			buffer.WriteString(entry.String())
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		buffStr := buffer.String()

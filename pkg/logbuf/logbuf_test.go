@@ -11,7 +11,7 @@ func mklogsrc(format string, a ...interface{}) LogSource {
 	return LogSource(fmt.Sprintf(format, a...))
 }
 
-func TestLogBufferLength(t *testing.T) {
+func TestLogBufferWrapAround(t *testing.T) {
 	lb := NewLogBuffer(3)
 	for i := 0; i < 3; i++ {
 		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
@@ -21,6 +21,71 @@ func TestLogBufferLength(t *testing.T) {
 		lb.Write(mklogsrc("src %d", i+4), fmt.Sprintf("line %d", i+4))
 		assert.Equal(t, 3, lb.Length())
 	}
+}
+
+func TestLogBufferNewlines(t *testing.T) {
+	lb := NewLogBuffer(10)
+	cases := []struct {
+		msg   string
+		lines int
+		info  string
+	}{
+		{
+			msg:   "\n",
+			lines: 1,
+			info:  "Empty newline should log",
+		},
+		{
+			msg:   "first line %d\n",
+			lines: 1,
+			info:  "Trailing newlines shouldnt add a new line",
+		},
+		{
+			msg:   "first line %d\nsecond line",
+			lines: 2,
+			info:  "multiline with no trailing newline",
+		},
+		{
+			msg:   "first line\nsecond line with newline\n",
+			lines: 2,
+			info:  "multiline with trailing newline",
+		},
+	}
+	for _, tc := range cases {
+		lb.flush()
+		lb.Write(StdoutLogSource, tc.msg)
+		assert.Equal(t, tc.lines, lb.Length(), tc.info)
+	}
+}
+
+func TestLogBufferPartialTag(t *testing.T) {
+	lb := NewLogBuffer(10)
+	lb.Write(StdoutLogSource, "one line")
+	assert.Equal(t, 1, lb.Length())
+	assert.False(t, lb.buf[0].Partial)
+	lb.Write(StdoutLogSource, "two\nlines")
+	assert.Equal(t, 3, lb.Length())
+	assert.True(t, lb.buf[1].Partial)
+	assert.False(t, lb.buf[2].Partial)
+}
+
+func TestLogBufferStringer(t *testing.T) {
+	msg := "\nline one\nline two\n"
+	lb := NewLogBuffer(5)
+	lb.Write(StderrLogSource, msg)
+	entries := lb.Read(2)
+	if len(entries) != 2 {
+		t.FailNow()
+	}
+	ts := entries[0].Timestamp
+	logOutput := entries[0].String()
+	logOutput += entries[1].String()
+	expected := fmt.Sprintf(
+		"%s %s P line one\n%s %s F line two\n",
+		ts, string(StderrLogSource),
+		ts, string(StderrLogSource),
+	)
+	assert.Equal(t, expected, logOutput)
 }
 
 func TestLogBufferOverflow(t *testing.T) {
