@@ -49,7 +49,15 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 			writeWSErrorExitcode(ws, "%v\n", errmsg)
 			return
 		}
-		uid, gid, _, _, err := unit.GetUser(&util.OsUserLookup{})
+		userLookup, err := util.NewPasswdUserLookup(unit.GetRootfs())
+		if err != nil {
+			errmsg := fmt.Errorf(
+				"Error creating user lookup in %s for exec: %v", unitName, err)
+			glog.Errorf("%v", errmsg)
+			writeWSErrorExitcode(ws, "%v\n", errmsg)
+			return
+		}
+		uid, gid, _, _, err := unit.GetUser(userLookup)
 		if err != nil {
 			errmsg := fmt.Errorf("Error getting unit %s user for exec: %v",
 				unitName, err)

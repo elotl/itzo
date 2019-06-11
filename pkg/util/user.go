@@ -80,11 +80,11 @@ func LookupUser(userspec string, lookup UserLookup) (uint32, uint32, string, err
 		groupName := parts[1]
 		grp, err := lookup.LookupGroupId(groupName)
 		if err != nil {
-			glog.Errorf("Failed to look up GID %s: %v; retrying as groupname",
+			glog.Errorf("Failed to look up GID %q: %v; retrying as groupname",
 				groupName, err)
 			grp, err = lookup.LookupGroup(groupName)
 			if err != nil {
-				glog.Errorf("Failed to look up group %s: %v", groupName, err)
+				glog.Errorf("Failed to look up group %q: %v", groupName, err)
 				return 0, 0, "", err
 			}
 		}
@@ -92,25 +92,30 @@ func LookupUser(userspec string, lookup UserLookup) (uint32, uint32, string, err
 	}
 	usr, err := lookup.LookupId(userName)
 	if err != nil {
-		glog.Errorf("Failed to look up UID %s: %v; retrying as username",
+		glog.Errorf("Failed to look up UID %q: %v; retrying as username",
 			userName, err)
 		usr, err = lookup.Lookup(userName)
 		if err != nil {
-			glog.Errorf("Failed to look up user %s: %v", userName, err)
+			glog.Errorf("Failed to look up user %q: %v", userName, err)
 			return 0, 0, "", err
 		}
 	}
 	uid, err := strconv.Atoi(usr.Uid)
 	if err != nil {
-		glog.Errorf("Failed to parse user id %s: %v", usr.Uid, err)
+		err = fmt.Errorf("Failed to parse user id %q: %v", usr.Uid, err)
+		glog.Errorf("%v", err)
 		return 0, 0, "", err
 	}
 	if gidStr == "" {
 		gidStr = usr.Gid
+		if gidStr == "" {
+			gidStr = "0"
+		}
 	}
 	gid, err := strconv.Atoi(gidStr)
 	if err != nil {
-		glog.Errorf("Failed to parse group id %s %v", gidStr, err)
+		err = fmt.Errorf("Failed to parse group id %q %v", gidStr, err)
+		glog.Errorf("%v", err)
 		return 0, 0, "", err
 	}
 	glog.Infof("Using uid %d gid %d", uid, gid)
