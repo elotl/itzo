@@ -10,12 +10,36 @@
   version = "1.0.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:af49c3a6247e95ab2d32fec3127ee739d26727d05593f7cf7baef24bacee7b50"
+  name = "github.com/containerd/cgroups"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "51b62d303d381950f7b51cf8ff52f1e9e49cc4f1"
+
+[[projects]]
+  digest = "1:5e9a94190e20a9ff23267adcc08727fca2d3a0d7bf849120fa79fcd2353db721"
+  name = "github.com/coreos/go-systemd"
+  packages = ["dbus"]
+  pruneopts = "UT"
+  revision = "95778dfbb74eb7e4dbaf43bf7d71809650ef8076"
+  version = "v19"
+
+[[projects]]
   digest = "1:a2c1d0e43bd3baaa071d1b9ed72c27d78169b2b269f71c105ac4ba34b1be4a39"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
   pruneopts = "UT"
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
   version = "v1.1.0"
+
+[[projects]]
+  digest = "1:e95ef557dc3120984bb66b385ae01b4bb8ff56bcde28e7b0d1beed0cccc4d69f"
+  name = "github.com/docker/go-units"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "519db1ee28dcc9fd2474ae59fca29a810482bfb1"
+  version = "v0.4.0"
 
 [[projects]]
   branch = "master"
@@ -35,6 +59,26 @@
   pruneopts = "UT"
   revision = "97b6244175ae18ea6eef668034fd6565847501c9"
   version = "v1.2.4"
+
+[[projects]]
+  digest = "1:b3d20bcdedab2050e6bc58e52f4fdc46f710b4c74e1a1ecee262ebec1aee7b6e"
+  name = "github.com/godbus/dbus"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "2ff6f7ffd60f0f2410b3105864bdd12c7894f844"
+  version = "v5.0.1"
+
+[[projects]]
+  digest = "1:4652941215f23c7ad6546bab86964c72248a1134baa53f0df618661344ba5cac"
+  name = "github.com/gogo/protobuf"
+  packages = [
+    "gogoproto",
+    "proto",
+    "protoc-gen-gogo/descriptor",
+  ]
+  pruneopts = "UT"
+  revision = "ba06b47c162d49f2af050fb4c75bcbc86a159d5c"
+  version = "v1.2.1"
 
 [[projects]]
   branch = "master"
@@ -108,6 +152,22 @@
   version = "v0.1.1"
 
 [[projects]]
+  branch = "master"
+  digest = "1:9b1faa0a95eb542ac3a4b769a26dd225e368128b9e6ea652fef9eadf8873fe2f"
+  name = "github.com/opencontainers/runtime-spec"
+  packages = ["specs-go"]
+  pruneopts = "UT"
+  revision = "8ffda149bac31804bdae35e5ec8ee563fe0f3459"
+
+[[projects]]
+  digest = "1:cf31692c14422fa27c83a05292eb5cbe0fb2775972e8f1f8446a71549bd8980b"
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "ba968bfe8b2f7e042a574c888954fccecfa385b4"
+  version = "v0.8.1"
+
+[[projects]]
   digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
   name = "github.com/pmezard/go-difflib"
   packages = ["difflib"]
@@ -167,6 +227,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/containerd/cgroups",
     "github.com/elotl/wsstream",
     "github.com/golang/glog",
     "github.com/gorilla/websocket",
@@ -176,6 +237,7 @@
     "github.com/kr/pty",
     "github.com/lorenzosaino/go-sysctl",
     "github.com/opencontainers/runc/libcontainer/user",
+    "github.com/opencontainers/runtime-spec/specs-go",
     "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
