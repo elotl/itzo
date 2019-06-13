@@ -23,7 +23,7 @@ func TestLogBufferWrapAround(t *testing.T) {
 	}
 }
 
-func TestLogBufferStringer(t *testing.T) {
+func TestLogBufferFormat(t *testing.T) {
 	msg := "line one\n"
 	lb := NewLogBuffer(5)
 	lb.Write(StderrLogSource, msg)
@@ -32,7 +32,7 @@ func TestLogBufferStringer(t *testing.T) {
 		t.FailNow()
 	}
 	ts := entries[0].Timestamp
-	logOutput := entries[0].String()
+	logOutput := entries[0].Format(true)
 	expected := fmt.Sprintf("%s %s F line one\n", ts, string(StderrLogSource))
 	assert.Equal(t, expected, logOutput)
 }

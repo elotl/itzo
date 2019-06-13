@@ -198,6 +198,10 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		// todo, this is a bit messy here, break it out if possible
 		q := parsedURL.Query()
 		follow := q.Get("follow")
+		withMetadata := false
+		if q.Get("metadata") == "1" {
+			withMetadata = true
+		}
 		if follow != "" {
 			// Bug: if the unit gets closed or quits, we don't know
 			// about the closure
@@ -211,7 +215,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 				badRequest(w, err.Error())
 				return
 			}
-			s.RunLogTailer(w, r, unitName, logBuffer)
+			s.RunLogTailer(w, r, unitName, withMetadata, logBuffer)
 			return
 		}
 
@@ -243,7 +247,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var buffer bytes.Buffer
 		for _, entry := range logs {
-			buffer.WriteString(entry.String())
+			buffer.WriteString(entry.Format(withMetadata))
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		buffStr := buffer.String()
@@ -257,7 +261,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName string, logBuffer *logbuf.LogBuffer) {
+func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName string, withMetadata bool, logBuffer *logbuf.LogBuffer) {
 	ws, err := s.doUpgrade(w, r)
 	if err != nil {
 		return // Do upgrade will write errors to the client
@@ -292,7 +296,7 @@ func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName s
 			if len(entries) > 0 {
 				msg := make([]byte, 0, 1024)
 				for i := 0; i < len(entries); i++ {
-					msg = append(msg, []byte(entries[i].Line)...)
+					msg = append(msg, []byte(entries[i].Format(withMetadata))...)
 				}
 				if err := ws.WriteMsg(wsstream.StdoutChan, msg); err != nil {
 					glog.Errorln("Error writing logs to buffer:", err)

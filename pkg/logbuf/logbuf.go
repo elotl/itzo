@@ -21,7 +21,10 @@ type LogEntry struct {
 	Line      string
 }
 
-func (le *LogEntry) String() string {
+func (le *LogEntry) Format(withMetadata bool) string {
+	if !withMetadata {
+		return le.Line
+	}
 	// Since we read our log lines line-by-line and have no way
 	// to determine if the current line is a continuation of the
 	// previous line, our tag is always "F" for a full line. The
