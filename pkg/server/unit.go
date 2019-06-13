@@ -11,12 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/containerd/cgroups"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	sysctl "github.com/lorenzosaino/go-sysctl"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/syndtr/gocapability/capability"
 	"golang.org/x/sys/unix"
 )
@@ -744,6 +746,22 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 			Reason: "starting",
 		},
 	}, nil)
+
+	control, err := cgroups.New(
+		cgroups.V1, cgroups.StaticPath("/"+u.Name), &specs.LinuxResources{})
+	if err != nil {
+		glog.Errorf("Failed to create cgroups control for %q: %v", u.Name, err)
+		u.setStateToStartFailure(err)
+		return err
+	}
+	defer control.Delete()
+	pid := os.Getpid()
+	err = control.Add(cgroups.Process{Pid: pid})
+	if err != nil {
+		glog.Errorf("Error adding pid %v to cgroups control: %v", pid, err)
+		u.setStateToStartFailure(err)
+		return err
+	}
 
 	rootfs := u.GetRootfs()
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {

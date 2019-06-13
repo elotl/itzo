@@ -108,6 +108,15 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 		var resourceUsage api.ResourceMetrics
 		if time.Since(s.lastMetricTime) > minMetricPeriod {
 			resourceUsage = s.metrics.GetSystemMetrics()
+			for _, us := range append(status, initStatus...) {
+				unitResourceUsage := s.metrics.GetUnitMetrics(us.Name)
+				for k, v := range unitResourceUsage {
+					// Add unit resource usage to the main map. Keys are in the
+					// form of "unitname.metric", e.g. "foobar.cpuUsage",
+					// "foobar.memoryUsage", etc.
+					resourceUsage[k] = v
+				}
+			}
 			s.lastMetricTime = time.Now()
 		}
 

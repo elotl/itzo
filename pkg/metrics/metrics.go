@@ -1,7 +1,9 @@
 package metrics
 
 import (
+	"github.com/containerd/cgroups"
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/golang/glog"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
@@ -69,5 +71,30 @@ func (m *Metrics) GetSystemMetrics() api.ResourceMetrics {
 		metrics["disk"] = diskStats.UsedPercent
 	}
 	metrics["cpu"] = m.cpuPercent()
+	return metrics
+}
+
+func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
+	metrics := api.ResourceMetrics{}
+	control, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/"+name))
+	if err != nil {
+		glog.Errorf("Loading cgroup control for %q: %v", name, err)
+		return metrics
+	}
+	cm, err := control.Stat(cgroups.IgnoreNotExist)
+	if err != nil {
+		glog.Errorf("Getting cgroup metrics for %q: %v", name, err)
+		return metrics
+	}
+	if cm.CPU != nil && cm.CPU.Usage != nil {
+		metrics[name+".cpuUsage"] = float64(cm.CPU.Usage.Total)
+	}
+	if cm.Memory != nil && cm.Memory.Usage != nil {
+		metrics[name+".memoryUsage"] = float64(cm.Memory.Usage.Usage)
+	}
+	if diskStats, err := disk.Usage("/"); err == nil {
+		metrics[name+".filesystemUsedBytes"] = float64(diskStats.Used)
+		metrics[name+".filesystemUsedInodes"] = float64(diskStats.InodesUsed)
+	}
 	return metrics
 }
