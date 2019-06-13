@@ -111,10 +111,10 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 			for _, us := range append(status, initStatus...) {
 				unitResourceUsage := s.metrics.GetUnitMetrics(us.Name)
 				for k, v := range unitResourceUsage {
-					// Add the resource usage of each unit, using keys in the
-					// metrics map that are in the form of "unit1.metric", e.g.
-					// "foobar.cpuUsage", "foobar.memoryUsage", etc.
-					resourceUsage[fmt.Sprintf("%s.%s", us.Name, k)] = v
+					// Add unit resource usage to the main map. Keys are in the
+					// form of "unitname.metric", e.g. "foobar.cpuUsage",
+					// "foobar.memoryUsage", etc.
+					resourceUsage[k] = v
 				}
 			}
 			s.lastMetricTime = time.Now()

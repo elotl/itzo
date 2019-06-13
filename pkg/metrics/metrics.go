@@ -87,14 +87,14 @@ func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 		return metrics
 	}
 	if cm.CPU != nil && cm.CPU.Usage != nil {
-		metrics["cpuUsage"] = float64(cm.CPU.Usage.Total)
+		metrics[name+".cpuUsage"] = float64(cm.CPU.Usage.Total)
 	}
 	if cm.Memory != nil && cm.Memory.Usage != nil {
-		metrics["memoryUsage"] = float64(cm.Memory.Usage.Usage)
+		metrics[name+".memoryUsage"] = float64(cm.Memory.Usage.Usage)
 	}
 	if diskStats, err := disk.Usage("/"); err == nil {
-		metrics["filesystemUsedBytes"] = float64(diskStats.Used)
-		metrics["filesystemUsedInodes"] = float64(diskStats.InodesUsed)
+		metrics[name+".filesystemUsedBytes"] = float64(diskStats.Used)
+		metrics[name+".filesystemUsedInodes"] = float64(diskStats.InodesUsed)
 	}
 	return metrics
 }
