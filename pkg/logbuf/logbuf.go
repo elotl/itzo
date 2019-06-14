@@ -1,15 +1,16 @@
 package logbuf
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/elotl/itzo/pkg/util"
 )
 
 const (
-	StdoutLogSource LogSource = "[Stdout]"
-	StderrLogSource LogSource = "[Stderr]"
-	HelperLogSource LogSource = "[Helper]"
+	StdoutLogSource LogSource = "stdout"
+	StderrLogSource LogSource = "stderr"
+	HelperLogSource LogSource = "helper"
 )
 
 type LogSource string
@@ -18,6 +19,28 @@ type LogEntry struct {
 	Timestamp string
 	Source    LogSource
 	Line      string
+}
+
+func (le *LogEntry) Format(withMetadata bool) string {
+	if !withMetadata {
+		return le.Line
+	}
+	// Since we read our log lines line-by-line and have no way
+	// to determine if the current line is a continuation of the
+	// previous line, our tag is always "F" for a full line. The
+	// other known tag is "P" for partial
+	tags := "F"
+	line := le.Line
+	if line[len(line)-1] != '\n' {
+		line += "\n"
+	}
+	return fmt.Sprintf(
+		"%s %s %s %s",
+		le.Timestamp,
+		string(le.Source),
+		tags,
+		le.Line,
+	)
 }
 
 // Lets play a fast and loose with our locking...  There isn't a lot of
@@ -42,7 +65,7 @@ func (lb *LogBuffer) GetOffset() int64 {
 
 func (lb *LogBuffer) Write(source LogSource, line string) {
 	e := LogEntry{
-		Timestamp: time.Now().String(),
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Source:    source,
 		Line:      line,
 	}

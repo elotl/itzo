@@ -11,7 +11,7 @@ func mklogsrc(format string, a ...interface{}) LogSource {
 	return LogSource(fmt.Sprintf(format, a...))
 }
 
-func TestLogBufferLength(t *testing.T) {
+func TestLogBufferWrapAround(t *testing.T) {
 	lb := NewLogBuffer(3)
 	for i := 0; i < 3; i++ {
 		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
@@ -21,6 +21,20 @@ func TestLogBufferLength(t *testing.T) {
 		lb.Write(mklogsrc("src %d", i+4), fmt.Sprintf("line %d", i+4))
 		assert.Equal(t, 3, lb.Length())
 	}
+}
+
+func TestLogBufferFormat(t *testing.T) {
+	msg := "line one\n"
+	lb := NewLogBuffer(5)
+	lb.Write(StderrLogSource, msg)
+	entries := lb.Read(2)
+	if len(entries) != 1 {
+		t.FailNow()
+	}
+	ts := entries[0].Timestamp
+	logOutput := entries[0].Format(true)
+	expected := fmt.Sprintf("%s %s F line one\n", ts, string(StderrLogSource))
+	assert.Equal(t, expected, logOutput)
 }
 
 func TestLogBufferOverflow(t *testing.T) {

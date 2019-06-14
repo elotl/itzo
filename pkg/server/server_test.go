@@ -575,6 +575,7 @@ func TestGetLogs(t *testing.T) {
 	if strings.HasSuffix(responseBody, "\n") {
 		responseBody = responseBody[:len(responseBody)-1]
 	}
+
 	lines := strings.Split(responseBody, "\n")
 	assert.Equal(t, []string{"5", "6", "7", "8", "9"}, lines)
 }
