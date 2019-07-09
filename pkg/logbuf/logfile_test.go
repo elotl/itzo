@@ -70,6 +70,7 @@ func TestRotatingFileRotate(t *testing.T) {
 	rot.rotate()
 	assert.FileExists(t, rot.filePath())
 	assert.FileExists(t, rot.rotatedFilePath())
+	assert.Equal(t, 0, rot.currentSize)
 }
 
 func TestRotatingFileWriteRotates(t *testing.T) {
@@ -82,6 +83,7 @@ func TestRotatingFileWriteRotates(t *testing.T) {
 	assert.FileExists(t, rot.rotatedFilePath())
 	assertFileContains(t, rot.rotatedFilePath(), line)
 	assertFileContains(t, rot.filePath(), []byte(""))
+	assert.Equal(t, 0, rot.currentSize)
 }
 
 func TestLogOutputWrite(t *testing.T) {
