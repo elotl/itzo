@@ -14,11 +14,13 @@ func mklogsrc(format string, a ...interface{}) LogSource {
 func TestLogBufferWrapAround(t *testing.T) {
 	lb := NewLogBuffer(3)
 	for i := 0; i < 3; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 		assert.Equal(t, i+1, lb.Length())
 	}
 	for i := 0; i < 5; i++ {
-		lb.Write(mklogsrc("src %d", i+4), fmt.Sprintf("line %d", i+4))
+		e := MakeLogEntry(mklogsrc("src %d", i+4), fmt.Sprintf("line %d", i+4))
+		lb.Write(e)
 		assert.Equal(t, 3, lb.Length())
 	}
 }
@@ -26,7 +28,8 @@ func TestLogBufferWrapAround(t *testing.T) {
 func TestLogBufferFormat(t *testing.T) {
 	msg := "line one\n"
 	lb := NewLogBuffer(5)
-	lb.Write(StderrLogSource, msg)
+	e := MakeLogEntry(StderrLogSource, msg)
+	lb.Write(e)
 	entries := lb.Read(2)
 	if len(entries) != 1 {
 		t.FailNow()
@@ -40,7 +43,8 @@ func TestLogBufferFormat(t *testing.T) {
 func TestLogBufferOverflow(t *testing.T) {
 	lb := NewLogBuffer(3)
 	for i := 0; i < 5; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 	}
 	entries := lb.Read(3)
 	assert.Equal(t, len(entries), 3)
@@ -56,7 +60,8 @@ func TestLogBufferOverflow(t *testing.T) {
 func TestLogBufferReadAll(t *testing.T) {
 	lb := NewLogBuffer(10)
 	for i := 0; i < 5; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 	}
 	entries := lb.Read(0)
 	assert.Equal(t, len(entries), 5)
@@ -72,7 +77,8 @@ func TestLogBufferReadAll(t *testing.T) {
 func TestLogBufferUnderRead(t *testing.T) {
 	lb := NewLogBuffer(10)
 	for i := 0; i < 5; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 	}
 	entries := lb.Read(3)
 	assert.Equal(t, len(entries), 3)
@@ -88,7 +94,8 @@ func TestLogBufferUnderRead(t *testing.T) {
 func TestLogBufferOverRead(t *testing.T) {
 	lb := NewLogBuffer(10)
 	for i := 0; i < 5; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 	}
 	entries := lb.Read(15)
 	assert.Equal(t, len(entries), 5)
@@ -104,7 +111,8 @@ func TestLogBufferOverRead(t *testing.T) {
 func TestLogBufferNegativeRead(t *testing.T) {
 	lb := NewLogBuffer(10)
 	for i := 0; i < 5; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 	}
 	entries := lb.Read(-1)
 	assert.Equal(t, len(entries), 0)
@@ -113,7 +121,8 @@ func TestLogBufferNegativeRead(t *testing.T) {
 func TestLogBufferReadSince(t *testing.T) {
 	lb := NewLogBuffer(10)
 	for i := 0; i < 15; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 	}
 	entries, _ := lb.ReadSince(25)
 	assert.Len(t, entries, 0)
@@ -135,7 +144,8 @@ func TestLogBufferReadSince(t *testing.T) {
 func TestLogBufferFlush(t *testing.T) {
 	lb := NewLogBuffer(10)
 	for i := 0; i < 5; i++ {
-		lb.Write(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		e := MakeLogEntry(mklogsrc("src %d", i+1), fmt.Sprintf("line %d", i+1))
+		lb.Write(e)
 	}
 	assert.Equal(t, 5, lb.Length())
 	lb.flush()

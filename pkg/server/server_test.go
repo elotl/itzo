@@ -559,13 +559,18 @@ func TestDeployInvalidPackage(t *testing.T) {
 }
 
 func TestGetLogs(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "logfileTest")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
 	unitName := "testunit"
-	um := NewUnitManager(DEFAULT_ROOTDIR)
+	um := NewUnitManager(DEFAULT_ROOTDIR, tempDir)
 	s.unitMgr = um
 	lb := logbuf.NewLogBuffer(1000)
 	um.logbuf.Set(unitName, lb)
 	for i := 0; i < 10; i++ {
-		lb.Write("somesource", fmt.Sprintf("%d\n", i))
+		e := logbuf.MakeLogEntry("somesource", fmt.Sprintf("%d\n", i))
+		lb.Write(e)
 	}
 	nLines := 5
 	path := fmt.Sprintf("/rest/v1/logs/%s?lines=%d&bytes=0", unitName, nLines)
@@ -585,10 +590,17 @@ func runServer() (*Server, func(), int) {
 	if err != nil {
 		panic("Error creating temporary directory")
 	}
-	closer := func() { os.RemoveAll(tmpdir) }
+	logdir, err := ioutil.TempDir("", "itzo-test-logs")
+	if err != nil {
+		panic("Error creating temporary directory")
+	}
+	closer := func() {
+		os.RemoveAll(tmpdir)
+		os.RemoveAll(logdir)
+	}
 	s := &Server{
 		installRootdir: tmpdir,
-		unitMgr:        NewUnitManager(tmpdir),
+		unitMgr:        NewUnitManager(tmpdir, logdir),
 		podController:  NewPodController(tmpdir, nil, nil, nil),
 	}
 	s.getHandlers()

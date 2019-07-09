@@ -17,7 +17,9 @@ import (
 )
 
 const (
-	logBuffSize = 4096
+	logBuffSize      = 4096
+	maxLogFileSize   = 100 * 1024 * 1024
+	unitLogDirectory = "/var/log/containers"
 )
 
 func StartUnit(rootdir, podname, unitname, workingdir string, command []string, policy api.RestartPolicy) error {
@@ -35,13 +37,15 @@ type UnitManager struct {
 	rootDir      string
 	runningUnits *conmap.StringOsProcess
 	logbuf       *conmap.StringLogbufLogBuffer
+	logDirectory string
 }
 
-func NewUnitManager(rootDir string) *UnitManager {
+func NewUnitManager(rootDir, unitLogDir string) *UnitManager {
 	return &UnitManager{
 		rootDir:      rootDir,
 		runningUnits: conmap.NewStringOsProcess(),
 		logbuf:       conmap.NewStringLogbufLogBuffer(),
+		logDirectory: unitLogDir,
 	}
 }
 
@@ -199,14 +203,30 @@ func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, 
 func (um *UnitManager) CaptureLogs(name string, unit *Unit) {
 	// XXX: Make number of log lines retained configurable.
 	lp := unit.LogPipe
+
 	um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
+	logfile, err := logbuf.NewJsonLogWriter(um.logDirectory, name, maxLogFileSize)
+	if err != nil {
+		glog.Errorf("Error setting up file logging: %s", err.Error())
+	}
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.StdoutLogSource, line)
+		entry := logbuf.MakeLogEntry(logbuf.StdoutLogSource, line)
+		um.logbuf.Get(name).Write(entry)
+		err := logfile.Write(entry)
+		if err != nil {
+			glog.Errorf("Error writing stdout log: %s", err.Error())
+		}
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
+		entry := logbuf.MakeLogEntry(logbuf.StderrLogSource, line)
+		um.logbuf.Get(name).Write(entry)
+		err := logfile.Write(entry)
+		if err != nil {
+			glog.Errorf("Error writing stderr log: %s", err.Error())
+		}
 	})
 	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
+		entry := logbuf.MakeLogEntry(logbuf.HelperLogSource, line)
+		um.logbuf.Get(name).Write(entry)
 	})
 }

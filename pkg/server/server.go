@@ -76,7 +76,7 @@ func New(rootdir string) *Server {
 		rootdir = DEFAULT_ROOTDIR
 	}
 	mounter := mount.NewOSMounter(rootdir)
-	um := NewUnitManager(rootdir)
+	um := NewUnitManager(rootdir, unitLogDirectory)
 	resolvUpdater := &RealResolvConfUpdater{
 		filepath: "/etc/resolv.conf",
 	}

@@ -21,7 +21,7 @@ func NewRotatingFile(directory, filename string, maxSize int) (*RotatingFile, er
 		return nil, fmt.Errorf("Error creating log directory %s: %v", directory, err)
 	}
 	filePath := path.Join(directory, filename)
-	fp, err := os.Create(filePath)
+	fp, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0640)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating logfile %s: %v", filePath, err)
 	}
@@ -74,18 +74,18 @@ func (rf *RotatingFile) rotate() error {
 	return nil
 }
 
-type LogOutput struct {
+type JsonLogWriter struct {
 	sink    *RotatingFile
 	encoder *json.Encoder
 }
 
-func NewLogOutput(directory, unitName string, maxSize int) (*LogOutput, error) {
+func NewJsonLogWriter(directory, unitName string, maxSize int) (*JsonLogWriter, error) {
 	sink, err := NewRotatingFile(directory, unitName, maxSize)
 	if err != nil {
 		return nil, err
 	}
 	encoder := json.NewEncoder(sink)
-	logger := &LogOutput{
+	logger := &JsonLogWriter{
 		sink:    sink,
 		encoder: encoder,
 	}
@@ -93,6 +93,6 @@ func NewLogOutput(directory, unitName string, maxSize int) (*LogOutput, error) {
 }
 
 // Todo, consider turning this into an io.Writer by not using the encoder
-func (o LogOutput) Write(entry LogEntry) error {
+func (o JsonLogWriter) Write(entry LogEntry) error {
 	return o.encoder.Encode(entry)
 }

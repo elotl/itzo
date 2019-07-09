@@ -21,6 +21,14 @@ type LogEntry struct {
 	Line      string    `json:"log"`
 }
 
+func MakeLogEntry(source LogSource, line string) LogEntry {
+	return LogEntry{
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Source:    source,
+		Line:      line,
+	}
+}
+
 func (le *LogEntry) Format(withMetadata bool) string {
 	if !withMetadata {
 		return le.Line
@@ -63,12 +71,7 @@ func (lb *LogBuffer) GetOffset() int64 {
 	return lb.offset
 }
 
-func (lb *LogBuffer) Write(source LogSource, line string) {
-	e := LogEntry{
-		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
-		Source:    source,
-		Line:      line,
-	}
+func (lb *LogBuffer) Write(e LogEntry) {
 	bufLoc := lb.offset % lb.capacity
 	lb.buf[bufLoc] = e
 	lb.offset++
