@@ -16,9 +16,9 @@ const (
 type LogSource string
 
 type LogEntry struct {
-	Timestamp string
-	Source    LogSource
-	Line      string
+	Timestamp string    `json:"time"`
+	Source    LogSource `json:"stream"`
+	Line      string    `json:"log"`
 }
 
 func (le *LogEntry) Format(withMetadata bool) string {
