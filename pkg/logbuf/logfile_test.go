@@ -89,15 +89,17 @@ func TestRotatingFileWriteRotates(t *testing.T) {
 func TestLogOutputWrite(t *testing.T) {
 	tempDir, closer := newTestDir(t)
 	defer closer()
-	emitter, err := NewJsonLogWriter(tempDir, logFileName, 100000)
+	rotatingFile, err := NewRotatingFile(tempDir, logFileName, 100000)
 	assert.NoError(t, err)
+	emitter := NewJsonLogWriter(rotatingFile)
 	nowStr := time.Now().UTC().Format(time.RFC3339Nano)
 	entry := LogEntry{
 		Timestamp: nowStr,
 		Source:    StdoutLogSource,
 		Line:      string(sampleLine),
 	}
-	emitter.Write(entry)
+	err = emitter.Write(entry)
+	assert.NoError(t, err)
 	filepath := path.Join(tempDir, logFileName)
 	b, err := ioutil.ReadFile(filepath)
 	assert.NoError(t, err)

@@ -3,6 +3,7 @@ package logbuf
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"sync"
@@ -91,21 +92,16 @@ func (rf *RotatingFile) rotate() error {
 }
 
 type JsonLogWriter struct {
-	sink *RotatingFile
+	sink io.Writer
 }
 
-func NewJsonLogWriter(directory, unitName string, maxSize int) (*JsonLogWriter, error) {
-	sink, err := NewRotatingFile(directory, unitName, maxSize)
-	if err != nil {
-		return nil, err
-	}
+func NewJsonLogWriter(sink io.Writer) *JsonLogWriter {
 	logger := &JsonLogWriter{
 		sink: sink,
 	}
-	return logger, nil
+	return logger
 }
 
-// Todo, consider turning this into an io.Writer by not using the encoder
 func (o JsonLogWriter) Write(entry LogEntry) error {
 	b, err := json.Marshal(entry)
 	if err != nil {

@@ -203,12 +203,12 @@ func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, 
 func (um *UnitManager) CaptureLogs(name string, unit *Unit) {
 	// XXX: Make number of log lines retained configurable.
 	lp := unit.LogPipe
-
 	um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
-	logfile, err := logbuf.NewJsonLogWriter(um.logDirectory, name, maxLogFileSize)
+	rotatingFile, err := logbuf.NewRotatingFile(um.logDirectory, name, maxLogFileSize)
 	if err != nil {
-		glog.Errorf("Error setting up file logging: %s", err.Error())
+		glog.Errorf("Error creating rotating file: %s", err.Error())
 	}
+	logfile := logbuf.NewJsonLogWriter(rotatingFile)
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
 		entry := logbuf.MakeLogEntry(logbuf.StdoutLogSource, line)
 		um.logbuf.Get(name).Write(entry)
