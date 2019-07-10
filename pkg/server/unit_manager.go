@@ -204,7 +204,8 @@ func (um *UnitManager) CaptureLogs(name string, unit *Unit) {
 	// XXX: Make number of log lines retained configurable.
 	lp := unit.LogPipe
 	um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
-	rotatingFile, err := logbuf.NewRotatingFile(um.logDirectory, name, maxLogFileSize)
+	logfileName := name + ".log"
+	rotatingFile, err := logbuf.NewRotatingFile(um.logDirectory, logfileName, maxLogFileSize)
 	if err != nil {
 		glog.Errorf("Error creating rotating file: %s", err.Error())
 	}
