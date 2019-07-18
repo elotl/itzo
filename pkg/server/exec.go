@@ -102,7 +102,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		command = append(nsenterCmd, command...)
 	}
 
-	glog.Infof("exec command: %v", command)
+	glog.Infof("Exec command: %v params: %+v", command, params)
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Env = env
 	if params.TTY {
@@ -220,6 +220,7 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 				glog.Warningf("error resizing pty: %s", err)
 				return
 			}
+			glog.Infof("Exec PTY has been resized to %+v", s)
 		}
 	}()
 
