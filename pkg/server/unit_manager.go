@@ -28,7 +28,7 @@ func StartUnit(rootdir, podname, unitname, workingdir string, command []string, 
 	mounter := mount.NewOSMounter(rootdir)
 	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",
 		command, unitname, rootdir, os.Environ(), workingdir, policy)
-	return unit.Run(podname, command, os.Environ(), workingdir, policy, mounter)
+	return unit.Run(podname, command, workingdir, policy, mounter)
 }
 
 type UnitManager struct {
