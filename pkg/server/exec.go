@@ -57,7 +57,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 			writeWSErrorExitcode(ws, "%v\n", errmsg)
 			return
 		}
-		uid, gid, _, _, err := unit.GetUser(userLookup)
+		uid, gid, _, homedir, err := unit.GetUser(userLookup)
 		if err != nil {
 			errmsg := fmt.Errorf("Error getting unit %s user for exec: %v",
 				unitName, err)
@@ -81,6 +81,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		for k, v := range proc.Environ {
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
+		env = ensureDefaultEnviron(env, params.PodName, homedir)
 		nsenterCmd := []string{
 			"/usr/bin/nsenter",
 			"-t",
@@ -101,7 +102,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		command = append(nsenterCmd, command...)
 	}
 
-	glog.Infof("exec command: %v", command)
+	glog.Infof("Exec command: %v params: %+v", command, params)
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Env = env
 	if params.TTY {
@@ -219,6 +220,7 @@ func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 				glog.Warningf("error resizing pty: %s", err)
 				return
 			}
+			glog.Infof("Exec PTY has been resized to %+v", s)
 		}
 	}()
 

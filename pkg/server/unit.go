@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -514,14 +515,14 @@ func maybeBackOff(err error, command []string, backoff *time.Duration, runningTi
 	sleep(*backoff)
 }
 
-func (u *Unit) runUnitLoop(command, env, caplist []string, uid, gid uint32, groups []uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
+func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
 	backoff := 1 * time.Second
 	restarts := -1
 	for {
 		restarts++
 		start := time.Now()
 		cmd := exec.Command(command[0], command[1:]...)
-		cmd.Env = env
+		cmd.Env = os.Environ()
 		cmd.Stdin = unitin
 		cmd.Stdout = unitout
 		cmd.Stderr = uniterr
@@ -740,7 +741,7 @@ func (u *Unit) applySysctls() error {
 	return nil
 }
 
-func (u *Unit) Run(podname string, command, env []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
+func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",
@@ -867,6 +868,13 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		u.statusPath = "/status"
 	}
 
+	err = syscall.Sethostname([]byte(podname))
+	if err != nil {
+		glog.Errorf("Failed to set hostname to %s: %v", podname, err)
+		u.setStateToStartFailure(err)
+		return err
+	}
+
 	uid, gid, groups, homedir, err := u.GetUser(&util.OsUserLookup{})
 	if err != nil {
 		u.setStateToStartFailure(err)
@@ -879,22 +887,16 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		}
 	}
 
-	// Make user HOME, HOSTNAME, PATH and TERM are set (same variables Docker
-	// ensures are set). See
-	// https://docs.docker.com/v17.09/engine/reference/run/#env-environment-variables
-	// for more information.
-	if podname != "" {
-		err = syscall.Sethostname([]byte(podname))
+	env := ensureDefaultEnviron(os.Environ(), podname, homedir)
+	for _, e := range env {
+		items := strings.SplitN(e, "=", 2)
+		err = os.Setenv(items[0], items[1])
 		if err != nil {
-			glog.Errorf("Failed to set hostname to %s: %v", podname, err)
+			glog.Errorf("Failed to add default envvar %q: %v", e, err)
 			u.setStateToStartFailure(err)
 			return err
 		}
-		env = util.AddToEnvList(env, "HOSTNAME", podname, true)
 	}
-	env = util.AddToEnvList(env, "TERM", "xterm", false)
-	env = util.AddToEnvList(env, "HOME", homedir, false)
-	env = util.AddToEnvList(env, "PATH", defaultPath, false)
 
 	err = os.Chmod("/", 0755)
 	if err != nil {
@@ -933,5 +935,17 @@ func (u *Unit) Run(podname string, command, env []string, workingdir string, pol
 		return err
 	}
 
-	return u.runUnitLoop(command, env, caplist, uid, gid, groups, unitin, unitout, uniterr, policy)
+	return u.runUnitLoop(command, caplist, uid, gid, groups, unitin, unitout, uniterr, policy)
+}
+
+func ensureDefaultEnviron(env []string, podname, homedir string) []string {
+	// Make user HOME, HOSTNAME, PATH and TERM are set (same variables Docker
+	// ensures are set). See
+	// https://docs.docker.com/v17.09/engine/reference/run/#env-environment-variables
+	// for more information.
+	env = util.AddToEnvList(env, "HOSTNAME", podname, true)
+	env = util.AddToEnvList(env, "TERM", "xterm", false)
+	env = util.AddToEnvList(env, "HOME", homedir, false)
+	env = util.AddToEnvList(env, "PATH", defaultPath, false)
+	return env
 }
