@@ -182,83 +182,85 @@ EOF
 
 fi
 
-# #
-# # Note: the driver and libcuda client libraries need to be in sync, e.g. both
-# # using the 387.26 interface.
-# #
-# step 'Add NVidia driver'
-# wget http://itzo-packages.s3.amazonaws.com/nvidia.tar.gz
-# tar xvzf nvidia.tar.gz
-# for kernel in /lib/modules/*; do
-#     mkdir -p "${kernel}/misc"
-#     cp nvidia*.ko "${kernel}/misc/"
-#     depmod -a "$(basename ${kernel})"
-# done
-# rm nvidia.tar.gz
+step 'Add NVidia driver'
+apk --no-cache add ca-certificates wget
+wget -q -O /etc/apk/keys/sgerrand.rsa.pub https://alpine-pkgs.sgerrand.com/sgerrand.rsa.pub
+wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.29-r0/glibc-2.29-r0.apk
+wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.29-r0/glibc-bin-2.29-r0.apk
+wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.29-r0/glibc-dev-2.29-r0.apk
+apk add glibc-2.29-r0.apk glibc-bin-2.29-r0.apk glibc-dev-2.29-r0.apk
+apk add gcc make musl-dev linux-virt-dev
+DRIVER_VERSION=410.104
+#DRIVER_VERSION=418.67
+wget http://us.download.nvidia.com/tesla/$DRIVER_VERSION/NVIDIA-Linux-x86_64-$DRIVER_VERSION.run
+#wget http://us.download.nvidia.com/XFree86/Linux-x86_64/$DRIVER_VERSION/NVIDIA-Linux-x86_64-$DRIVER_VERSION.run
+bash NVIDIA-Linux-x86_64-$DRIVER_VERSION.run -q
+apk del binutils gmp isl libgomp libatomic libgcc mpfr3 mpc1 libstdc++ gcc libbz2 perl libgmpxx gmp-dev elfutils-libelf elfutils-dev ncurses-terminfo-base ncurses-terminfo ncurses-libs readline bash m4 flex bison linux-virt-dev make musl-dev glibc glibc-bin glibc-dev
+rm -f NVIDIA-Linux-x86_64-$DRIVER_VERSION.run
 
-# cat > /etc/modprobe.d/nvidia.conf <<-EOF
-# blacklist amd76x_edac
-# blacklist vga16fb
-# blacklist nouveau
-# blacklist rivafb
-# blacklist nvidiafb
-# blacklist rivatv
-# EOF
+cat > /etc/modprobe.d/nvidia.conf <<-EOF
+blacklist amd76x_edac
+blacklist vga16fb
+blacklist nouveau
+blacklist rivafb
+blacklist nvidiafb
+blacklist rivatv
+EOF
 
-# cat > /etc/init.d/nvidia <<-EOF
-# #!/sbin/openrc-run
+cat > /etc/init.d/nvidia <<-EOF
+#!/sbin/openrc-run
 
-# name=\$RC_SVCNAME
+name=\$RC_SVCNAME
 
-# depend() {
-#         after bootmisc
-#         need localmount
-# }
+depend() {
+        after bootmisc
+        need localmount
+}
 
-# start() {
-#   #
-#   # This is the recommended script from:
-#   #
-#   #   http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
-#   #
-#   /sbin/modprobe nvidia
-#   if [ "\$?" -eq 0 ]; then
-#     # Count the number of NVIDIA controllers found.
-#     NVDEVS=\`lspci | grep -i NVIDIA\`
-#     N3D=\`echo "\$NVDEVS" | grep "3D controller" | wc -l\`
-#     NVGA=\`echo "\$NVDEVS" | grep "VGA compatible controller" | wc -l\`
-#     N=\`expr \$N3D + \$NVGA - 1\`
-#     for i in \`seq 0 \$N\`; do
-#       if [[ ! -e "/dev/nvidia\$i" ]]; then
-#         echo "Creating /dev/nvidia\$i c 195 \$i"
-#         mknod -m 666 /dev/nvidia\$i c 195 \$i
-#       fi
-#     done
-#     if [[ ! -e "/dev/nvidiactl" ]]; then
-#       echo "Creating /dev/nvidiactl c 195 255"
-#       mknod -m 666 /dev/nvidiactl c 195 255
-#     fi
-#   fi
+start() {
+  #
+  # This is the recommended script from:
+  #
+  #   http://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
+  #
+  /sbin/modprobe nvidia
+  if [ "\$?" -eq 0 ]; then
+    # Count the number of NVIDIA controllers found.
+    NVDEVS=\`lspci | grep -i NVIDIA\`
+    N3D=\`echo "\$NVDEVS" | grep "3D controller" | wc -l\`
+    NVGA=\`echo "\$NVDEVS" | grep "VGA compatible controller" | wc -l\`
+    N=\`expr \$N3D + \$NVGA - 1\`
+    for i in \`seq 0 \$N\`; do
+      if [[ ! -e "/dev/nvidia\$i" ]]; then
+        echo "Creating /dev/nvidia\$i c 195 \$i"
+        mknod -m 666 /dev/nvidia\$i c 195 \$i
+      fi
+    done
+    if [[ ! -e "/dev/nvidiactl" ]]; then
+      echo "Creating /dev/nvidiactl c 195 255"
+      mknod -m 666 /dev/nvidiactl c 195 255
+    fi
+  fi
 
-#   /sbin/modprobe nvidia-uvm
-#   if [ "\$?" -eq 0 ]; then
-#     # Find out the major device number used by the nvidia-uvm driver
-#     D=\`grep nvidia-uvm /proc/devices | awk '{print \$1}'\`
-#     if [[ ! -e "/dev/nvidia-uvm" ]]; then
-#       echo "Creating /dev/nvidia-uvm c \$D 0"
-#       mknod -m 666 /dev/nvidia-uvm c \$D 0
-#     fi
-#   fi
-# }
+  /sbin/modprobe nvidia-uvm
+  if [ "\$?" -eq 0 ]; then
+    # Find out the major device number used by the nvidia-uvm driver
+    D=\`grep nvidia-uvm /proc/devices | awk '{print \$1}'\`
+    if [[ ! -e "/dev/nvidia-uvm" ]]; then
+      echo "Creating /dev/nvidia-uvm c \$D 0"
+      mknod -m 666 /dev/nvidia-uvm c \$D 0
+    fi
+  fi
+}
 
-# stop() {
-#   for ko in nvidia-uvm nvidia-modeset nvidia-drm nvidia; do
-#     /bin/lsmod | grep "\<\$ko\>" && /sbin/rmmod \$ko
-#   done
-# }
-# EOF
-# chmod 755 /etc/init.d/nvidia
-# cat /etc/init.d/nvidia
+stop() {
+  for ko in nvidia-uvm nvidia-modeset nvidia-drm nvidia; do
+    /bin/lsmod | grep "\<\$ko\>" && /sbin/rmmod \$ko
+  done
+}
+EOF
+chmod 755 /etc/init.d/nvidia
+cat /etc/init.d/nvidia
 
 step 'Load iptables modules at boot'
 echo 'iptable_nat' >> /etc/modules
