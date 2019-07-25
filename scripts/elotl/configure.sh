@@ -191,10 +191,9 @@ wget https://github.com/sgerrand/alpine-pkg-glibc/releases/download/2.29-r0/glib
 apk add glibc-2.29-r0.apk glibc-bin-2.29-r0.apk glibc-dev-2.29-r0.apk
 apk add gcc make musl-dev linux-virt-dev
 DRIVER_VERSION=410.104
-#DRIVER_VERSION=418.67
+KERNEL_VERSION=$(ls -d /usr/src/linux-headers-* | tail -n1 | sed 's#/usr/src/linux-headers-##g')
 wget http://us.download.nvidia.com/tesla/$DRIVER_VERSION/NVIDIA-Linux-x86_64-$DRIVER_VERSION.run
-#wget http://us.download.nvidia.com/XFree86/Linux-x86_64/$DRIVER_VERSION/NVIDIA-Linux-x86_64-$DRIVER_VERSION.run
-bash NVIDIA-Linux-x86_64-$DRIVER_VERSION.run -q
+sh NVIDIA-Linux-x86_64-$DRIVER_VERSION.run -k $KERNEL_VERSION -q
 apk del binutils gmp isl libgomp libatomic libgcc mpfr3 mpc1 libstdc++ gcc libbz2 perl libgmpxx gmp-dev elfutils-libelf elfutils-dev ncurses-terminfo-base ncurses-terminfo ncurses-libs readline bash m4 flex bison linux-virt-dev make musl-dev glibc glibc-bin glibc-dev
 rm -f NVIDIA-Linux-x86_64-$DRIVER_VERSION.run
 
