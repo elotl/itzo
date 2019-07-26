@@ -257,6 +257,10 @@ EOF
 chmod 755 /etc/init.d/nvidia
 cat /etc/init.d/nvidia
 
+step 'Install nvidia-container-cli'
+wget -O /usr/local/bin/nvidia-container-cli https://s3.amazonaws.com/itzo-packages/nvidia-container-cli
+chmod 755 /usr/local/bin/nvidia-container-cli
+
 step 'Load iptables modules at boot'
 echo 'iptable_nat' >> /etc/modules
 
