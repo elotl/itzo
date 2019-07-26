@@ -319,7 +319,7 @@ rc-update add sshd default
 rc-update add itzo default
 rc-update add resizeroot default
 rc-update add itzo_iptables default
-# rc-update add nvidia default
+rc-update add nvidia default
 rc-update add net.lo boot
 rc-update add termencoding boot
 rc-update add haveged boot
