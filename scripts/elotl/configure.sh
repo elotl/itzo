@@ -34,10 +34,6 @@ sed -Ei \
 	-e 's/^[# ](unicode)=.*/\1=YES/' \
 	/etc/rc.conf
 
-step 'Create ld-linux-x86-64.so.2 link'
-mkdir -p /lib64
-ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
-
 step 'Set password for root'
 echo 'root:*' | chpasswd -e
 
@@ -309,6 +305,10 @@ step 'Sysctl tweaks'
 cat > /etc/sysctl.d/local.conf <<-EOF
 fs.file-max = 1024000
 EOF
+
+step 'Create ld-linux-x86-64.so.2 link'
+mkdir -p /lib64
+ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
 step 'Enable services'
 rc-update add acpid default
