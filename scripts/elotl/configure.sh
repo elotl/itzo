@@ -190,7 +190,7 @@ DRIVER_VERSION=410.104
 KERNEL_VERSION=$(ls -d /usr/src/linux-headers-* | tail -n1 | sed 's#/usr/src/linux-headers-##g')
 wget http://us.download.nvidia.com/tesla/$DRIVER_VERSION/NVIDIA-Linux-x86_64-$DRIVER_VERSION.run
 sh NVIDIA-Linux-x86_64-$DRIVER_VERSION.run -k $KERNEL_VERSION -q
-apk del binutils gmp isl libgomp libatomic libgcc mpfr3 mpc1 libstdc++ gcc libbz2 perl libgmpxx gmp-dev elfutils-libelf elfutils-dev ncurses-terminfo-base ncurses-terminfo ncurses-libs readline bash m4 flex bison linux-virt-dev make musl-dev glibc glibc-bin glibc-dev
+apk del binutils gmp isl libgomp libatomic mpfr3 mpc1 libstdc++ gcc libbz2 perl libgmpxx gmp-dev elfutils-libelf elfutils-dev ncurses-terminfo-base ncurses-terminfo ncurses-libs readline bash m4 flex bison linux-virt-dev make musl-dev
 rm -f NVIDIA-Linux-x86_64-$DRIVER_VERSION.run glibc-*.apk
 
 cat > /etc/modprobe.d/nvidia.conf <<-EOF
