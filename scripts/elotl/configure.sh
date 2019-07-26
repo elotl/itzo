@@ -258,6 +258,12 @@ chmod 755 /etc/init.d/nvidia
 cat /etc/init.d/nvidia
 
 step 'Install nvidia-container-cli'
+# This is from https://github.com/NVIDIA/libnvidia-container. To compile in
+# extra libraries (not available as compiled against glibc on Alpine)
+# statically, build it via:
+#
+# $ make BIN_LDLIBS="libnvidia-container.a /usr/lib/x86_64-linux-gnu/libseccomp.a /usr/lib/x86_64-linux-gnu/libcap.a -ldl \$(LDLIBS)"
+#
 wget -O /usr/local/bin/nvidia-container-cli https://s3.amazonaws.com/itzo-packages/nvidia-container-cli
 chmod 755 /usr/local/bin/nvidia-container-cli
 
