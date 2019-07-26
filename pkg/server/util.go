@@ -21,11 +21,13 @@ import (
 )
 
 var (
-	TOSI_MAX_RETRIES        = 3
-	MaxBufferSize     int64 = 1024 * 1024 * 10 // 10MB
-	TOSI_PRG                = "tosi"
-	TOSI_OUTPUT_LIMIT       = 4096
-	ITZO_GROUP_ID           = 600 // Group is created when the image is created
+	TOSI_MAX_RETRIES               = 3
+	MaxBufferSize            int64 = 1024 * 1024 * 10 // 10MB
+	TOSI_PRG                       = "tosi"
+	TOSI_OUTPUT_LIMIT              = 4096
+	NVIDIA_CONTAINER_CLI_PRG       = "nvidia-container-cli"
+	NVIDIA_SMI_PRG                 = "nvidia-smi"
+	ITZO_GROUP_ID                  = 600 // Group is created when the image is created
 )
 
 func copyFile(src, dst string) error {
@@ -438,5 +440,52 @@ func doDeployPackage(filename, destdir string) (err error) {
 		}
 	}
 
+	return nil
+}
+
+func setupGpu(rootfs string) error {
+	if _, err := os.Stat("/dev/nvidiactl"); err != nil {
+		if os.IsNotExist(err) {
+			// Not a GPU instance.
+			return nil
+		}
+		glog.Errorf("Checking /dev/nvidiactl: %v", err)
+		return err
+	}
+	cli, err := exec.LookPath(NVIDIA_CONTAINER_CLI_PRG)
+	if err != nil {
+		glog.Errorf("Looking up %s: %v", NVIDIA_CONTAINER_CLI_PRG, err)
+		return err
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	// Run nvidia-smi first, since it does some initialization without which
+	// nvidia-container-cli will fail.
+	cmd := exec.Command(NVIDIA_SMI_PRG)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err = cmd.Run(); err != nil {
+		glog.Errorf("Running %+v: %v stderr:\n%s", cmd, err, stderr.String())
+		return err
+	}
+	stdout.Reset()
+	stderr.Reset()
+	args := []string{
+		"configure",
+		"--compute",
+		"--no-cgroups",
+		"--no-devbind",
+		"--utility",
+		//		"--ldconfig",
+		//		"/usr/glibc-compat/sbin/ldconfig",
+		rootfs,
+	}
+	cmd = exec.Command(cli, args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err = cmd.Run(); err != nil {
+		glog.Errorf("Running %+v: %v stderr:\n%s", cmd, err, stderr.String())
+		return err
+	}
 	return nil
 }

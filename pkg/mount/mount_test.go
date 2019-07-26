@@ -29,7 +29,7 @@ func TestMountSpecial(t *testing.T) {
 		return nil
 	}
 	m := NewOSMounter("")
-	err := m.MountSpecial()
+	err := m.MountSpecial("")
 	assert.Nil(t, err)
 	assert.Equal(t, 4, len(mounts))
 }
@@ -48,7 +48,7 @@ func TestMountSpecialFail(t *testing.T) {
 		return nil
 	}
 	m := NewOSMounter("")
-	err := m.MountSpecial()
+	err := m.MountSpecial("")
 	assert.NotNil(t, err)
 	assert.True(t, unmountCalled)
 	assert.Equal(t, failedTarget, unmountTarget)
@@ -61,7 +61,7 @@ func TestUnmountSpecial(t *testing.T) {
 		return nil
 	}
 	m := NewOSMounter("")
-	m.UnmountSpecial()
+	m.UnmountSpecial("")
 	assert.Equal(t, 4, len(unmounts))
 }
 
