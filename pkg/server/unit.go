@@ -741,6 +741,10 @@ func (u *Unit) applySysctls() error {
 	return nil
 }
 
+func (u *Unit) setupGpu() error {
+	return setupGpu(u.GetRootfs())
+}
+
 func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
@@ -832,11 +836,28 @@ func (u *Unit) Run(podname string, command []string, workingdir string, policy a
 			u.setStateToStartFailure(err)
 			return err
 		}
-		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
-			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
+		if err := mounter.MountSpecial(u.Name); err != nil {
+			glog.Errorf("mountSpecial(): %v", err)
 			u.setStateToStartFailure(err)
 			return err
 		}
+		//  The virtual filesystems (proc, dev, ...) are now mounted into the
+		//  rootfs of the unit. If this is a GPU instance, we'll have to do
+		//  some extra steps for setting up the unit (mounting in the right
+		//  version of support libraries, etc) before calling pivot_root().
+		if err := u.setupGpu(); err != nil {
+			glog.Errorf("setupGpu(): %v", err)
+			mounter.UnmountSpecial(u.Name)
+			u.setStateToStartFailure(err)
+			return err
+		}
+		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
+			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
+			mounter.UnmountSpecial(u.Name)
+			u.setStateToStartFailure(err)
+			return err
+		}
+		defer mounter.UnmountSpecial("")
 		if err := os.Chdir("/"); err != nil {
 			glog.Errorf("Chdir() /: %v", err)
 			u.setStateToStartFailure(err)
@@ -858,13 +879,6 @@ func (u *Unit) Run(podname string, command []string, workingdir string, policy a
 			return err
 		}
 		os.Remove("/.oldrootfs")
-
-		if err := mounter.MountSpecial(); err != nil {
-			glog.Errorf("mountSpecial(): %v", err)
-			u.setStateToStartFailure(err)
-			return err
-		}
-		defer mounter.UnmountSpecial()
 		u.statusPath = "/status"
 	}
 

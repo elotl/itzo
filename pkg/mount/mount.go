@@ -29,8 +29,8 @@ type Mounter interface {
 	DeleteMount(volume *api.Volume) error
 	AttachMount(unitname, src, dst string) error
 	DetachMount(unitname, dst string) error
-	MountSpecial() error
-	UnmountSpecial()
+	MountSpecial(unitname string) error
+	UnmountSpecial(unitname string)
 	BindMount(src, dst string) error
 	Unmount(dir string) error
 	PivotRoot(rootfs, oldrootfs string) error
@@ -84,27 +84,37 @@ func NewOSMounter(basedir string) Mounter {
 	}
 }
 
-func (om *OSMounter) UnmountSpecial() {
+func (om *OSMounter) UnmountSpecial(unitname string) {
+	rootfs := "/"
+	if unitname != "" {
+		rootfs = filepath.Join(om.basedir, unitname, "ROOTFS")
+	}
 	// Unmount in reverse order, since /dev/pts is inside /dev.
 	for i := len(Mounts) - 1; i >= 0; i-- {
 		m := Mounts[i]
-		glog.Infof("Trying to Unmount() %s; this might fail", m.Target)
-		if err := unmounter(m.Target, syscall.MNT_DETACH); err != nil {
-			glog.Warningf("Unmount() %s: %v", m.Target, err)
+		target := filepath.Join(rootfs, m.Target)
+		glog.Infof("Trying to Unmount() %s; this might fail", target)
+		if err := unmounter(target, syscall.MNT_DETACH); err != nil {
+			glog.Warningf("Unmount() %s: %v", target, err)
 		}
 	}
 }
 
-func (om *OSMounter) MountSpecial() error {
+func (om *OSMounter) MountSpecial(unitname string) error {
+	rootfs := "/"
+	if unitname != "" {
+		rootfs = filepath.Join(om.basedir, unitname, "ROOTFS")
+	}
 	for _, m := range Mounts {
-		if err := os.MkdirAll(m.Target, 0700); err != nil {
-			glog.Errorf("MkdirAll() %s: %v", m.Target, err)
+		target := filepath.Join(rootfs, m.Target)
+		if err := os.MkdirAll(target, 0700); err != nil {
+			glog.Errorf("MkdirAll() %s: %v", target, err)
 			return err
 		}
-		glog.Infof("Mounting %s -> %s", m.Source, m.Target)
-		if err := mounter(m.Source, m.Target, m.Fs, uintptr(m.Flags), m.Data); err != nil {
-			glog.Errorf("Mount() %s -> %s: %v", m.Source, m.Target, err)
-			om.UnmountSpecial()
+		glog.Infof("Mounting %s -> %s", m.Source, target)
+		if err := mounter(m.Source, target, m.Fs, uintptr(m.Flags), m.Data); err != nil {
+			glog.Errorf("Mount() %s -> %s: %v", m.Source, target, err)
+			om.UnmountSpecial(unitname)
 			return err
 		}
 	}
