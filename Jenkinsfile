@@ -11,7 +11,7 @@ metadata:
 spec:
   containers:
   - name: golang
-    image: golang:1.12
+    image: elotl/golangbuild:latest
     command:
     - cat
     tty: true
@@ -24,6 +24,12 @@ spec:
         cpu: "2000m"
 """
     }
+  }
+  environment {
+    AWS_DEFAULT_REGION    = 'us-east-1'
+    AWS_REGION            = 'us-east-1'
+    AWS_ACCESS_KEY_ID     = 'AKIA2BCIPONCV63FKG4J'
+    AWS_SECRET_ACCESS_KEY = credentials('aws-ci-secret-key')
   }
   stages {
     stage('Build itzo') {
