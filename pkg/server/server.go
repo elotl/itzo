@@ -37,7 +37,7 @@ const (
 	ITZO_VERSION      = "1.0"
 	FILE_BYTES_LIMIT  = 4096
 	// Screw it, I'm changing to go convention, no captials...
-	logTailPeriod = 250 * time.Millisecond
+	logTailPeriod = 500 * time.Millisecond
 	// We really want metrics every 15s but this allows a bit of
 	// wiggle room on the timing
 	minMetricPeriod = 14 * time.Second
