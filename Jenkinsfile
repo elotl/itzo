@@ -13,9 +13,9 @@ spec:
   - name: golang
     image: elotl/golangbuild:latest
     command: 
-    - /bin/sh
+    - "/bin/sh"
     - "-c" 
-    - "sleep 10000
+    - "sleep 10000"
     tty: true
     resources:
       requests:
