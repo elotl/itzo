@@ -11,9 +11,11 @@ metadata:
 spec:
   containers:
   - name: golang
-    image: golang:1.12
+    image: elotl/golangbuild:latest
     command: 
-    - cat
+    - /bin/sh
+    - "-c" 
+    - "sleep 10000
     tty: true
     resources:
       requests:
