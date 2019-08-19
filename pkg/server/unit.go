@@ -28,6 +28,7 @@ const (
 	MAX_BACKOFF_TIME   = 5 * time.Minute
 	BACKOFF_RESET_TIME = 10 * time.Minute
 	CHILD_OOM_SCORE    = 15 // chosen arbitrarily... kernel will adjust this value
+	MAX_HOSTNAME_LEN   = 63
 )
 
 const defaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -882,9 +883,10 @@ func (u *Unit) Run(podname string, command []string, workingdir string, policy a
 		u.statusPath = "/status"
 	}
 
-	err = syscall.Sethostname([]byte(podname))
+	hostname := makeHostname(podname)
+	err = syscall.Sethostname([]byte(hostname))
 	if err != nil {
-		glog.Errorf("Failed to set hostname to %s: %v", podname, err)
+		glog.Errorf("Failed to set hostname to %s: %v", hostname, err)
 		u.setStateToStartFailure(err)
 		return err
 	}
@@ -957,9 +959,18 @@ func ensureDefaultEnviron(env []string, podname, homedir string) []string {
 	// ensures are set). See
 	// https://docs.docker.com/v17.09/engine/reference/run/#env-environment-variables
 	// for more information.
-	env = util.AddToEnvList(env, "HOSTNAME", podname, true)
+	hostname := makeHostname(podname)
+	env = util.AddToEnvList(env, "HOSTNAME", hostname, true)
 	env = util.AddToEnvList(env, "TERM", "xterm", false)
 	env = util.AddToEnvList(env, "HOME", homedir, false)
 	env = util.AddToEnvList(env, "PATH", defaultPath, false)
 	return env
+}
+
+func makeHostname(podname string) string {
+	noNSName := util.GetNameFromString(podname)
+	if len(noNSName) > MAX_HOSTNAME_LEN {
+		return noNSName[:MAX_HOSTNAME_LEN]
+	}
+	return noNSName
 }

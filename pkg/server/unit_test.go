@@ -501,3 +501,17 @@ func TestMapCapabilities(t *testing.T) {
 		assert.ElementsMatch(t, uintptrSet, uintptrCaps)
 	}
 }
+
+func TestMakeHostname(t *testing.T) {
+	cases := [][]string{
+		{"foo", "foo"},
+		{"default_foo", "foo"},
+		{"default_foo_bar", "foo_bar"},
+		{"reallyreallyreallyreallyreallyreallylongnamespace_andafairlylongname", "andafairlylongname"},
+		{"foobarreallyreallyreallyreallyreallyreallyreallyreallyreallyreallyreallylongname", "foobarreallyreallyreallyreallyreallyreallyreallyreallyreallyrea"},
+	}
+	for i, tc := range cases {
+		result := makeHostname(tc[0])
+		assert.Equal(t, tc[1], result, "failed test case %d: %s -> %s", i, tc[0], result)
+	}
+}
