@@ -12,7 +12,10 @@ spec:
   containers:
   - name: golang
     image: elotl/golangbuild:latest
-    command: ['/bin/sh', '-c' 'sleep 10000']
+    command: 
+    - /bin/sh
+    - "-c" 
+    - "sleep 10000"
     tty: true
     resources:
       requests:
