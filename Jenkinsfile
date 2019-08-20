@@ -12,9 +12,9 @@ spec:
   containers:
   - name: golang
     image: elotl/golangbuild:latest
-    command: 
+    command:
     - "/bin/sh"
-    - "-c" 
+    - "-c"
     - "sleep 10000"
     tty: true
     resources:
@@ -31,7 +31,7 @@ spec:
     AWS_DEFAULT_REGION    = 'us-east-1'
     AWS_REGION            = 'us-east-1'
     AWS_ACCESS_KEY_ID     = 'AKIA2BCIPONCV63FKG4J'
-    AWS_SECRET_ACCESS_KEY = credentials('aws-ci-secret-key')
+    AWS_SECRET_ACCESS_KEY = credentials('aws-ci-iam-secret-key')
   }
   stages {
     stage('Build itzo') {

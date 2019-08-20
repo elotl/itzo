@@ -13,6 +13,7 @@ CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)
 
 echo "Current branch is $CURRENT_BRANCH"
 echo "Current tag is $CURRENT_TAG"
+echo "Build number is $BUILD_NUMBER"
 
 if [[ $CURRENT_TAG =~ ^v[0-9].* ]] || [[ $CURRENT_BRANCH == "master" ]]; then
     echo "Building itzo binary"
