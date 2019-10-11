@@ -69,9 +69,12 @@ type Server struct {
 	installRootdir string
 	lastMetricTime time.Time
 	metrics        *metrics.Metrics
+	primaryIP      string
+	secondaryIP    string
+	podIP          string
 }
 
-func New(rootdir string) *Server {
+func New(rootdir, primaryIP, secondaryIP string) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
@@ -94,6 +97,8 @@ func New(rootdir string) *Server {
 		},
 		metrics:        metrics.New(),
 		lastMetricTime: time.Now().Add(-minMetricPeriod),
+		primaryIP:      primaryIP,
+		secondaryIP:    secondaryIP,
 	}
 }
 
@@ -124,6 +129,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 			UnitStatuses:     status,
 			InitUnitStatuses: initStatus,
 			ResourceUsage:    resourceUsage,
+			PodIP:            s.podIP,
 		}
 		buf, err := json.Marshal(&reply)
 		if err != nil {
@@ -145,6 +151,10 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w,
 				fmt.Sprintf("Error decoding pod update request: %v", err))
 			return
+		}
+		s.podIP = s.secondaryIP
+		if api.IsHostNetwork(params.Spec) {
+			s.podIP = s.primaryIP
 		}
 		err = s.podController.UpdatePod(&params)
 		if err != nil {
@@ -438,7 +448,8 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientConn, err := net.Dial("tcp", "localhost:"+params.Port)
+	clientConn, err := net.Dial(
+		"tcp", fmt.Sprintf("%s:%s", s.podIP, params.Port))
 	if err != nil {
 		writeWSError(ws, "error connecting to port %s: %v\n", params.Port, err)
 		return

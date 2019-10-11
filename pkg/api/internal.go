@@ -19,6 +19,7 @@ type PodStatusReply struct {
 	UnitStatuses     []UnitStatus    `json:"unitStatus"`
 	InitUnitStatuses []UnitStatus    `json:"initUnitStatus"`
 	ResourceUsage    ResourceMetrics `json:"resourceUsage,omitempty"`
+	PodIP            string          `json:"podIP"`
 }
 
 type PortForwardParams struct {

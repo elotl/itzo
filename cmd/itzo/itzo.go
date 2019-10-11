@@ -6,18 +6,70 @@ import (
 	"os"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/server"
 	"github.com/elotl/itzo/pkg/util"
+
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
+	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
+	utilexec "k8s.io/utils/exec"
 )
 
 var buildDate string
+
+func setupPodNetwork() string {
+	glog.Infof("ensuring iptables NAT for pod IP")
+	podAddr, err := util.GetPodIPv4Address()
+	if err != nil {
+		glog.Warningf("failed to retrieve pod IP address: %v", err)
+		return ""
+	}
+	glog.Infof("pod IPv4 address: %s", podAddr)
+	execer := utilexec.New()
+	dbus := utildbus.New()
+	protocol := utiliptables.ProtocolIpv4
+	iptInterface := utiliptables.New(execer, dbus, protocol)
+	netIf, err := net.GetPrimaryNetworkInterface()
+	if err != nil {
+		glog.Warningf("failed to retrieve pod IP address: %v", err)
+		return ""
+	}
+	glog.Infof("main network interface: %s", netIf)
+	err = net.EnsurePodMasq(iptInterface, netIf, podAddr)
+	if err != nil {
+		glog.Warningf("failed to retrieve pod IP address: %v", err)
+		return ""
+	}
+	glog.Infof("enabling IP forwarding")
+	err = net.EnableForwarding()
+	if err != nil {
+		glog.Warningf("failed to enable IP forwarding: %v", err)
+		return ""
+	}
+	glog.Infof("setting up pod network namespace")
+	err = net.NewNetNamespace("pod")
+	if err != nil {
+		glog.Warningf("failed to create pod network namespace: %v", err)
+		return ""
+	}
+	glog.Infof("creating pod network interfaces")
+	err = net.CreateVeth("pod", podAddr)
+	if err != nil {
+		glog.Warningf("failed to set up pod network: %v", err)
+		return ""
+	}
+	glog.Infof("created pod network interfaces and routes")
+	return podAddr
+}
 
 func main() {
 	//  go build -ldflags "-X main.buildDate=`date -u +.%Y%m%d.%H%M%S`"
 	var version = flag.Bool("version", false, "display build date")
 	var disableTLS = flag.Bool("disable-tls", false, "don't use tls")
+	var podNetworkNamespace = flag.Bool("enable-pod-network-namespace", true,
+		"set up a network namespace for pod")
 	var port = flag.Int("port", 6421, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
 	var podname = flag.String("podname", "", "Pod name")
@@ -53,8 +105,17 @@ func main() {
 		os.Exit(0)
 	}
 
+	mainIP, err := util.GetMainIPv4Address()
+	if err != nil {
+		glog.Fatalf("Unable to determine main IP address: %v", err)
+	}
+	podIP := mainIP
+	if *podNetworkNamespace {
+		podIP = setupPodNetwork()
+	}
+
 	glog.Info("Starting up agent")
-	server := server.New(*rootdir)
+	server := server.New(*rootdir, mainIP, podIP)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
 }

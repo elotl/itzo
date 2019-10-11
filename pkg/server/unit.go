@@ -16,6 +16,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	sysctl "github.com/lorenzosaino/go-sysctl"
@@ -742,6 +743,12 @@ func (u *Unit) setupGpu() error {
 }
 
 func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
+	return net.WithNetNamespaceFromName("pod", func() error {
+		return u.doRun(podname, command, workingdir, policy, mounter)
+	})
+}
+
+func (u *Unit) doRun(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",
