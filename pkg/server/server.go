@@ -153,7 +153,7 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.podIP = s.secondaryIP
-		if api.IsHostNetwork(params.Spec) {
+		if api.IsHostNetwork(params.Spec.SecurityContext) {
 			s.podIP = s.primaryIP
 		}
 		err = s.podController.UpdatePod(&params)

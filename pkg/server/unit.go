@@ -743,6 +743,15 @@ func (u *Unit) setupGpu() error {
 }
 
 func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
+	sc, err := u.getSecurityContext()
+	if err != nil {
+		glog.Warningf("getting security context: %v", err)
+		return u.doRun(podname, command, workingdir, policy, mounter)
+	}
+	if api.IsHostNetwork(&sc.PodSecurityContext) {
+		glog.Infof("pod %q requested host network mode", podname)
+		return u.doRun(podname, command, workingdir, policy, mounter)
+	}
 	return net.WithNetNamespaceFromName("pod", func() error {
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	})

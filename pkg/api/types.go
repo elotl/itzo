@@ -47,6 +47,8 @@ type PodSpec struct {
 }
 
 type PodSecurityContext struct {
+	// PID, IPC and network namespace sharing options.
+	NamespaceOptions *NamespaceOption `json:"namespaceOptions,omitempty"`
 	// UID to run pod processes as.
 	RunAsUser *int64 `json:"runAsUser,omitempty"`
 	// GID to run pod processes as.
@@ -57,6 +59,40 @@ type PodSecurityContext struct {
 	// Set these sysctls in the pod.
 	Sysctls []Sysctl `json:"sysctls,omitempty"`
 }
+
+// NamespaceOption provides options for Linux namespaces.
+type NamespaceOption struct {
+	// Network namespace for this container/sandbox.
+	// Note: There is currently no way to set CONTAINER scoped network in the Kubernetes API.
+	// Namespaces currently set by the kubelet: POD, NODE
+	Network NamespaceMode `json:"network,omitempty"`
+	// PID namespace for this container/sandbox.
+	// Note: The CRI default is POD, but the v1.PodSpec default is CONTAINER.
+	// The kubelet's runtime manager will set this to CONTAINER explicitly for v1 pods.
+	// Namespaces currently set by the kubelet: POD, CONTAINER, NODE
+	Pid NamespaceMode `json:"pid,omitempty"`
+	// IPC namespace for this container/sandbox.
+	// Note: There is currently no way to set CONTAINER scoped IPC in the Kubernetes API.
+	// Namespaces currently set by the kubelet: POD, NODE
+	Ipc NamespaceMode `json:"ipc,omitempty"`
+}
+
+type NamespaceMode int32
+
+const (
+	// A POD namespace is common to all containers in a pod.
+	// For example, a container with a PID namespace of POD expects to view
+	// all of the processes in all of the containers in the pod.
+	NamespaceMode_POD NamespaceMode = 0
+	// A CONTAINER namespace is restricted to a single container.
+	// For example, a container with a PID namespace of CONTAINER expects to
+	// view only the processes in that container.
+	NamespaceMode_CONTAINER NamespaceMode = 1
+	// A NODE namespace is the namespace of the Kubernetes node.
+	// For example, a container with a PID namespace of NODE expects to view
+	// all of the processes on the host running the kubelet.
+	NamespaceMode_NODE NamespaceMode = 2
+)
 
 // Sysctl defines a kernel parameter to be set.
 type Sysctl struct {
