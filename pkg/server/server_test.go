@@ -500,7 +500,7 @@ func TestDeployPackage(t *testing.T) {
 	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
 	assert.Nil(t, err)
 
-	srv := New(rootdir)
+	srv := New(rootdir, "", "")
 	srv.getHandlers()
 
 	content := createTarGzBuf(t)
@@ -551,7 +551,7 @@ func TestDeployInvalidPackage(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	srv := New("/tmp/itzo-pkg-test")
+	srv := New("/tmp/itzo-pkg-test", "", "")
 	srv.getHandlers()
 	srv.ServeHTTP(rr, req)
 
