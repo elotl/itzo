@@ -28,6 +28,9 @@ func sayHello(w http.ResponseWriter, r *http.Request) {
 	for _, v := range os.Environ() {
 		fmt.Fprintf(w, "    %s\n", v)
 	}
+	if os.Getenv("SHOW_UID") == "1" {
+		fmt.Fprintf(w, "UID:GID %d:%d\n", os.Getuid(), os.Getgid())
+	}
 }
 
 func main() {
