@@ -742,7 +742,7 @@ func (u *Unit) setupGpu() error {
 	return setupGpu(u.GetRootfs())
 }
 
-func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
+func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter, nser net.NetNamespacer) error {
 	sc, err := u.getSecurityContext()
 	if err != nil {
 		glog.Warningf("getting security context: %v", err)
@@ -752,7 +752,7 @@ func (u *Unit) Run(podname string, command []string, workingdir string, policy a
 		glog.Infof("pod %q requested host network mode", podname)
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	}
-	return net.WithNetNamespaceFromName("pod", func() error {
+	return nser.WithNetNamespace(func() error {
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	})
 }

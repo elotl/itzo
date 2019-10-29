@@ -10,6 +10,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/itzo/pkg/util/conmap"
 	"github.com/golang/glog"
@@ -20,15 +21,19 @@ const (
 	logBuffSize = 4096
 )
 
-func StartUnit(rootdir, podname, unitname, workingdir string, command []string, policy api.RestartPolicy) error {
+func StartUnit(rootdir, podname, unitname, workingdir, netns string, command []string, policy api.RestartPolicy) error {
 	unit, err := OpenUnit(rootdir, unitname)
 	if err != nil {
 		return err
 	}
 	mounter := mount.NewOSMounter(rootdir)
+	nser := net.NewNoopNetNamespacer()
+	if netns != "" {
+		nser = net.NewOSNetNamespacer(netns)
+	}
 	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",
 		command, unitname, rootdir, os.Environ(), workingdir, policy)
-	return unit.Run(podname, command, workingdir, policy, mounter)
+	return unit.Run(podname, command, workingdir, policy, mounter, nser)
 }
 
 type UnitManager struct {
@@ -117,7 +122,7 @@ func (um *UnitManager) RemoveUnit(name string) error {
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, args, appenv []string, policy api.RestartPolicy) error {
+func (um *UnitManager) StartUnit(podname, unitname, workingdir, netns string, command, args, appenv []string, policy api.RestartPolicy) error {
 	glog.Infof("Starting unit %s", unitname)
 
 	unit, err := OpenUnit(um.rootDir, unitname)
@@ -144,6 +149,8 @@ func (um *UnitManager) StartUnit(podname, unitname, workingdir string, command, 
 		um.rootDir,
 		"--workingdir",
 		workingdir,
+		"--netns",
+		netns,
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
 

@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"syscall"
 
-	sysctl "github.com/lorenzosaino/go-sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -18,12 +17,28 @@ const (
 	NetnsPath = "/var/run/netns"
 )
 
+type NetNamespacer interface {
+	Create() error
+	WithNetNamespace(cb func() error) error
+	CreateVeth(ipaddr string) error
+}
+
+type OSNetNamespacer struct {
+	NSName string
+}
+
+func NewOSNetNamespacer(nsname string) NetNamespacer {
+	return &OSNetNamespacer{
+		NSName: nsname,
+	}
+}
+
 // Start a new net namespace, and ensure it persists via creating a bind mount
 // to it. We use NetnsPath to ensure "ip netns" interoperability, so e.g. "ip
 // netns exec <nsname> ip link ls" will work.
-func NewNetNamespace(nsname string) error {
+func (n *OSNetNamespacer) Create() error {
 	os.MkdirAll(NetnsPath, 0700)
-	nspath := filepath.Join(NetnsPath, nsname)
+	nspath := filepath.Join(NetnsPath, n.NSName)
 	f, err := os.Create(nspath)
 	if err != nil {
 		return err
@@ -40,8 +55,7 @@ func NewNetNamespace(nsname string) error {
 	return nil
 }
 
-// Change to a net namespace temporarily, call a function, and switch back.
-func WithNetNamespace(ns netns.NsHandle, cb func() error) error {
+func withNetNamespace(ns netns.NsHandle, cb func() error) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	oldNs, err := netns.Get()
@@ -57,21 +71,23 @@ func WithNetNamespace(ns netns.NsHandle, cb func() error) error {
 	return cb()
 }
 
-func WithNetNamespaceFromName(nsname string, cb func() error) error {
-	ns, err := netns.GetFromName(nsname)
+// Change to a net namespace temporarily, call a function, and switch back.
+func (n *OSNetNamespacer) WithNetNamespace(cb func() error) error {
+	ns, err := netns.GetFromName(n.NSName)
 	if err != nil {
 		return err
 	}
 	defer ns.Close()
-	return WithNetNamespace(ns, cb)
+	return withNetNamespace(ns, cb)
 }
 
 // Create a veth pair, and move the second one into a net namespace.
-func CreateVeth(nsname, ipaddr string) error {
-	ns, err := netns.GetFromName(nsname)
+func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
+	ns, err := netns.GetFromName(n.NSName)
 	if err != nil {
 		return err
 	}
+	defer ns.Close()
 	veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
 			Name: "veth0",
@@ -103,25 +119,26 @@ func CreateVeth(nsname, ipaddr string) error {
 		return fmt.Errorf("can't add %q veth0 route: %v", ipaddr, err)
 	}
 	if err := netlink.LinkSetNsFd(peer, int(ns)); err != nil {
-		return fmt.Errorf("can't move veth1 to %s: %v", nsname, err)
+		return fmt.Errorf("can't move veth1 to %s: %v", n.NSName, err)
 	}
-	if err := WithNetNamespace(ns,
+	if err := withNetNamespace(ns,
 		func() error {
 			lo, err := netlink.LinkByName("lo")
 			if err != nil {
 				return fmt.Errorf(
-					"can't find lo in namespace %s: %v", nsname, err)
+					"can't find lo in namespace %s: %v", n.NSName, err)
 			}
 			if err := netlink.LinkSetUp(lo); err != nil {
-				return fmt.Errorf("can't bring lo up in %s: %v", nsname, err)
+				return fmt.Errorf("can't bring lo up in %s: %v", n.NSName, err)
 			}
 			veth1, err := netlink.LinkByName("veth1")
 			if err != nil {
 				return fmt.Errorf(
-					"can't find veth1 in namespace %s: %v", nsname, err)
+					"can't find veth1 in namespace %s: %v", n.NSName, err)
 			}
 			if err := netlink.LinkSetUp(veth1); err != nil {
-				return fmt.Errorf("can't bring veth1 up in %s: %v", nsname, err)
+				return fmt.Errorf(
+					"can't bring veth1 up in %s: %v", n.NSName, err)
 			}
 			netaddr := &netlink.Addr{
 				IPNet: &net.IPNet{
@@ -171,6 +188,21 @@ func CreateVeth(nsname, ipaddr string) error {
 	return nil
 }
 
-func EnableForwarding() error {
-	return sysctl.Set("net.ipv4.ip_forward", "1")
+type NoopNetNamespacer struct {
+}
+
+func NewNoopNetNamespacer() NetNamespacer {
+	return &NoopNetNamespacer{}
+}
+
+func (n *NoopNetNamespacer) Create() error {
+	return nil
+}
+
+func (n *NoopNetNamespacer) WithNetNamespace(cb func() error) error {
+	return cb()
+}
+
+func (n *NoopNetNamespacer) CreateVeth(ipaddr string) error {
+	return nil
 }

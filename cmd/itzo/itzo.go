@@ -17,9 +17,14 @@ import (
 	utilexec "k8s.io/utils/exec"
 )
 
+const (
+	PodNetNamespaceName = "pod"
+)
+
 var buildDate string
 
 func setupPodNetwork() string {
+	nser := net.NewOSNetNamespacer(PodNetNamespaceName)
 	glog.Infof("ensuring iptables NAT for pod IP")
 	podAddr, err := util.GetPodIPv4Address()
 	if err != nil {
@@ -49,13 +54,13 @@ func setupPodNetwork() string {
 		return ""
 	}
 	glog.Infof("setting up pod network namespace")
-	err = net.NewNetNamespace("pod")
+	err = nser.Create()
 	if err != nil {
 		glog.Warningf("failed to create pod network namespace: %v", err)
 		return ""
 	}
 	glog.Infof("creating pod network interfaces")
-	err = net.CreateVeth("pod", podAddr)
+	err = nser.CreateVeth(podAddr)
 	if err != nil {
 		glog.Warningf("failed to set up pod network: %v", err)
 		return ""
@@ -68,7 +73,7 @@ func main() {
 	//  go build -ldflags "-X main.buildDate=`date -u +.%Y%m%d.%H%M%S`"
 	var version = flag.Bool("version", false, "display build date")
 	var disableTLS = flag.Bool("disable-tls", false, "don't use tls")
-	var podNetworkNamespace = flag.Bool("enable-pod-network-namespace", true,
+	var enablePodNetworkNamespace = flag.Bool("enable-pod-network-namespace", true,
 		"set up a network namespace for pod")
 	var port = flag.Int("port", 6421, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
@@ -77,6 +82,7 @@ func main() {
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var apprestartpolicy = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Unit restart policy: always, never or onfailure")
 	var workingdir = flag.String("workingdir", "", "Working directory for unit")
+	var netns = flag.String("netns", "", "Pod network namespace name")
 	// todo, ability to log to a file instead of stdout
 
 	flag.Set("logtostderr", "true")
@@ -91,7 +97,7 @@ func main() {
 			glog.Fatalf("Invalid command '%s' for unit %s: %v",
 				*appcmdline, *appunit, err)
 		}
-		err = server.StartUnit(*rootdir, *podname, *appunit, *workingdir, cmdargs, policy)
+		err = server.StartUnit(*rootdir, *podname, *appunit, *workingdir, *netns, cmdargs, policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s for unit %s: %v",
 				*appcmdline, *appunit, err)
@@ -109,16 +115,18 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Unable to determine main IP address: %v", err)
 	}
+	podNetNS := ""
 	podIP := mainIP
-	if *podNetworkNamespace {
+	if *enablePodNetworkNamespace {
 		secondaryIP := setupPodNetwork()
 		if secondaryIP != "" {
 			podIP = secondaryIP
+			podNetNS = PodNetNamespaceName
 		}
 	}
 
 	glog.Info("Starting up agent")
-	server := server.New(*rootdir, mainIP, podIP)
+	server := server.New(*rootdir, mainIP, podIP, podNetNS)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
 }

@@ -74,7 +74,7 @@ type Server struct {
 	podIP          string
 }
 
-func New(rootdir, primaryIP, secondaryIP string) *Server {
+func New(rootdir, primaryIP, secondaryIP, netns string) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
@@ -83,7 +83,7 @@ func New(rootdir, primaryIP, secondaryIP string) *Server {
 	resolvUpdater := &RealResolvConfUpdater{
 		filepath: "/etc/resolv.conf",
 	}
-	pc := NewPodController(rootdir, mounter, um, resolvUpdater)
+	pc := NewPodController(rootdir, netns, mounter, um, resolvUpdater)
 	pc.Start()
 	return &Server{
 		env:            EnvStore{},

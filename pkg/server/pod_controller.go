@@ -29,7 +29,7 @@ type Mounter interface {
 // Too bad there isn't a word for a creator AND destroyer
 // Coulda gone with Shiva(er) but that's a bit imprecise...
 type UnitRunner interface {
-	StartUnit(string, string, string, []string, []string, []string, api.RestartPolicy) error
+	StartUnit(string, string, string, string, []string, []string, []string, api.RestartPolicy) error
 	StopUnit(string) error
 	RemoveUnit(string) error
 }
@@ -49,9 +49,10 @@ type PodController struct {
 	syncErrors map[string]api.UnitStatus
 	cancelFunc context.CancelFunc
 	waitGroup  sync.WaitGroup
+	netns      string
 }
 
-func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner, resolvConfUpdater ResolvConfUpdater) *PodController {
+func NewPodController(rootdir, netns string, mounter Mounter, unitMgr UnitRunner, resolvConfUpdater ResolvConfUpdater) *PodController {
 	return &PodController{
 		rootdir:           rootdir,
 		unitMgr:           unitMgr,
@@ -65,6 +66,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner, resol
 			RestartPolicy: api.RestartPolicyAlways,
 		},
 		cancelFunc: nil,
+		netns:      netns,
 	}
 }
 
@@ -425,6 +427,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.podName,
 		unit.Name,
 		unit.WorkingDir,
+		pc.netns,
 		unit.Command,
 		unit.Args,
 		makeAppEnv(&unit),
