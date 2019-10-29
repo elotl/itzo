@@ -111,7 +111,10 @@ func main() {
 	}
 	podIP := mainIP
 	if *podNetworkNamespace {
-		podIP = setupPodNetwork()
+		secondaryIP := setupPodNetwork()
+		if secondaryIP != "" {
+			podIP = secondaryIP
+		}
 	}
 
 	glog.Info("Starting up agent")
