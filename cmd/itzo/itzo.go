@@ -73,8 +73,6 @@ func main() {
 	//  go build -ldflags "-X main.buildDate=`date -u +.%Y%m%d.%H%M%S`"
 	var version = flag.Bool("version", false, "display build date")
 	var disableTLS = flag.Bool("disable-tls", false, "don't use tls")
-	var enablePodNetworkNamespace = flag.Bool("enable-pod-network-namespace", true,
-		"set up a network namespace for pod")
 	var port = flag.Int("port", 6421, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
 	var podname = flag.String("podname", "", "Pod name")
@@ -111,18 +109,16 @@ func main() {
 		os.Exit(0)
 	}
 
+	podNetNS := ""
 	mainIP, err := util.GetMainIPv4Address()
 	if err != nil {
 		glog.Fatalf("Unable to determine main IP address: %v", err)
 	}
-	podNetNS := ""
 	podIP := mainIP
-	if *enablePodNetworkNamespace {
-		secondaryIP := setupPodNetwork()
-		if secondaryIP != "" {
-			podIP = secondaryIP
-			podNetNS = PodNetNamespaceName
-		}
+	secondaryIP := setupPodNetwork()
+	if secondaryIP != "" {
+		podIP = secondaryIP
+		podNetNS = PodNetNamespaceName
 	}
 
 	glog.Info("Starting up agent")
