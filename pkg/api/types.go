@@ -83,15 +83,15 @@ const (
 	// A POD namespace is common to all containers in a pod.
 	// For example, a container with a PID namespace of POD expects to view
 	// all of the processes in all of the containers in the pod.
-	NamespaceMode_POD NamespaceMode = 0
+	NamespaceModePod NamespaceMode = 0
 	// A CONTAINER namespace is restricted to a single container.
 	// For example, a container with a PID namespace of CONTAINER expects to
 	// view only the processes in that container.
-	NamespaceMode_CONTAINER NamespaceMode = 1
+	NamespaceModeContainer NamespaceMode = 1
 	// A NODE namespace is the namespace of the Kubernetes node.
 	// For example, a container with a PID namespace of NODE expects to view
 	// all of the processes on the host running the kubelet.
-	NamespaceMode_NODE NamespaceMode = 2
+	NamespaceModeNode NamespaceMode = 2
 )
 
 // Sysctl defines a kernel parameter to be set.

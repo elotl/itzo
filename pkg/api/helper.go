@@ -5,7 +5,7 @@ func IsHostNetwork(securityContext *PodSecurityContext) bool {
 		return false
 	}
 	if securityContext.NamespaceOptions == nil ||
-		securityContext.NamespaceOptions.Network != NamespaceMode_NODE {
+		securityContext.NamespaceOptions.Network != NamespaceModeNode {
 		return false
 	}
 	return true
