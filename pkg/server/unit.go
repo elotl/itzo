@@ -748,7 +748,7 @@ func (u *Unit) Run(podname string, command []string, workingdir string, policy a
 		glog.Warningf("getting security context: %v", err)
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	}
-	if api.IsHostNetwork(&sc.PodSecurityContext) {
+	if sc != nil && api.IsHostNetwork(&sc.PodSecurityContext) {
 		glog.Infof("pod %q requested host network mode", podname)
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	}
