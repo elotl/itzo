@@ -1,4 +1,4 @@
-package util
+package cloud
 
 import (
 	"fmt"
@@ -14,19 +14,32 @@ const (
 	metadataIPv4s   = "/local-ipv4s"
 )
 
-// Get the IP address assigned to the pod. We'll need something similar to this
-// for each cloud.
-func GetPodIPv4Address() (string, error) {
+type AwsCloudInfo struct {
+	metadata *ec2metadata.EC2Metadata
+}
+
+func NewAwsCloudInfo() (CloudInfo, error) {
 	sess, err := session.NewSession()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	metadata := ec2metadata.New(sess)
-	address, err := metadata.GetMetadata(metadataLocalIP)
+	if !metadata.Available() {
+		return nil, fmt.Errorf("unable to access EC2 metadata service")
+	}
+	return &AwsCloudInfo{
+		metadata: metadata,
+	}, nil
+}
+
+// Get the IP address assigned to the pod. We'll need something similar to this
+// for each cloud.
+func (a *AwsCloudInfo) GetPodIPv4Address() (string, error) {
+	address, err := a.metadata.GetMetadata(metadataLocalIP)
 	if err != nil {
 		return "", err
 	}
-	macs, err := metadata.GetMetadata(metadataMACPath)
+	macs, err := a.metadata.GetMetadata(metadataMACPath)
 	if err != nil {
 		return "", err
 	}
@@ -35,7 +48,7 @@ func GetPodIPv4Address() (string, error) {
 		return "", fmt.Errorf("unable to find instance MAC address")
 	}
 	mac := maclist[0]
-	addresses, err := metadata.GetMetadata(metadataMACPath + mac + metadataIPv4s)
+	addresses, err := a.metadata.GetMetadata(metadataMACPath + mac + metadataIPv4s)
 	if err != nil {
 		return "", err
 	}
@@ -51,13 +64,8 @@ func GetPodIPv4Address() (string, error) {
 }
 
 // Get the main IP address used by itzo.
-func GetMainIPv4Address() (string, error) {
-	sess, err := session.NewSession()
-	if err != nil {
-		return "", err
-	}
-	metadata := ec2metadata.New(sess)
-	address, err := metadata.GetMetadata(metadataLocalIP)
+func (a *AwsCloudInfo) GetMainIPv4Address() (string, error) {
+	address, err := a.metadata.GetMetadata(metadataLocalIP)
 	if err != nil {
 		return "", err
 	}
