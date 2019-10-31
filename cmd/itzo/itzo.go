@@ -8,6 +8,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
 	"github.com/elotl/itzo/pkg/util"
+
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
 )
@@ -25,6 +26,7 @@ func main() {
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var apprestartpolicy = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Unit restart policy: always, never or onfailure")
 	var workingdir = flag.String("workingdir", "", "Working directory for unit")
+	var netns = flag.String("netns", "", "Pod network namespace name")
 	// todo, ability to log to a file instead of stdout
 
 	flag.Set("logtostderr", "true")
@@ -39,7 +41,7 @@ func main() {
 			glog.Fatalf("Invalid command '%s' for unit %s: %v",
 				*appcmdline, *appunit, err)
 		}
-		err = server.StartUnit(*rootdir, *podname, *appunit, *workingdir, cmdargs, policy)
+		err = server.StartUnit(*rootdir, *podname, *appunit, *workingdir, *netns, cmdargs, policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s for unit %s: %v",
 				*appcmdline, *appunit, err)
@@ -53,8 +55,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	mainIP, podIP, podNetNS := setupNetNamespace()
+
 	glog.Info("Starting up agent")
-	server := server.New(*rootdir)
+	server := server.New(*rootdir, mainIP, podIP, podNetNS)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
 }

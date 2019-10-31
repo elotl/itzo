@@ -44,7 +44,7 @@ func TestGetRootfs(t *testing.T) {
 	assert.True(t, isEmpty)
 }
 
-func TestStatus(t *testing.T) {
+func TestSetState(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	defer os.RemoveAll(tmpdir)
 	assert.NoError(t, err)
@@ -90,6 +90,33 @@ func TestStatus(t *testing.T) {
 			assert.NotZero(t, status.State.Terminated.FinishedAt)
 		}
 	}
+}
+
+func TestSetStatus(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	defer os.RemoveAll(tmpdir)
+	assert.NoError(t, err)
+	u, err := OpenUnit(tmpdir, "foobar")
+	assert.NoError(t, err)
+	defer u.Destroy()
+	state := api.UnitState{
+		Terminated: &api.UnitStateTerminated{
+			ExitCode:   11,
+			FinishedAt: api.Now().Rfc3339Copy(),
+		},
+	}
+	us := api.UnitStatus{
+		Name:         "foobar",
+		State:        state,
+		RestartCount: 123,
+		Image:        "foobar-img:latest",
+	}
+	err = u.SetStatus(&us)
+	assert.NoError(t, err)
+	status, err := u.GetStatus()
+	assert.NoError(t, err)
+	assert.NotNil(t, status)
+	assert.Equal(t, us, *status)
 }
 
 func TestUnitStdin(t *testing.T) {
