@@ -57,21 +57,20 @@ func (pe *ParameterError) Error() string {
 }
 
 type Server struct {
-	env           EnvStore
-	httpServer    *http.Server
-	mux           http.ServeMux
-	startTime     time.Time
-	podController *PodController
-	unitMgr       *UnitManager
-	wsUpgrader    websocket.Upgrader
-	// Packages will be installed under this directory (created if it does not
-	// exist).
-	installRootdir string
-	lastMetricTime time.Time
-	metrics        *metrics.Metrics
-	primaryIP      string
-	secondaryIP    string
-	podIP          string
+	env              EnvStore
+	httpServer       *http.Server
+	mux              http.ServeMux
+	startTime        time.Time
+	podController    *PodController
+	unitMgr          *UnitManager
+	wsUpgrader       websocket.Upgrader
+	installRootdir   string
+	lastMetricTime   time.Time
+	metrics          *metrics.Metrics
+	primaryIP        string
+	secondaryIP      string
+	podIP            string
+	networkAgentProc *os.Process
 }
 
 func New(rootdir, primaryIP, secondaryIP, netns string) *Server {
@@ -139,6 +138,23 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) startNetworkAgent(IP, nodeName string) {
+	process := runNetworkAgent(IP, nodeName)
+	if process == nil {
+		return
+	}
+	s.networkAgentProc = process
+	go func() {
+		ps, err := process.Wait()
+		if err != nil {
+			glog.Warningf("waiting for network agent: %v", err)
+			return
+		}
+		glog.Infof("network agent exited with %d", ps.ExitCode())
+		s.networkAgentProc = nil
+	}()
+}
+
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -148,6 +164,9 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w,
 				fmt.Sprintf("Error decoding pod update request: %v", err))
 			return
+		}
+		if s.networkAgentProc == nil && params.NodeName != "" {
+			s.startNetworkAgent(s.primaryIP, params.NodeName)
 		}
 		s.podIP = s.secondaryIP
 		if api.IsHostNetwork(params.Spec.SecurityContext) {

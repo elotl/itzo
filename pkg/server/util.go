@@ -28,6 +28,7 @@ var (
 	NVIDIA_CONTAINER_CLI_PRG       = "nvidia-container-cli"
 	NVIDIA_SMI_PRG                 = "nvidia-smi"
 	ITZO_GROUP_ID                  = 600 // Group is created when the image is created
+	NETWORK_AGENT                  = "kube-router"
 )
 
 func copyFile(src, dst string) error {
@@ -212,6 +213,78 @@ func runTosi(tp string, args ...string) error {
 		time.Sleep(backoff)
 		backoff = backoff * 2
 	}
+}
+
+func runNetworkAgent(IP, nodeName string) *os.Process {
+	pth, err := exec.LookPath(NETWORK_AGENT)
+	if err != nil {
+		glog.Errorf("failed to look up path of %q: %v", NETWORK_AGENT, err)
+		return nil
+	}
+	err = os.MkdirAll("/var/log", 0755)
+	if err != nil {
+		glog.Warningf("ensuring /var/log exists: %v", err)
+	}
+	stdout, err := os.OpenFile(
+		"/var/log/kube-router-stdout.log", os.O_APPEND|os.O_CREATE, 0600)
+	if err != nil {
+		glog.Warningf("opening kube-router stdout logfile: %v", err)
+	}
+	stderr, err := os.OpenFile(
+		"/var/log/kube-router-stderr.log", os.O_APPEND|os.O_CREATE, 0600)
+	if err != nil {
+		glog.Warningf("opening kube-router stderr logfile: %v", err)
+	}
+	// Kubeconfig has been deployed as a package. Find the actual config file
+	// inside the package directory.
+	kubeconfig := ""
+	err = filepath.Walk(
+		"/tmp/milpa/packages/kubeconfig",
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			if info.Name() == "kubeconfig" {
+				kubeconfig = path
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		glog.Errorf("searching for kubeconfig package: %v", err)
+		return nil
+	}
+	if kubeconfig == "" {
+		glog.Errorf("no kubeconfig found")
+		return nil
+	}
+	cmd := exec.Command(
+		pth,
+		"--kubeconfig="+kubeconfig,
+		"--hostname-override="+nodeName,
+		"--ip-address-override="+IP,
+		"--disable-source-dest-check=false",
+		"--enable-pod-egress=false",
+		"--enable-cni=false",
+		"--run-router=false",
+	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{
+			Gid: uint32(ITZO_GROUP_ID),
+		},
+	}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	err = cmd.Start()
+	if err != nil {
+		glog.Errorf("starting %v: %v", cmd, err)
+		return nil
+	}
+	glog.Infof("%v started", cmd)
+	return cmd.Process
 }
 
 // I have no idea why I wrote this...  I mean, the host tail
