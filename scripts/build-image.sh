@@ -2,7 +2,7 @@
 
 # Defaults.
 IMAGE="alpine.qcow2"
-IMAGE_SIZE="1G"
+IMAGE_SIZE="2G"
 NO_IMAGE=false
 BUILD_VERSION=""
 CLOUD_PROVIDER=""
