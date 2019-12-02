@@ -77,6 +77,11 @@ if [[ -z "$BUILD_VERSION" ]]; then
     exit 1
 fi
 
+if [[ -z "$CLOUD_PROVIDER" ]]; then
+    echo "Cloud provider (-c or --cloud) is required"
+    exit 1
+fi
+
 IMAGE_ABSPATH="$(readlink -f $IMAGE)"
 
 if [[ "$CLOUD_PROVIDER" == "aws" ]] && [[ "$NO_IMAGE" = false ]]; then
