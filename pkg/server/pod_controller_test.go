@@ -269,13 +269,13 @@ func NewImagePullMock() *ImagePullMock {
 }
 
 type UnitMock struct {
-	Start  func(string, string, string, []string, []string, []string, api.RestartPolicy) error
+	Start  func(string, string, string, string, []string, []string, []string, api.RestartPolicy) error
 	Stop   func(string) error
 	Remove func(string) error
 }
 
-func (u *UnitMock) StartUnit(podname, unitname, workingdir string, command, args, env []string, rp api.RestartPolicy) error {
-	return u.Start(podname, unitname, workingdir, command, args, env, rp)
+func (u *UnitMock) StartUnit(podname, unitname, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
+	return u.Start(podname, unitname, workingdir, netns, command, args, env, rp)
 }
 
 func (u *UnitMock) StopUnit(name string) error {
@@ -288,7 +288,7 @@ func (u *UnitMock) RemoveUnit(name string) error {
 
 func NewUnitMock() *UnitMock {
 	return &UnitMock{
-		Start: func(pod, name, workingdir string, command, args, env []string, rp api.RestartPolicy) error {
+		Start: func(pod, name, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
 			return nil
 		},
 		Stop: func(name string) error {
@@ -428,7 +428,7 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			mod: func(pc *PodController) {
 				m := pc.unitMgr.(*UnitMock)
-				m.Start = func(pod, name, workingdir string, command, args, env []string, rp api.RestartPolicy) error {
+				m.Start = func(pod, name, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
 					return fmt.Errorf("unit add failed")
 				}
 			},
@@ -544,7 +544,7 @@ func TestPodControllerStatus(t *testing.T) {
 	assert.NoError(t, err)
 	assertStatusEqual(t, &initExpected, s)
 
-	podCtl := NewPodController(rootdir, nil, nil, nil)
+	podCtl := NewPodController(rootdir, "", nil, nil, nil)
 	podCtl.podStatus = &status
 	statuses, initStatuses, err := podCtl.GetStatus()
 	assert.NoError(t, err)

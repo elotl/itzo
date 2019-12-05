@@ -16,6 +16,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
 	"github.com/elotl/itzo/pkg/mount"
+	"github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	sysctl "github.com/lorenzosaino/go-sysctl"
@@ -337,16 +338,7 @@ func (u *Unit) SetImage(image string) error {
 		return err
 	}
 	status.Image = u.Image
-	buf, err := json.Marshal(status)
-	if err != nil {
-		glog.Errorf("Error serializing status for %s\n", u.Name)
-		return err
-	}
-	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
-		glog.Errorf("Error updating statusfile for %s\n", u.Name)
-		return err
-	}
-	return nil
+	return u.SetStatus(status)
 }
 
 func (u *Unit) Destroy() error {
@@ -462,6 +454,19 @@ func (u *Unit) copyFileFromHost(hostpath string, overwrite bool) error {
 	return nil
 }
 
+func (u *Unit) SetStatus(status *api.UnitStatus) error {
+	buf, err := json.Marshal(status)
+	if err != nil {
+		glog.Errorf("Error serializing status for %s\n", u.Name)
+		return err
+	}
+	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
+		glog.Errorf("Error updating statusfile for %s\n", u.Name)
+		return err
+	}
+	return nil
+}
+
 func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
@@ -490,16 +495,7 @@ func (u *Unit) SetState(state api.UnitState, restarts *int) error {
 	if restarts != nil && *restarts >= 0 {
 		status.RestartCount = int32(*restarts)
 	}
-	buf, err := json.Marshal(status)
-	if err != nil {
-		glog.Errorf("Error serializing status for %s: %v\n", u.Name, err)
-		return err
-	}
-	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
-		glog.Errorf("Error updating statusfile for %s: %v\n", u.Name, err)
-		return err
-	}
-	return nil
+	return u.SetStatus(status)
 }
 
 func maybeBackOff(err error, command []string, backoff *time.Duration, runningTime time.Duration) {
@@ -746,7 +742,22 @@ func (u *Unit) setupGpu() error {
 	return setupGpu(u.GetRootfs())
 }
 
-func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
+func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter, nser net.NetNamespacer) error {
+	sc, err := u.getSecurityContext()
+	if err != nil {
+		glog.Warningf("getting security context: %v", err)
+		return u.doRun(podname, command, workingdir, policy, mounter)
+	}
+	if sc != nil && api.IsHostNetwork(&sc.PodSecurityContext) {
+		glog.Infof("pod %q requested host network mode", podname)
+		return u.doRun(podname, command, workingdir, policy, mounter)
+	}
+	return nser.WithNetNamespace(func() error {
+		return u.doRun(podname, command, workingdir, policy, mounter)
+	})
+}
+
+func (u *Unit) doRun(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",

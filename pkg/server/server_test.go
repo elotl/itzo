@@ -104,10 +104,11 @@ func TestMain(m *testing.M) {
 	var pod = flag.String("podname", "myPod", "Pod name")
 	var workingdir = flag.String("workingdir", "", "Working directory")
 	var rp = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Restart policy")
+	var netns = flag.String("netns", "", "Pod network namespace")
 	flag.Parse()
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*rp)
-		StartUnit(*rootdir, *pod, *unit, *workingdir, strings.Split(*appcmdline, " "), policy)
+		StartUnit(*rootdir, *pod, *unit, *workingdir, *netns, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
@@ -119,7 +120,7 @@ func TestMain(m *testing.M) {
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
-		podController:  NewPodController(tmpdir, nil, nil, nil),
+		podController:  NewPodController(tmpdir, "", nil, nil, nil),
 	}
 	s.getHandlers()
 	ret := m.Run()
@@ -500,7 +501,7 @@ func TestDeployPackage(t *testing.T) {
 	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
 	assert.Nil(t, err)
 
-	srv := New(rootdir)
+	srv := New(rootdir, "", "", "")
 	srv.getHandlers()
 
 	content := createTarGzBuf(t)
@@ -551,7 +552,7 @@ func TestDeployInvalidPackage(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	srv := New("/tmp/itzo-pkg-test")
+	srv := New("/tmp/itzo-pkg-test", "", "", "")
 	srv.getHandlers()
 	srv.ServeHTTP(rr, req)
 
@@ -589,7 +590,7 @@ func runServer() (*Server, func(), int) {
 	s := &Server{
 		installRootdir: tmpdir,
 		unitMgr:        NewUnitManager(tmpdir),
-		podController:  NewPodController(tmpdir, nil, nil, nil),
+		podController:  NewPodController(tmpdir, "", nil, nil, nil),
 	}
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: ":0", Handler: s}

@@ -10,6 +10,47 @@
   version = "1.0.0"
 
 [[projects]]
+  digest = "1:fd628b282ea2da2602e8bde20777b91d8c60529c76a6f88dc571bae54254d7c5"
+  name = "github.com/aws/aws-sdk-go"
+  packages = [
+    "aws",
+    "aws/awserr",
+    "aws/awsutil",
+    "aws/client",
+    "aws/client/metadata",
+    "aws/corehandlers",
+    "aws/credentials",
+    "aws/credentials/ec2rolecreds",
+    "aws/credentials/endpointcreds",
+    "aws/credentials/processcreds",
+    "aws/credentials/stscreds",
+    "aws/csm",
+    "aws/defaults",
+    "aws/ec2metadata",
+    "aws/endpoints",
+    "aws/request",
+    "aws/session",
+    "aws/signer/v4",
+    "internal/ini",
+    "internal/sdkio",
+    "internal/sdkmath",
+    "internal/sdkrand",
+    "internal/sdkuri",
+    "internal/shareddefaults",
+    "private/protocol",
+    "private/protocol/json/jsonutil",
+    "private/protocol/query",
+    "private/protocol/query/queryutil",
+    "private/protocol/rest",
+    "private/protocol/xml/xmlutil",
+    "service/sts",
+    "service/sts/stsiface",
+  ]
+  pruneopts = "UT"
+  revision = "8b44c74850c51562a4360837e9e4d6e7c47b7d81"
+  version = "v1.25.11"
+
+[[projects]]
   branch = "master"
   digest = "1:af49c3a6247e95ab2d32fec3127ee739d26727d05593f7cf7baef24bacee7b50"
   name = "github.com/containerd/cgroups"
@@ -112,6 +153,13 @@
   revision = "f645421657bb18912e57313ab14573213ae3f3dc"
 
 [[projects]]
+  digest = "1:bb81097a5b62634f3e9fec1014657855610c82d19b9a40c17612e32651e35dca"
+  name = "github.com/jmespath/go-jmespath"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "c2b33e84"
+
+[[projects]]
   branch = "master"
   digest = "1:f438d91be142877c3ad83157992c91de787ddfbddcc2a7da1ef6ef61606cadc4"
   name = "github.com/justnoise/genny"
@@ -205,6 +253,25 @@
   revision = "d98352740cb2c55f81556b63d4a1ec64c5a319c2"
 
 [[projects]]
+  digest = "1:2d9d06cb9d46dacfdbb45f8575b39fc0126d083841a29d4fbf8d97708f43107e"
+  name = "github.com/vishvananda/netlink"
+  packages = [
+    ".",
+    "nl",
+  ]
+  pruneopts = "UT"
+  revision = "a2ad57a690f3caf3015351d2d6e1c0b95c349752"
+  version = "v1.0.0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:b405c6b13f8f88fde0aab3e5c566554fc7c2c5579dc5de603a188d4e44db2712"
+  name = "github.com/vishvananda/netns"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "7109fa855b0ff1ebef7fbd2f6aa613e8db7cfbc0"
+
+[[projects]]
   branch = "master"
   digest = "1:76ee51c3f468493aff39dbacc401e8831fbb765104cbf613b89bef01cf4bad70"
   name = "golang.org/x/net"
@@ -223,10 +290,56 @@
   pruneopts = "UT"
   revision = "c11f84a56e43e20a78cee75a7c034031ecf57d1f"
 
+[[projects]]
+  branch = "master"
+  digest = "1:494a93452307e2987a6ebc596f46da4ad97c85ddc4962f3475f4f14414abd4b1"
+  name = "k8s.io/apimachinery"
+  packages = [
+    "pkg/util/errors",
+    "pkg/util/runtime",
+    "pkg/util/sets",
+    "pkg/util/version",
+    "pkg/util/wait",
+  ]
+  pruneopts = "UT"
+  revision = "fb3eea21474617fb41ce32f1a230902cf3293d0d"
+
+[[projects]]
+  digest = "1:93e82f25d75aba18436ad1ac042cb49493f096011f2541075721ed6f9e05c044"
+  name = "k8s.io/klog"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "2ca9ad30301bf30a8a6e0fa2110db6b8df699a91"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:ab7de3974b58f050cd460b6827e94e99d91c7b7ba3313d5f9133972f9a6a55ff"
+  name = "k8s.io/kubernetes"
+  packages = [
+    "pkg/util/dbus",
+    "pkg/util/iptables",
+  ]
+  pruneopts = "UT"
+  revision = "d647ddbd755faf07169599a625faf302ffc34458"
+  version = "v1.16.1"
+
+[[projects]]
+  branch = "master"
+  digest = "1:eef1580ac7a5db34e1e367a0d641d03b605e584488c7ff5943742401d49e0c47"
+  name = "k8s.io/utils"
+  packages = [
+    "exec",
+    "trace",
+  ]
+  pruneopts = "UT"
+  revision = "8d271d903fe4c290aa361acfb242cff7bcee96f1"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/aws/aws-sdk-go/aws/ec2metadata",
+    "github.com/aws/aws-sdk-go/aws/session",
     "github.com/containerd/cgroups",
     "github.com/elotl/wsstream",
     "github.com/golang/glog",
@@ -243,8 +356,11 @@
     "github.com/shirou/gopsutil/mem",
     "github.com/stretchr/testify/assert",
     "github.com/syndtr/gocapability/capability",
+    "github.com/vishvananda/netlink",
+    "github.com/vishvananda/netns",
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
+    "k8s.io/kubernetes/pkg/util/iptables",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

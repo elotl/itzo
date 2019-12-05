@@ -89,6 +89,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 			"-p",
 			"-u",
 			"-m",
+			"-n",
 		}
 		if uid != 0 || gid != 0 {
 			userSpec := []string{
