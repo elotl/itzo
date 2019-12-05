@@ -12,6 +12,10 @@ func NewCloudInfo() (CloudInfo, error) {
 	if err == nil {
 		return cloudInfo, nil
 	}
-	// TODO: create metadata client for Azure.
+	cloudInfo, err = NewAzureCloudInfo("")
+	if err == nil {
+		return cloudInfo, nil
+	}
+	// We only support AWS and Azure.
 	return nil, fmt.Errorf("unable to identify cloud platform")
 }
