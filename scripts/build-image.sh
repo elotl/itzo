@@ -2,7 +2,7 @@
 
 # Defaults.
 IMAGE="alpine.qcow2"
-IMAGE_SIZE="1G"
+IMAGE_SIZE="2G"
 NO_IMAGE=false
 BUILD_VERSION=""
 CLOUD_PROVIDER=""
@@ -74,6 +74,11 @@ done
 
 if [[ -z "$BUILD_VERSION" ]]; then
     echo "A build version (--version) is required"
+    exit 1
+fi
+
+if [[ -z "$CLOUD_PROVIDER" ]]; then
+    echo "Cloud provider (-c or --cloud) is required"
     exit 1
 fi
 

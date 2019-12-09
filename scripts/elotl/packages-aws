@@ -11,3 +11,5 @@ rng-tools
 haveged
 hvtools
 iptables
+ipset
+iproute2

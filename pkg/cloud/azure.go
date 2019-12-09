@@ -58,8 +58,7 @@ type InstanceMetadata struct {
 }
 
 type AzureCloudInfo struct {
-	url      string
-	metadata *InstanceMetadata
+	url string
 }
 
 func NewAzureCloudInfo(url string) (CloudInfo, error) {
@@ -94,15 +93,13 @@ func (a *AzureCloudInfo) getIPv4Address(n int) (string, error) {
 	if metadata.Network == nil ||
 		len(metadata.Network.Interface) < 1 ||
 		len(metadata.Network.Interface[0].IPv4.IPAddress) < n+1 {
-		return "", fmt.Errorf("no IP address found (requested %d)", n)
+		return "", fmt.Errorf("IP address #%d not found (addresses: %v)",
+			n, metadata.Network.Interface[0].IPv4.IPAddress)
 	}
 	return metadata.Network.Interface[0].IPv4.IPAddress[n].PrivateIPAddress, nil
 }
 
 func (a *AzureCloudInfo) getInstanceMetadata() (*InstanceMetadata, error) {
-	if a.metadata != nil {
-		return a.metadata, nil
-	}
 	req, err := http.NewRequest("GET", a.url, nil)
 	if err != nil {
 		return nil, err
@@ -132,6 +129,5 @@ func (a *AzureCloudInfo) getInstanceMetadata() (*InstanceMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.metadata = &metadata
-	return a.metadata, nil
+	return &metadata, nil
 }

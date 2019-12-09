@@ -111,6 +111,10 @@ step 'Add cloud-init'
 wget -O /usr/local/bin/itzo-cloud-init http://itzo-dev-download.s3.amazonaws.com/itzo-cloud-init
 chmod 755 /usr/local/bin/itzo-cloud-init
 
+step 'Add kube-router'
+wget -O /usr/local/bin/kube-router http://itzo-dev-download.s3.amazonaws.com/kube-router
+chmod 755 /usr/local/bin/kube-router
+
 if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
     # AWS ENA module is included in 4.19 kernels, we just need to enable it
 

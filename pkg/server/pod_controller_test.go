@@ -544,7 +544,7 @@ func TestPodControllerStatus(t *testing.T) {
 	assert.NoError(t, err)
 	assertStatusEqual(t, &initExpected, s)
 
-	podCtl := NewPodController(rootdir, "", nil, nil, nil)
+	podCtl := NewPodController(rootdir, nil, nil)
 	podCtl.podStatus = &status
 	statuses, initStatuses, err := podCtl.GetStatus()
 	assert.NoError(t, err)

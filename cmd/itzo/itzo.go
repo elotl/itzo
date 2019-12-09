@@ -55,10 +55,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	mainIP, podIP, podNetNS := setupNetNamespace()
-
 	glog.Info("Starting up agent")
-	server := server.New(*rootdir, mainIP, podIP, podNetNS)
+	server := server.New(*rootdir)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
 }
