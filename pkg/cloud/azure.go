@@ -94,7 +94,8 @@ func (a *AzureCloudInfo) getIPv4Address(n int) (string, error) {
 	if metadata.Network == nil ||
 		len(metadata.Network.Interface) < 1 ||
 		len(metadata.Network.Interface[0].IPv4.IPAddress) < n+1 {
-		return "", fmt.Errorf("no IP address found (requested %d)", n)
+		return "", fmt.Errorf("IP address #%d not found (addresses: %v)",
+			n, metadata.Network.Interface[0].IPv4.IPAddress)
 	}
 	return metadata.Network.Interface[0].IPv4.IPAddress[n].PrivateIPAddress, nil
 }
