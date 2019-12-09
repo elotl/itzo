@@ -58,8 +58,7 @@ type InstanceMetadata struct {
 }
 
 type AzureCloudInfo struct {
-	url      string
-	metadata *InstanceMetadata
+	url string
 }
 
 func NewAzureCloudInfo(url string) (CloudInfo, error) {
@@ -101,9 +100,6 @@ func (a *AzureCloudInfo) getIPv4Address(n int) (string, error) {
 }
 
 func (a *AzureCloudInfo) getInstanceMetadata() (*InstanceMetadata, error) {
-	if a.metadata != nil {
-		return a.metadata, nil
-	}
 	req, err := http.NewRequest("GET", a.url, nil)
 	if err != nil {
 		return nil, err
@@ -133,6 +129,5 @@ func (a *AzureCloudInfo) getInstanceMetadata() (*InstanceMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.metadata = &metadata
-	return a.metadata, nil
+	return &metadata, nil
 }

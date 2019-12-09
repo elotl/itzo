@@ -1,8 +1,7 @@
-package main
+package net
 
 import (
 	"github.com/elotl/itzo/pkg/cloud"
-	"github.com/elotl/itzo/pkg/net"
 
 	"github.com/golang/glog"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
@@ -15,7 +14,7 @@ const (
 )
 
 func setupPodNetwork(cloudInfo cloud.CloudInfo) string {
-	nser := net.NewOSNetNamespacer(PodNetNamespaceName)
+	nser := NewOSNetNamespacer(PodNetNamespaceName)
 	glog.Infof("ensuring iptables NAT for pod IP")
 	podAddr, err := cloudInfo.GetPodIPv4Address()
 	if err != nil {
@@ -27,19 +26,19 @@ func setupPodNetwork(cloudInfo cloud.CloudInfo) string {
 	dbus := utildbus.New()
 	protocol := utiliptables.ProtocolIpv4
 	iptInterface := utiliptables.New(execer, dbus, protocol)
-	netIf, err := net.GetPrimaryNetworkInterface()
+	netIf, err := GetPrimaryNetworkInterface()
 	if err != nil {
 		glog.Warningf("failed to retrieve pod IP address: %v", err)
 		return ""
 	}
 	glog.Infof("main network interface: %s", netIf)
-	err = net.EnsurePodMasq(iptInterface, netIf, podAddr)
+	err = EnsurePodMasq(iptInterface, netIf, podAddr)
 	if err != nil {
 		glog.Warningf("failed to retrieve pod IP address: %v", err)
 		return ""
 	}
 	glog.Infof("enabling IP forwarding")
-	err = net.EnableForwarding()
+	err = EnableForwarding()
 	if err != nil {
 		glog.Warningf("failed to enable IP forwarding: %v", err)
 		return ""
@@ -60,7 +59,7 @@ func setupPodNetwork(cloudInfo cloud.CloudInfo) string {
 	return podAddr
 }
 
-func setupNetNamespace() (string, string, string) {
+func SetupNetNamespace() (string, string, string) {
 	cloudInfo, err := cloud.NewCloudInfo()
 	if err != nil {
 		glog.Fatalf("unable to create cloud metadata client: %v", err)

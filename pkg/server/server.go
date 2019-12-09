@@ -25,6 +25,7 @@ import (
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/mount"
+	itzonet "github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
@@ -73,13 +74,13 @@ type Server struct {
 	networkAgentProc *os.Process
 }
 
-func New(rootdir, primaryIP, secondaryIP, netns string) *Server {
+func New(rootdir string) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
 	mounter := mount.NewOSMounter(rootdir)
 	um := NewUnitManager(rootdir)
-	pc := NewPodController(rootdir, netns, mounter, um)
+	pc := NewPodController(rootdir, mounter, um)
 	pc.Start()
 	return &Server{
 		env:            EnvStore{},
@@ -93,8 +94,6 @@ func New(rootdir, primaryIP, secondaryIP, netns string) *Server {
 		},
 		metrics:        metrics.New(),
 		lastMetricTime: time.Now().Add(-minMetricPeriod),
-		primaryIP:      primaryIP,
-		secondaryIP:    secondaryIP,
 	}
 }
 
@@ -164,6 +163,17 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w,
 				fmt.Sprintf("Error decoding pod update request: %v", err))
 			return
+		}
+		if s.primaryIP == "" && s.secondaryIP == "" {
+			// Wait with this until the first pod update, since some cloud
+			// providers allocate IP addresses asynchronously, and they might
+			// not be available when itzo starts.
+			mainIP, podIP, podNetNS := itzonet.SetupNetNamespace()
+			glog.Infof("IP addresses: %q %q pod network namespace: %q",
+				mainIP, podIP, podNetNS)
+			s.primaryIP = mainIP
+			s.secondaryIP = podIP
+			s.podController.SetNetNS(podNetNS)
 		}
 		if s.networkAgentProc == nil && params.NodeName != "" {
 			s.startNetworkAgent(s.primaryIP, params.NodeName)

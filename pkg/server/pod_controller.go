@@ -51,7 +51,7 @@ type PodController struct {
 	netns      string
 }
 
-func NewPodController(rootdir, netns string, mounter Mounter, unitMgr UnitRunner) *PodController {
+func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
 	return &PodController{
 		rootdir:     rootdir,
 		unitMgr:     unitMgr,
@@ -64,8 +64,11 @@ func NewPodController(rootdir, netns string, mounter Mounter, unitMgr UnitRunner
 			RestartPolicy: api.RestartPolicyAlways,
 		},
 		cancelFunc: nil,
-		netns:      netns,
 	}
+}
+
+func (pc *PodController) SetNetNS(netns string) {
+	pc.netns = netns
 }
 
 func (pc *PodController) runUpdateLoop() {
