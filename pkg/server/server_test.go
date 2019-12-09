@@ -120,7 +120,7 @@ func TestMain(m *testing.M) {
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
-		podController:  NewPodController(tmpdir, "", nil, nil, nil),
+		podController:  NewPodController(tmpdir, nil, nil),
 	}
 	s.getHandlers()
 	ret := m.Run()
@@ -501,7 +501,7 @@ func TestDeployPackage(t *testing.T) {
 	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
 	assert.Nil(t, err)
 
-	srv := New(rootdir, "", "", "")
+	srv := New(rootdir)
 	srv.getHandlers()
 
 	content := createTarGzBuf(t)
@@ -552,7 +552,7 @@ func TestDeployInvalidPackage(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	srv := New("/tmp/itzo-pkg-test", "", "", "")
+	srv := New("/tmp/itzo-pkg-test")
 	srv.getHandlers()
 	srv.ServeHTTP(rr, req)
 
@@ -590,7 +590,7 @@ func runServer() (*Server, func(), int) {
 	s := &Server{
 		installRootdir: tmpdir,
 		unitMgr:        NewUnitManager(tmpdir),
-		podController:  NewPodController(tmpdir, "", nil, nil, nil),
+		podController:  NewPodController(tmpdir, nil, nil),
 	}
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: ":0", Handler: s}
