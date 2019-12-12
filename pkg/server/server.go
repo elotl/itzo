@@ -120,6 +120,11 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 			s.lastMetricTime = time.Now()
 		}
 
+		// Put the actual pod IP into the status reply to ensure the right IP
+		// address will show up in the pod status from Milpa (i.e. if the pod
+		// uses host networking, the primary IP address is the pod IP, otherwise
+		// the secondary IP address and a separate network namespace is used
+		// for the pod).
 		reply := api.PodStatusReply{
 			UnitStatuses:     status,
 			InitUnitStatuses: initStatus,
@@ -165,25 +170,30 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if s.primaryIP == "" && s.secondaryIP == "" {
-			// Wait with this until the first pod update, since some cloud
-			// providers allocate IP addresses asynchronously, and they might
-			// not be available when itzo starts.
-			mainIP, podIP, podNetNS := itzonet.SetupNetNamespace()
+			primaryIP, secondaryIP, podNS, err := itzonet.SetupNetNamespace(
+				params.PodIP)
+			if err != nil {
+				glog.Errorf("%v", err)
+				serverError(w, err)
+				return
+			}
+			s.primaryIP = primaryIP
+			s.secondaryIP = secondaryIP
+			if api.IsHostNetwork(params.Spec.SecurityContext) {
+				s.podIP = s.primaryIP
+			} else {
+				s.podIP = s.secondaryIP
+				s.podController.SetNetNS(podNS)
+			}
 			glog.Infof("IP addresses: %q %q pod network namespace: %q",
-				mainIP, podIP, podNetNS)
-			s.primaryIP = mainIP
-			s.secondaryIP = podIP
-			s.podController.SetNetNS(podNetNS)
+				s.primaryIP, s.podIP, podNS)
 		}
 		if s.networkAgentProc == nil && params.NodeName != "" {
 			s.startNetworkAgent(s.primaryIP, params.NodeName)
 		}
-		s.podIP = s.secondaryIP
-		if api.IsHostNetwork(params.Spec.SecurityContext) {
-			s.podIP = s.primaryIP
-		}
 		err = s.podController.UpdatePod(&params)
 		if err != nil {
+			glog.Errorf("%v", err)
 			serverError(w, err)
 			return
 		}
