@@ -6,6 +6,7 @@ type PodParameters struct {
 	Spec        PodSpec                        `json:"spec"`
 	PodName     string
 	NodeName    string
+	PodIP       string
 }
 
 type RegistryCredentials struct {

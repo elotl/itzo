@@ -1,6 +1,8 @@
 package net
 
 import (
+	"fmt"
+
 	"github.com/elotl/itzo/pkg/cloud"
 
 	"github.com/golang/glog"
@@ -13,67 +15,56 @@ const (
 	PodNetNamespaceName = "pod"
 )
 
-func setupPodNetwork(cloudInfo cloud.CloudInfo) string {
+func setupPodNetwork(podIP string) error {
 	nser := NewOSNetNamespacer(PodNetNamespaceName)
-	glog.Infof("ensuring iptables NAT for pod IP")
-	podAddr, err := cloudInfo.GetPodIPv4Address()
-	if err != nil {
-		glog.Warningf("failed to retrieve pod IP address: %v", err)
-		return ""
-	}
-	glog.Infof("pod IPv4 address: %s", podAddr)
 	execer := utilexec.New()
 	dbus := utildbus.New()
 	protocol := utiliptables.ProtocolIpv4
 	iptInterface := utiliptables.New(execer, dbus, protocol)
 	netIf, err := GetPrimaryNetworkInterface()
 	if err != nil {
-		glog.Warningf("failed to retrieve pod IP address: %v", err)
-		return ""
+		glog.Errorf("retrieving pod IP address: %v", err)
+		return err
 	}
-	glog.Infof("main network interface: %s", netIf)
-	err = EnsurePodMasq(iptInterface, netIf, podAddr)
+	err = EnsurePodMasq(iptInterface, netIf, podIP)
 	if err != nil {
-		glog.Warningf("failed to retrieve pod IP address: %v", err)
-		return ""
+		glog.Errorf("looking up main network interface: %v", err)
+		return err
 	}
-	glog.Infof("enabling IP forwarding")
 	err = EnableForwarding()
 	if err != nil {
-		glog.Warningf("failed to enable IP forwarding: %v", err)
-		return ""
+		glog.Errorf("enabling IP forwarding: %v", err)
+		return err
 	}
-	glog.Infof("setting up pod network namespace")
 	err = nser.Create()
 	if err != nil {
-		glog.Warningf("failed to create pod network namespace: %v", err)
-		return ""
+		glog.Errorf("creating pod network namespace: %v", err)
+		return err
 	}
-	glog.Infof("creating pod network interfaces")
-	err = nser.CreateVeth(podAddr)
+	err = nser.CreateVeth(podIP)
 	if err != nil {
-		glog.Warningf("failed to set up pod network: %v", err)
-		return ""
+		glog.Errorf("creating veth pair: %v", err)
+		return err
 	}
-	glog.Infof("created pod network interfaces and routes")
-	return podAddr
+	return nil
 }
 
-func SetupNetNamespace() (string, string, string) {
+func SetupNetNamespace(podIP string) (string, string, string, error) {
 	cloudInfo, err := cloud.NewCloudInfo()
 	if err != nil {
-		glog.Fatalf("unable to create cloud metadata client: %v", err)
+		return "", "", "", fmt.Errorf("creating metadata client: %v", err)
 	}
-	podNetNS := ""
 	mainIP, err := cloudInfo.GetMainIPv4Address()
 	if err != nil {
-		glog.Fatalf("Unable to determine main IP address: %v", err)
+		glog.Errorf("unable to determine main IP address: %v", err)
+		return "", "", "", err
 	}
-	podIP := mainIP
-	secondaryIP := setupPodNetwork(cloudInfo)
-	if secondaryIP != "" {
-		podIP = secondaryIP
-		podNetNS = PodNetNamespaceName
+	if podIP == "" {
+		return mainIP, mainIP, "", nil
 	}
-	return mainIP, podIP, podNetNS
+	err = setupPodNetwork(podIP)
+	if err != nil {
+		return "", "", "", fmt.Errorf("setting up pod network: %v", err)
+	}
+	return mainIP, podIP, PodNetNamespaceName, nil
 }
