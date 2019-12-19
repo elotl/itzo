@@ -266,6 +266,7 @@ func runNetworkAgent(IP, nodeName string) *os.Process {
 		"--kubeconfig="+kubeconfig,
 		"--hostname-override="+nodeName,
 		"--ip-address-override="+IP,
+		"--hairpin-mode=true",
 		"--disable-source-dest-check=false",
 		"--enable-pod-egress=false",
 		"--enable-cni=false",
