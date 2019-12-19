@@ -58,20 +58,20 @@ func (pe *ParameterError) Error() string {
 }
 
 type Server struct {
-	env              EnvStore
-	httpServer       *http.Server
-	mux              http.ServeMux
-	startTime        time.Time
-	podController    *PodController
-	unitMgr          *UnitManager
-	wsUpgrader       websocket.Upgrader
-	installRootdir   string
-	lastMetricTime   time.Time
-	metrics          *metrics.Metrics
-	primaryIP        string
-	secondaryIP      string
-	podIP            string
-	networkAgentProc *os.Process
+	env             EnvStore
+	httpServer      *http.Server
+	mux             http.ServeMux
+	startTime       time.Time
+	podController   *PodController
+	unitMgr         *UnitManager
+	wsUpgrader      websocket.Upgrader
+	installRootdir  string
+	lastMetricTime  time.Time
+	metrics         *metrics.Metrics
+	primaryIP       string
+	secondaryIP     string
+	podIP           string
+	networkAgentCmd *exec.Cmd
 }
 
 func New(rootdir string) *Server {
@@ -143,19 +143,18 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startNetworkAgent(IP, nodeName string) {
-	process := runNetworkAgent(IP, nodeName)
-	if process == nil {
+	cmd := runNetworkAgent(IP, nodeName)
+	if cmd == nil {
 		return
 	}
-	s.networkAgentProc = process
+	s.networkAgentCmd = cmd
 	go func() {
-		ps, err := process.Wait()
+		err := cmd.Wait()
+		s.networkAgentCmd = nil
 		if err != nil {
 			glog.Warningf("waiting for network agent: %v", err)
-			return
 		}
-		glog.Infof("network agent exited with %d", ps.ExitCode())
-		s.networkAgentProc = nil
+		glog.Infof("network agent exit code: %d", cmd.ProcessState.ExitCode())
 	}()
 }
 
@@ -188,7 +187,7 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			glog.Infof("IP addresses: %q %q pod network namespace: %q",
 				s.primaryIP, s.podIP, podNS)
 		}
-		if s.networkAgentProc == nil && params.NodeName != "" {
+		if s.networkAgentCmd == nil && params.NodeName != "" {
 			s.startNetworkAgent(s.primaryIP, params.NodeName)
 		}
 		err = s.podController.UpdatePod(&params)

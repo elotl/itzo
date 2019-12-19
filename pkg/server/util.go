@@ -215,25 +215,11 @@ func runTosi(tp string, args ...string) error {
 	}
 }
 
-func runNetworkAgent(IP, nodeName string) *os.Process {
+func runNetworkAgent(IP, nodeName string) *exec.Cmd {
 	pth, err := exec.LookPath(NETWORK_AGENT)
 	if err != nil {
 		glog.Errorf("failed to look up path of %q: %v", NETWORK_AGENT, err)
 		return nil
-	}
-	err = os.MkdirAll("/var/log", 0755)
-	if err != nil {
-		glog.Warningf("ensuring /var/log exists: %v", err)
-	}
-	stdout, err := os.OpenFile(
-		"/var/log/kube-router-stdout.log", os.O_APPEND|os.O_CREATE, 0600)
-	if err != nil {
-		glog.Warningf("opening kube-router stdout logfile: %v", err)
-	}
-	stderr, err := os.OpenFile(
-		"/var/log/kube-router-stderr.log", os.O_APPEND|os.O_CREATE, 0600)
-	if err != nil {
-		glog.Warningf("opening kube-router stderr logfile: %v", err)
 	}
 	// Kubeconfig has been deployed as a package. Find the actual config file
 	// inside the package directory.
@@ -261,6 +247,18 @@ func runNetworkAgent(IP, nodeName string) *os.Process {
 		glog.Errorf("no kubeconfig found")
 		return nil
 	}
+	err = os.MkdirAll("/var/log", 0755)
+	if err != nil {
+		glog.Warningf("ensuring /var/log exists: %v", err)
+	}
+	logfile, err := os.OpenFile(
+		"/var/log/kube-router.log", os.O_RDWR|os.O_APPEND|os.O_CREATE, 0600)
+	if err != nil {
+		glog.Warningf("opening kube-router logfile: %v", err)
+	}
+	if logfile != nil {
+		defer logfile.Close()
+	}
 	cmd := exec.Command(
 		pth,
 		"--kubeconfig="+kubeconfig,
@@ -271,21 +269,22 @@ func runNetworkAgent(IP, nodeName string) *os.Process {
 		"--enable-pod-egress=false",
 		"--enable-cni=false",
 		"--run-router=false",
+		"--v=2",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
 			Gid: uint32(ITZO_GROUP_ID),
 		},
 	}
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	cmd.Stdout = logfile
+	cmd.Stderr = logfile
 	err = cmd.Start()
 	if err != nil {
 		glog.Errorf("starting %v: %v", cmd, err)
 		return nil
 	}
 	glog.Infof("%v started", cmd)
-	return cmd.Process
+	return cmd
 }
 
 // I have no idea why I wrote this...  I mean, the host tail
