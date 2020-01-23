@@ -137,14 +137,14 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 	mountsdir := filepath.Join(om.basedir, "../mounts")
 	err := os.MkdirAll(mountsdir, 0700)
 	if err != nil {
-		glog.Errorf("Error creating base mount directory %s: %v",
+		glog.Errorf("error creating base mount directory %s: %v",
 			mountsdir, err)
 		return err
 	}
 	mountpath := filepath.Join(mountsdir, volume.Name)
 	_, err = os.Stat(mountpath)
 	if err != nil && !os.IsNotExist(err) {
-		glog.Errorf("Error checking mount point %s: %v", mountpath, err)
+		glog.Errorf("error checking mount point %s: %v", mountpath, err)
 		return err
 	}
 	// For now, we only support EmptyDir and PackagePath volumes.
@@ -153,33 +153,36 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 		found = true
 		err = createEmptydir(mountpath, volume.EmptyDir)
 		if err != nil {
-			glog.Errorf("Error creating emptyDir %s: %v", mountpath, err)
+			glog.Errorf("error creating emptyDir %s: %v", mountpath, err)
 			return err
 		}
 	}
-	if volume.PackagePath != nil {
+	if volume.PackagePath != nil ||
+		volume.Secret != nil ||
+		volume.ConfigMap != nil {
 		if found {
-			err = fmt.Errorf("Multiple volumes are specified in %v", volume)
+			err = fmt.Errorf("multiple volumes are specified in %v", volume)
 			glog.Errorf("%v", err)
 			return err
 		}
-		found = true
-		packagepath := filepath.Join(
-			om.basedir, "..", "packages", volume.Name, volume.PackagePath.Path)
+		var packagepath = filepath.Join(om.basedir, "..", "packages", volume.Name)
+		if volume.PackagePath != nil {
+			packagepath = filepath.Join(packagepath, volume.PackagePath.Path)
+		}
 		_, err = os.Stat(packagepath)
 		if err != nil {
-			glog.Errorf("Error checking mount source %s: %v", packagepath, err)
+			glog.Errorf("error checking mount source %s: %v", packagepath, err)
 			return err
 		}
 		err = os.Symlink(packagepath, mountpath)
 		if err != nil {
-			glog.Errorf("Error creating link %s->%s: %v",
+			glog.Errorf("error creating link %s->%s: %v",
 				packagepath, mountpath, err)
 			return err
 		}
 	}
 	if !found {
-		err = fmt.Errorf("No volume specified in %v", volume)
+		err = fmt.Errorf("no volume specified in %v", volume)
 		glog.Errorf("%v", err)
 		return err
 	}
