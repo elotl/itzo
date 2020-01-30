@@ -130,6 +130,14 @@
   revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
 
 [[projects]]
+  digest = "1:a840b166971a2e76fcc4fbafaa181ea109b92d461e7f9b608a49b70be2765bac"
+  name = "github.com/google/gofuzz"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "db92cf7ae75e4a7a28abc005addab2b394362888"
+  version = "v1.1.0"
+
+[[projects]]
   digest = "1:43dd08a10854b2056e615d1b1d22ac94559d822e1f8b6fcc92c1a1057e85188e"
   name = "github.com/gorilla/websocket"
   packages = ["."]
@@ -273,9 +281,15 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:76ee51c3f468493aff39dbacc401e8831fbb765104cbf613b89bef01cf4bad70"
+  digest = "1:d1209fa9ed40a3a24de8498a9bead59eb3333f16a73fa23ba1fc6677a3cfc9d7"
   name = "golang.org/x/net"
-  packages = ["context"]
+  packages = [
+    "context",
+    "http/httpguts",
+    "http2",
+    "http2/hpack",
+    "idna",
+  ]
   pruneopts = "UT"
   revision = "8a410e7b638dca158bf9e766925842f6651ff828"
 
@@ -291,15 +305,43 @@
   revision = "c11f84a56e43e20a78cee75a7c034031ecf57d1f"
 
 [[projects]]
+  digest = "1:8d8faad6b12a3a4c819a3f9618cb6ee1fa1cfc33253abeeea8b55336721e3405"
+  name = "golang.org/x/text"
+  packages = [
+    "collate",
+    "collate/build",
+    "internal/colltab",
+    "internal/gen",
+    "internal/language",
+    "internal/language/compact",
+    "internal/tag",
+    "internal/triegen",
+    "internal/ucd",
+    "language",
+    "secure/bidirule",
+    "transform",
+    "unicode/bidi",
+    "unicode/cldr",
+    "unicode/norm",
+    "unicode/rangetable",
+  ]
+  pruneopts = "UT"
+  revision = "342b2e1fbaa52c93f31447ad2c6abc048c63e475"
+  version = "v0.3.2"
+
+[[projects]]
   branch = "master"
-  digest = "1:494a93452307e2987a6ebc596f46da4ad97c85ddc4962f3475f4f14414abd4b1"
+  digest = "1:090c8aca4054c1e99bd6e765abf3b14742a718301de77ca753456eb4ce49bb5a"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/util/errors",
+    "pkg/util/intstr",
+    "pkg/util/net",
     "pkg/util/runtime",
     "pkg/util/sets",
     "pkg/util/version",
     "pkg/util/wait",
+    "pkg/version",
   ]
   pruneopts = "UT"
   revision = "fb3eea21474617fb41ce32f1a230902cf3293d0d"
@@ -313,11 +355,18 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:ab7de3974b58f050cd460b6827e94e99d91c7b7ba3313d5f9133972f9a6a55ff"
+  digest = "1:112329d73cee55b9e161a0ae3eba8106e24b9eb06346944943a9f6ac1f7fdbd4"
   name = "k8s.io/kubernetes"
   packages = [
+    "pkg/kubelet/util/ioutils",
+    "pkg/probe",
+    "pkg/probe/exec",
+    "pkg/probe/http",
+    "pkg/probe/tcp",
     "pkg/util/dbus",
     "pkg/util/iptables",
+    "pkg/version",
+    "third_party/forked/golang/expansion",
   ]
   pruneopts = "UT"
   revision = "d647ddbd755faf07169599a625faf302ffc34458"
@@ -325,10 +374,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:eef1580ac7a5db34e1e367a0d641d03b605e584488c7ff5943742401d49e0c47"
+  digest = "1:c8cff65cbbdd6674cb30709e9956132e68302299bc02577c3bd3a62189310c71"
   name = "k8s.io/utils"
   packages = [
     "exec",
+    "io",
     "trace",
   ]
   pruneopts = "UT"
@@ -360,7 +410,16 @@
     "github.com/vishvananda/netns",
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
+    "k8s.io/apimachinery/pkg/util/intstr",
+    "k8s.io/klog",
+    "k8s.io/kubernetes/pkg/probe",
+    "k8s.io/kubernetes/pkg/probe/exec",
+    "k8s.io/kubernetes/pkg/probe/http",
+    "k8s.io/kubernetes/pkg/probe/tcp",
+    "k8s.io/kubernetes/pkg/util/dbus",
     "k8s.io/kubernetes/pkg/util/iptables",
+    "k8s.io/kubernetes/third_party/forked/golang/expansion",
+    "k8s.io/utils/exec",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

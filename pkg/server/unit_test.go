@@ -235,7 +235,8 @@ func TestUnitRestartPolicyNever(t *testing.T) {
 	case err = <-ch:
 		assert.NotNil(t, err)
 	case <-time.After(10 * time.Second):
-		assert.True(t, false)
+		assert.True(t, false, "test timed out")
+		return
 	}
 	// Check return value.
 	assert.Equal(t, 1, err2rc(t, err))
@@ -540,5 +541,204 @@ func TestMakeHostname(t *testing.T) {
 	for i, tc := range cases {
 		result := makeHostname(tc[0])
 		assert.Equal(t, tc[1], result, "failed test case %d: %s -> %s", i, tc[0], result)
+	}
+}
+
+func mkTestUnit(t *testing.T) (*Unit, func()) {
+	tmpdir, err := ioutil.TempDir("", "itzo-test")
+	if err != nil {
+		t.FailNow()
+	}
+	u, err := OpenUnit(tmpdir, "foobar")
+	if err != nil {
+		os.RemoveAll(tmpdir)
+		t.FailNow()
+	}
+	closer := func() {
+		os.RemoveAll(tmpdir)
+		u.Destroy()
+	}
+	return u, closer
+}
+
+func TestWatchCmdLivenessReadiness(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		cmd          []string
+		livenessCmd  []string
+		readinessCmd []string
+		isReady      bool
+		livenessErr  bool
+		cmdErr       bool
+	}{
+		{
+			name:         "no probes",
+			cmd:          []string{"/bin/bash", "-c", "sleep 2"},
+			livenessCmd:  []string{},
+			readinessCmd: []string{},
+			isReady:      true,
+			livenessErr:  false,
+			cmdErr:       false,
+		},
+		{
+			name:         "probes succeed",
+			cmd:          []string{"/bin/bash", "-c", "sleep 2"},
+			livenessCmd:  []string{"ls", "/"},
+			readinessCmd: []string{"ls", "/"},
+			isReady:      true,
+			livenessErr:  false,
+			cmdErr:       false,
+		},
+		{
+			name:         "liveness error",
+			cmd:          []string{"/bin/bash", "-c", "sleep 4"},
+			livenessCmd:  []string{"/bin/bash", "-c", "sleep 2; exit 1"},
+			readinessCmd: []string{"ls", "/"},
+			isReady:      true,
+			livenessErr:  true,
+			cmdErr:       false,
+		},
+		{
+			name:         "readiness error",
+			cmd:          []string{"/bin/bash", "-c", "sleep 2"},
+			readinessCmd: []string{"/bin/false"},
+			isReady:      false,
+			livenessErr:  false,
+			cmdErr:       false,
+		},
+		{
+			name:        "cmd error, no readiness probe",
+			cmd:         []string{"/bin/false"},
+			livenessCmd: []string{"ls", "/"},
+			isReady:     true,
+			livenessErr: false,
+			cmdErr:      true,
+		},
+	}
+	for i, tc := range tests {
+		// These are time consuming, lets run them in parallel
+		// see https://gist.github.com/posener/92a55c4cd441fc5e5e85f27bca008721
+		msg := fmt.Sprintf("test %d: %s", i, tc.name)
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			u, closer := mkTestUnit(t)
+			defer closer()
+
+			cmd := exec.Command(tc.cmd[0], tc.cmd[1:]...)
+			var rp *api.Probe
+			if len(tc.readinessCmd) > 0 {
+				rp = &api.Probe{
+					Handler: api.Handler{
+						Exec: &api.ExecAction{tc.readinessCmd},
+					},
+					InitialDelaySeconds: 0,
+					PeriodSeconds:       1,
+					SuccessThreshold:    1,
+					FailureThreshold:    1,
+				}
+			}
+			var lp *api.Probe
+			if len(tc.livenessCmd) > 0 {
+				lp = &api.Probe{
+					Handler: api.Handler{
+						Exec: &api.ExecAction{tc.livenessCmd},
+					},
+					InitialDelaySeconds: 0,
+					PeriodSeconds:       1,
+					SuccessThreshold:    1,
+					FailureThreshold:    1,
+				}
+			}
+
+			err := cmd.Start()
+			assert.NoError(t, err, msg)
+
+			cmdErr, probeErr := u.watchRunningCmd(cmd, nil, rp, lp)
+			assert.Equal(t, tc.livenessErr, probeErr != nil, msg)
+			assert.Equal(t, tc.cmdErr, cmdErr != nil, msg)
+			s, err := u.GetStatus()
+			assert.NoError(t, err)
+			if s.Started != nil {
+				assert.True(t, *s.Started)
+			} else {
+				assert.Fail(t, "unit status should not be nil")
+			}
+			assert.Equal(t, tc.isReady, s.Ready)
+		})
+	}
+}
+
+func TestStartupProbe(t *testing.T) {
+	t.Parallel()
+	// create a cmd
+	// have a startup prove that fails
+	// have a startup probe that succeeds
+	// have a command that fails before startup probe returns
+	tests := []struct {
+		name       string
+		cmd        []string
+		startupCmd []string
+		isStarted  bool
+		startupErr bool
+		cmdErr     bool
+	}{
+		{
+			name:       "startup probe succeeds",
+			cmd:        []string{"/bin/bash", "-c", "sleep 2"},
+			startupCmd: []string{"/bin/ls", "/"},
+			isStarted:  true,
+			startupErr: false,
+			cmdErr:     false,
+		},
+		{
+			name:       "startup probe fails",
+			cmd:        []string{"/bin/bash", "-c", "sleep 2"},
+			startupCmd: []string{"/bin/false"},
+			isStarted:  false,
+			startupErr: true,
+			cmdErr:     false,
+		},
+		{
+			name:       "cmd returns before startup",
+			cmd:        []string{"/bin/false"},
+			startupCmd: []string{"/bin/bash", "-c", "sleep 2"},
+			isStarted:  false,
+			startupErr: false,
+			cmdErr:     true,
+		},
+	}
+	for i, tc := range tests {
+		msg := fmt.Sprintf("test %d: %s", i, tc.name)
+		u, closer := mkTestUnit(t)
+		defer closer()
+		cmd := exec.Command(tc.cmd[0], tc.cmd[1:]...)
+		var sp *api.Probe
+		if len(tc.startupCmd) > 0 {
+			sp = &api.Probe{
+				Handler: api.Handler{
+					Exec: &api.ExecAction{tc.startupCmd},
+				},
+				InitialDelaySeconds: 0,
+				PeriodSeconds:       1,
+				SuccessThreshold:    1,
+				FailureThreshold:    1,
+			}
+		}
+		err := cmd.Start()
+		assert.NoError(t, err, msg)
+		cmdErr, probeErr := u.watchRunningCmd(cmd, sp, nil, nil)
+		assert.Equal(t, tc.startupErr, probeErr != nil, msg)
+		assert.Equal(t, tc.cmdErr, cmdErr != nil, msg)
+		s, err := u.GetStatus()
+		assert.NoError(t, err)
+		if s.Started == nil {
+			// if the unit status says we have no started status
+			// ensure that agreees with the test case
+			assert.False(t, tc.isStarted)
+		} else {
+			assert.Equal(t, tc.isStarted, *s.Started)
+		}
 	}
 }

@@ -34,7 +34,7 @@ type UnitRunner interface {
 	RemoveUnit(string) error
 }
 
-// I know how to do one thing: Make Controllers. A fuckload of controllers...
+// I know how to do one thing: Make Controllers. A ton of controllers...
 type PodController struct {
 	rootdir     string
 	podName     string
@@ -362,12 +362,27 @@ func (pc *PodController) saveSecurityContext(unitName string, podSecurityContext
 	glog.Infof("Saving security context for unit %q in %q", unitName, pc.rootdir)
 	u, err := OpenUnit(pc.rootdir, unitName)
 	if err != nil {
-		return fmt.Errorf("Opening unit %q for saving security context: %v",
+		return fmt.Errorf("opening unit %q for saving security context: %v",
 			unitName, err)
 	}
 	err = u.SaveSecurityContext(podSecurityContext, unitSecurityContext)
 	if err != nil {
-		return fmt.Errorf("Saving security context for unit %q: %v",
+		return fmt.Errorf("saving security context for unit %q: %v",
+			unitName, err)
+	}
+	return nil
+}
+
+func (pc *PodController) saveUnitProbes(unitName string, startupProbe, readinessProbe, livenessProbe *api.Probe) error {
+	glog.Infof("Saving probesfor unit %q in %q", unitName, pc.rootdir)
+	u, err := OpenUnit(pc.rootdir, unitName)
+	if err != nil {
+		return fmt.Errorf("opening unit %q for saving probes: %v",
+			unitName, err)
+	}
+	err = u.SaveProbes(startupProbe, readinessProbe, livenessProbe)
+	if err != nil {
+		return fmt.Errorf("saving proves for unit %q: %v",
 			unitName, err)
 	}
 	return nil
@@ -397,6 +412,18 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		unit.SecurityContext)
 	if err != nil {
 		msg := fmt.Sprintf("Error saving security context for unit %s: %v",
+			unit.Name, err)
+		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+		return
+	}
+
+	err = pc.saveUnitProbes(
+		unit.Name,
+		unit.StartupProbe,
+		unit.ReadinessProbe,
+		unit.LivenessProbe)
+	if err != nil {
+		msg := fmt.Sprintf("Error saving pod probes for unit %s: %v",
 			unit.Name, err)
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
