@@ -91,10 +91,19 @@ func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 	}
 	if cm.Memory != nil && cm.Memory.Usage != nil {
 		metrics[name+".memoryUsage"] = float64(cm.Memory.Usage.Usage)
+		metrics[name+".memoryWorkingSet"] = float64(getWorkingSet(cm.Memory))
 	}
 	if diskStats, err := disk.Usage("/"); err == nil {
 		metrics[name+".filesystemUsedBytes"] = float64(diskStats.Used)
 		metrics[name+".filesystemUsedInodes"] = float64(diskStats.InodesUsed)
 	}
 	return metrics
+}
+
+func getWorkingSet(memory *cgroups.MemoryStat) uint64 {
+	workingSet := memory.Usage.Usage
+	if memory.TotalInactiveFile < memory.Usage.Usage {
+		workingSet = memory.Usage.Usage - memory.TotalInactiveFile
+	}
+	return workingSet
 }
