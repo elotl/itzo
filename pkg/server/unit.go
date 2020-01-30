@@ -741,12 +741,15 @@ func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy ap
 	} else if probeErr != nil {
 		glog.Infof("Command %s saw a probe error %s after %.2fs",
 			fullCmd, probeErr.Error(), d.Seconds())
-		// todo: terminate the command
 		//
 		// Todo: eventaully this will need to abide by the unit's
 		// terminationGracePeriod
 		//
-
+		err := cmd.Process.Kill()
+		if err != nil {
+			glog.Warningf("Couldn't kill %s process %s: %v",
+				u.Name, fullCmd, err)
+		}
 	} else {
 		glog.Infof("Command %v pid %d exited with 0 after %.2fs",
 			fullCmd, cmd.Process.Pid, d.Seconds())
