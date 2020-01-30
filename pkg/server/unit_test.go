@@ -742,3 +742,22 @@ func TestStartupProbe(t *testing.T) {
 		}
 	}
 }
+
+// Tests that a failed probe kills a running cmd
+func TestCmdCleanupFailedProbe(t *testing.T) {
+	u, closer := mkTestUnit(t)
+	defer closer()
+
+	cmd := exec.Command("/bin/bash", "-c", "sleep 20")
+	err := cmd.Start()
+	testStart := time.Now()
+	assert.NoError(t, err)
+	probeErr := fmt.Errorf("probe failed")
+	keepGoing := u.handleCmdCleanup(cmd, nil, probeErr, api.RestartPolicyNever, testStart)
+	procErr := cmd.Wait()
+	assert.Error(t, procErr)
+	if time.Since(testStart) > 10*time.Second {
+		assert.Fail(t, "did not kill command in time")
+	}
+	assert.False(t, keepGoing)
+}
