@@ -11,6 +11,7 @@ import (
 	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 var specChanSize = 100
@@ -417,11 +418,14 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		return
 	}
 
+	startupProbe := translateProbePorts(unit, unit.StartupProbe)
+	readinessProbe := translateProbePorts(unit, unit.ReadinessProbe)
+	livenessProbe := translateProbePorts(unit, unit.LivenessProbe)
 	err = pc.saveUnitProbes(
 		unit.Name,
-		unit.StartupProbe,
-		unit.ReadinessProbe,
-		unit.LivenessProbe)
+		startupProbe,
+		readinessProbe,
+		livenessProbe)
 	if err != nil {
 		msg := fmt.Sprintf("Error saving pod probes for unit %s: %v",
 			unit.Name, err)
@@ -463,6 +467,45 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		return
 	}
 	delete(pc.syncErrors, unit.Name)
+}
+
+// Our probes can reference unit ports by the name given to them in
+// the unit.  However, where the probes are actually used (inside
+// unit.go) we don't have access to the full unit structure. Here we
+// make a copy of an httpget probe and update it to use only probe
+// numbers. If we can't look up a probe's name, we don't fail the
+// unit, instead we pass along the unmodified port and it'll fail in
+// the probe. That matches the behavior of the kubelet.  Note that we
+// can't change a probe in-place since that messes up the diffs we do
+// on pods during UpdatePod and would cause us to delete and recreate
+// pods.
+func translateProbePorts(unit api.Unit, probe *api.Probe) *api.Probe {
+	// only translate the port name if this is an http probe with a port
+	// with a string name
+	if probe != nil &&
+		probe.HTTPGet != nil &&
+		probe.HTTPGet.Port.Type == intstr.String {
+		p := *probe
+		port, err := findPortByName(unit, p.HTTPGet.Port.StrVal)
+		if err == nil {
+			newAction := *p.HTTPGet
+			p.HTTPGet = &newAction
+			p.HTTPGet.Port = intstr.FromInt(port)
+		}
+		return &p
+	} else {
+		return probe
+	}
+}
+
+// findPortByName is a helper function to look up a port in a container by name.
+func findPortByName(unit api.Unit, portName string) (int, error) {
+	for _, port := range unit.Ports {
+		if port.Name == portName {
+			return int(port.Port), nil
+		}
+	}
+	return 0, fmt.Errorf("port %s not found", portName)
 }
 
 func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]api.RegistryCredentials, initUnits []api.Unit, addUnits []api.Unit, policy api.RestartPolicy, podSecurityContext *api.PodSecurityContext) {

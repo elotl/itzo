@@ -169,11 +169,16 @@ func (pb *prober) runProbe(probeType ProbeType, p *api.Probe) (probe.Result, str
 }
 
 func extractPort(param intstr.IntOrString) (int, error) {
-	if param.Type == intstr.Int {
+	switch param.Type {
+	case intstr.String:
+		return -1, fmt.Errorf("could not find port named %s in unit", param.StrVal)
+	case intstr.Int:
 		port := param.IntValue()
 		if port > 0 && port < 65536 {
 			return port, nil
 		}
+	default:
+		return -1, fmt.Errorf("intOrString had no kind: %+v", param)
 	}
 	return -1, fmt.Errorf("invalid port number: %v", param)
 }
