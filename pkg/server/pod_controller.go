@@ -472,7 +472,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 // Our probes can reference unit ports by the name given to them in
 // the unit.  However, where the probes are actually used (inside
 // unit.go) we don't have access to the full unit structure. Here we
-// make a copy of an httpget probe and update it to use only probe
+// make a copy of an httpget probe and update it to use only port
 // numbers. If we can't look up a probe's name, we don't fail the
 // unit, instead we pass along the unmodified port and it'll fail in
 // the probe. That matches the behavior of the kubelet.  Note that we

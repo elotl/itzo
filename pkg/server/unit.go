@@ -253,21 +253,6 @@ func (u *Unit) getSecurityContext() (*securityContext, error) {
 	var sc securityContext
 	err := u.getUnitFile(path, &sc)
 	return &sc, err
-	// buf, err := ioutil.ReadFile(path)
-	// if err != nil {
-	// 	if !os.IsNotExist(err) {
-	// 		glog.Errorf("Error reading securityContext file for %q", u.Name)
-	// 	}
-	// 	return nil, err
-	// }
-	// var sc securityContext
-	// err = json.Unmarshal(buf, &sc)
-	// if err != nil {
-	// 	glog.Errorf("Error deserializing securityContext '%v' for %q: %v",
-	// 		buf, u.Name, err)
-	// 	return nil, err
-	// }
-	// return &sc, nil
 }
 
 func (u *Unit) getProbes() (*probes, error) {
