@@ -632,5 +632,14 @@ func (pc *PodController) getUnitStatuses(units []api.Unit) []api.UnitStatus {
 func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error) {
 	statuses := pc.getUnitStatuses(pc.podStatus.Units)
 	initStatuses := pc.getUnitStatuses(pc.podStatus.InitUnits)
+	// Kubelet reports completed init units as "Ready" whereas
+	// completed regular units are not ready. Let's handle that
+	// special case here
+	for i := range initStatuses {
+		if initStatuses[i].State.Terminated != nil &&
+			initStatuses[i].State.Terminated.ExitCode == int32(0) {
+			initStatuses[i].Ready = true
+		}
+	}
 	return statuses, initStatuses, nil
 }
