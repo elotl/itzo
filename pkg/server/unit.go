@@ -655,7 +655,6 @@ func (u *Unit) watchRunningCmd(cmd *exec.Cmd, startupProbe, readinessProbe, live
 			case cmdErr := <-cmdDoneChan:
 				return cmdErr, nil
 			case startupResult := <-startupWorker.Results():
-				fmt.Println("Got startup result", startupResult)
 				if startupResult == prober.Failure {
 					glog.Warningln("startup probe failed")
 					return nil, fmt.Errorf("startup probe failed")

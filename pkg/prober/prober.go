@@ -36,8 +36,6 @@ import (
 	httprobe "k8s.io/kubernetes/pkg/probe/http"
 	tcprobe "k8s.io/kubernetes/pkg/probe/tcp"
 	kubeexec "k8s.io/utils/exec"
-
-	"k8s.io/klog"
 )
 
 const maxProbeRetries = 3
@@ -78,7 +76,7 @@ func newProber(
 // probe probes the container.
 func (pb *prober) probe(probeType ProbeType, probeSpec *api.Probe) (Result, error) {
 	if probeSpec == nil {
-		klog.Warningf("%s probe for %s is nil", probeType, pb.unitName)
+		glog.Warningf("%s probe for %s is nil", probeType, pb.unitName)
 		return Success, nil
 	}
 
@@ -214,7 +212,6 @@ func (pb *prober) newExecCmd(cmd []string, timeout time.Duration) kubeexec.Cmd {
 }
 
 func (eic execCmd) Run() error {
-	fmt.Println("howd get here1")
 	return fmt.Errorf("unimplemented")
 }
 
@@ -232,7 +229,6 @@ func (eic execCmd) CombinedOutput() ([]byte, error) {
 }
 
 func (eic execCmd) Output() ([]byte, error) {
-	fmt.Println("howd get here2")
 	return nil, fmt.Errorf("unimplemented")
 }
 

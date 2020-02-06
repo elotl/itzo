@@ -487,7 +487,9 @@ func translateProbePorts(unit api.Unit, probe *api.Probe) *api.Probe {
 		probe.HTTPGet.Port.Type == intstr.String {
 		p := *probe
 		port, err := findPortByName(unit, p.HTTPGet.Port.StrVal)
-		if err == nil {
+		if err != nil {
+			glog.Errorf("error looking up probe port: %s", err)
+		} else {
 			newAction := *p.HTTPGet
 			p.HTTPGet = &newAction
 			p.HTTPGet.Port = intstr.FromInt(port)
