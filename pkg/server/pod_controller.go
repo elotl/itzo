@@ -11,6 +11,7 @@ import (
 	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 var specChanSize = 100
@@ -34,7 +35,7 @@ type UnitRunner interface {
 	RemoveUnit(string) error
 }
 
-// I know how to do one thing: Make Controllers. A fuckload of controllers...
+// I know how to do one thing: Make Controllers. A ton of controllers...
 type PodController struct {
 	rootdir     string
 	podName     string
@@ -362,12 +363,27 @@ func (pc *PodController) saveSecurityContext(unitName string, podSecurityContext
 	glog.Infof("Saving security context for unit %q in %q", unitName, pc.rootdir)
 	u, err := OpenUnit(pc.rootdir, unitName)
 	if err != nil {
-		return fmt.Errorf("Opening unit %q for saving security context: %v",
+		return fmt.Errorf("opening unit %q for saving security context: %v",
 			unitName, err)
 	}
 	err = u.SaveSecurityContext(podSecurityContext, unitSecurityContext)
 	if err != nil {
-		return fmt.Errorf("Saving security context for unit %q: %v",
+		return fmt.Errorf("saving security context for unit %q: %v",
+			unitName, err)
+	}
+	return nil
+}
+
+func (pc *PodController) saveUnitProbes(unitName string, startupProbe, readinessProbe, livenessProbe *api.Probe) error {
+	glog.Infof("Saving probesfor unit %q in %q", unitName, pc.rootdir)
+	u, err := OpenUnit(pc.rootdir, unitName)
+	if err != nil {
+		return fmt.Errorf("opening unit %q for saving probes: %v",
+			unitName, err)
+	}
+	err = u.SaveProbes(startupProbe, readinessProbe, livenessProbe)
+	if err != nil {
+		return fmt.Errorf("saving proves for unit %q: %v",
 			unitName, err)
 	}
 	return nil
@@ -397,6 +413,21 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		unit.SecurityContext)
 	if err != nil {
 		msg := fmt.Sprintf("Error saving security context for unit %s: %v",
+			unit.Name, err)
+		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+		return
+	}
+
+	startupProbe := translateProbePorts(unit, unit.StartupProbe)
+	readinessProbe := translateProbePorts(unit, unit.ReadinessProbe)
+	livenessProbe := translateProbePorts(unit, unit.LivenessProbe)
+	err = pc.saveUnitProbes(
+		unit.Name,
+		startupProbe,
+		readinessProbe,
+		livenessProbe)
+	if err != nil {
+		msg := fmt.Sprintf("Error saving pod probes for unit %s: %v",
 			unit.Name, err)
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
@@ -436,6 +467,47 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		return
 	}
 	delete(pc.syncErrors, unit.Name)
+}
+
+// Our probes can reference unit ports by the name given to them in
+// the unit.  However, where the probes are actually used (inside
+// unit.go) we don't have access to the full unit structure. Here we
+// make a copy of an httpget probe and update it to use only port
+// numbers. If we can't look up a probe's name, we don't fail the
+// unit, instead we pass along the unmodified port and it'll fail in
+// the probe. That matches the behavior of the kubelet.  Note that we
+// can't change a probe in-place since that messes up the diffs we do
+// on pods during UpdatePod and would cause us to delete and recreate
+// pods.
+func translateProbePorts(unit api.Unit, probe *api.Probe) *api.Probe {
+	// only translate the port name if this is an http probe with a port
+	// with a string name
+	if probe != nil &&
+		probe.HTTPGet != nil &&
+		probe.HTTPGet.Port.Type == intstr.String {
+		p := *probe
+		port, err := findPortByName(unit, p.HTTPGet.Port.StrVal)
+		if err != nil {
+			glog.Errorf("error looking up probe port: %s", err)
+		} else {
+			newAction := *p.HTTPGet
+			p.HTTPGet = &newAction
+			p.HTTPGet.Port = intstr.FromInt(port)
+		}
+		return &p
+	} else {
+		return probe
+	}
+}
+
+// findPortByName is a helper function to look up a port in a container by name.
+func findPortByName(unit api.Unit, portName string) (int, error) {
+	for _, port := range unit.Ports {
+		if port.Name == portName {
+			return int(port.Port), nil
+		}
+	}
+	return 0, fmt.Errorf("port %s not found", portName)
 }
 
 func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]api.RegistryCredentials, initUnits []api.Unit, addUnits []api.Unit, policy api.RestartPolicy, podSecurityContext *api.PodSecurityContext) {
@@ -562,5 +634,14 @@ func (pc *PodController) getUnitStatuses(units []api.Unit) []api.UnitStatus {
 func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error) {
 	statuses := pc.getUnitStatuses(pc.podStatus.Units)
 	initStatuses := pc.getUnitStatuses(pc.podStatus.InitUnits)
+	// Kubelet reports completed init units as "Ready" whereas
+	// completed regular units are not ready. Let's handle that
+	// special case here
+	for i := range initStatuses {
+		if initStatuses[i].State.Terminated != nil &&
+			initStatuses[i].State.Terminated.ExitCode == int32(0) {
+			initStatuses[i].Ready = true
+		}
+	}
 	return statuses, initStatuses, nil
 }

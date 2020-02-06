@@ -9,6 +9,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestMergeSecretsIntoSpec(t *testing.T) {
@@ -567,4 +568,49 @@ func TestPodControllerStatus(t *testing.T) {
 	assertStatusEqual(t, &expected, &statuses[0])
 	assert.Len(t, initStatuses, 1)
 	assertStatusEqual(t, &initExpected, &initStatuses[0])
+}
+
+func TestFindPortByName(t *testing.T) {
+	unit := api.Unit{
+		Ports: []api.ServicePort{
+			{
+				Name: "foo",
+				Port: 8080,
+			},
+			{
+				Name: "bar",
+				Port: 9000,
+			},
+		},
+	}
+	want := 8080
+	got, err := findPortByName(unit, "foo")
+	if got != want || err != nil {
+		t.Errorf("Expected %v, got %v, err: %v", want, got, err)
+	}
+}
+
+func TestTranslateProbePorts(t *testing.T) {
+	probe := &api.Probe{
+		Handler: api.Handler{
+			HTTPGet: &api.HTTPGetAction{
+				Port: intstr.FromString("foo"),
+			},
+		},
+	}
+	unit := api.Unit{
+		Ports: []api.ServicePort{
+			{
+				Name: "foo",
+				Port: 8080,
+			},
+		},
+	}
+	newProbe := translateProbePorts(unit, probe)
+	assert.NotNil(t, newProbe)
+	assert.Equal(t, intstr.Int, newProbe.HTTPGet.Port.Type)
+	assert.Equal(t, int32(8080), newProbe.HTTPGet.Port.IntVal)
+	assert.Equal(t, intstr.String, probe.HTTPGet.Port.Type)
+	assert.Equal(t, "foo", probe.HTTPGet.Port.StrVal)
+
 }

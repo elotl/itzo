@@ -17,6 +17,7 @@ import (
 	"github.com/elotl/itzo/pkg/caps"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/net"
+	"github.com/elotl/itzo/pkg/prober"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	sysctl "github.com/lorenzosaino/go-sysctl"
@@ -104,6 +105,12 @@ type securityContext struct {
 	api.SecurityContext    `json:"securityContext"`
 }
 
+type probes struct {
+	StartupProbe   *api.Probe
+	ReadinessProbe *api.Probe
+	LivenessProbe  *api.Probe
+}
+
 func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 	return &api.UnitStatus{
 		Name: name,
@@ -119,13 +126,13 @@ func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 
 type Unit struct {
 	*LogPipe
-	Directory  string
-	Name       string
-	Image      string
-	statusPath string
-	config     *Config
-	// For saving pod and unit security contexts.
+	Directory       string
+	Name            string
+	Image           string
+	statusPath      string
+	config          *Config
 	securityContext *securityContext
+	probes          *probes
 	stdinPath       string
 	stdinCloser     chan struct{}
 }
@@ -173,6 +180,11 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 	if err != nil && !os.IsNotExist(err) {
 		glog.Warningf("Failed to get unit %s security context: %v", name, err)
 	}
+	u.probes, err = u.getProbes()
+	if err != nil && !os.IsNotExist(err) {
+		glog.Warningf("Failed to get unit %s probes: %v", name, err)
+	}
+
 	// We need to get the image, that's saved in the status
 	s, err := u.GetStatus()
 	if err != nil {
@@ -238,21 +250,34 @@ func (u *Unit) closeStdin() {
 
 func (u *Unit) getSecurityContext() (*securityContext, error) {
 	path := filepath.Join(u.Directory, "securityContext")
+	var sc securityContext
+	err := u.getUnitFile(path, &sc)
+	return &sc, err
+}
+
+func (u *Unit) getProbes() (*probes, error) {
+	path := filepath.Join(u.Directory, "probes")
+	var p probes
+	err := u.getUnitFile(path, &p)
+	return &p, err
+}
+
+func (u *Unit) getUnitFile(path string, obj interface{}) error {
 	buf, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error reading securityContext file for %q", u.Name)
+			glog.Errorf("Error reading unit file %s for %q", path, u.Name)
 		}
-		return nil, err
+		return err
 	}
-	var sc securityContext
-	err = json.Unmarshal(buf, &sc)
+
+	err = json.Unmarshal(buf, &obj)
 	if err != nil {
-		glog.Errorf("Error deserializing securityContext '%v' for %q: %v",
-			buf, u.Name, err)
-		return nil, err
+		glog.Errorf("Error deserializing %s '%v' for %q: %v",
+			path, buf, u.Name, err)
+		return err
 	}
-	return &sc, nil
+	return nil
 }
 
 func (u *Unit) SaveSecurityContext(podSecurityContext *api.PodSecurityContext, unitSecurityContext *api.SecurityContext) error {
@@ -263,21 +288,43 @@ func (u *Unit) SaveSecurityContext(podSecurityContext *api.PodSecurityContext, u
 	if unitSecurityContext != nil {
 		sc.SecurityContext = *unitSecurityContext
 	}
-	path := filepath.Join(u.Directory, "securityContext")
-	buf, err := json.Marshal(&sc)
+	err := u.saveUnitFile("securityContext", sc)
 	if err != nil {
-		glog.Errorf("Error serializing securityContext '%v' for %q: %v",
-			buf, u.Name, err)
+		return err
+	}
+	u.securityContext = &sc
+	return nil
+}
+
+func (u *Unit) SaveProbes(startupProbe, readinessProbe, livenessProbe *api.Probe) error {
+	p := probes{
+		StartupProbe:   startupProbe,
+		ReadinessProbe: readinessProbe,
+		LivenessProbe:  livenessProbe,
+	}
+	err := u.saveUnitFile("probes", p)
+	if err != nil {
+		return err
+	}
+	u.probes = &p
+	return nil
+}
+
+func (u *Unit) saveUnitFile(filename string, obj interface{}) error {
+	path := filepath.Join(u.Directory, filename)
+	buf, err := json.Marshal(&obj)
+	if err != nil {
+		glog.Errorf("Error serializing %s '%v' for %q: %v",
+			filename, buf, u.Name, err)
 		return err
 	}
 	err = ioutil.WriteFile(path, buf, 0755)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error reading securityContext for %s\n", u.Name)
+			glog.Errorf("Error writing %s for %s\n", filename, u.Name)
 		}
 		return err
 	}
-	u.securityContext = &sc
 	return nil
 }
 
@@ -467,6 +514,21 @@ func (u *Unit) SetStatus(status *api.UnitStatus) error {
 	return nil
 }
 
+func (u *Unit) UpdateStatusAttr(ready, started *bool) error {
+	status, err := u.GetStatus()
+	if err != nil {
+		glog.Errorf("Error getting current status for %s\n", u.Name)
+		return err
+	}
+	if ready != nil {
+		status.Ready = *ready
+	}
+	if started != nil {
+		status.Started = started
+	}
+	return u.SetStatus(status)
+}
+
 func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
@@ -513,11 +575,12 @@ func maybeBackOff(err error, command []string, backoff *time.Duration, runningTi
 }
 
 func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
+	falseval := false
 	backoff := 1 * time.Second
 	restarts := -1
 	for {
 		restarts++
-		start := time.Now()
+		startTime := time.Now()
 		cmd := exec.Command(command[0], command[1:]...)
 		cmd.Env = os.Environ()
 		cmd.Stdin = unitin
@@ -541,7 +604,7 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 				Groups: groups,
 			}
 		}
-
+		u.UpdateStatusAttr(&falseval, &falseval)
 		err = cmd.Start()
 		if err != nil {
 			// Start() failed, it is either an error looking up the executable,
@@ -571,56 +634,144 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 		} else {
 			glog.Warningf("cmd has nil process: %#v", cmd)
 		}
+		cmdErr, probeErr := u.watchRunningCmd(cmd, u.probes.StartupProbe, u.probes.ReadinessProbe, u.probes.LivenessProbe)
+		keepGoing := u.handleCmdCleanup(cmd, cmdErr, probeErr, policy, startTime)
+		if !keepGoing {
+			return cmdErr
+		}
+		maybeBackOff(cmdErr, command, &backoff, time.Since(startTime))
+	}
+}
 
-		exitCode := 0
-
-		procErr := cmd.Wait()
-		d := time.Since(start)
-		failure := false
-		if procErr != nil {
-			failure = true
-			foundRc := false
-			if exiterr, ok := procErr.(*exec.ExitError); ok {
-				if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-					foundRc = true
-					exitCode = ws.ExitStatus()
-					glog.Infof("Command %v pid %d exited with %d after %.2fs",
-						command, cmd.Process.Pid, exitCode, d.Seconds())
+func (u *Unit) watchRunningCmd(cmd *exec.Cmd, startupProbe, readinessProbe, livenessProbe *api.Probe) (error, error) {
+	cmdDoneChan := waitForCmd(cmd)
+	if startupProbe != nil {
+		startupWorker := prober.NewWorker(u.Name, prober.Startup, startupProbe)
+		startupWorker.Start()
+		defer startupWorker.Stop()
+	waitForStarted:
+		for {
+			select {
+			case cmdErr := <-cmdDoneChan:
+				return cmdErr, nil
+			case startupResult := <-startupWorker.Results():
+				if startupResult == prober.Failure {
+					glog.Warningln("startup probe failed")
+					return nil, fmt.Errorf("startup probe failed")
+				} else if startupResult == prober.Success {
+					break waitForStarted
 				}
 			}
-			if !foundRc {
-				glog.Infof("Command %v pid %d exited with %v after %.2fs",
-					command, cmd.Process.Pid, procErr, d.Seconds())
-			}
-		} else {
-			glog.Infof("Command %v pid %d exited with 0 after %.2fs",
-				command, cmd.Process.Pid, d.Seconds())
 		}
-
-		if policy == api.RestartPolicyAlways ||
-			(policy == api.RestartPolicyOnFailure && failure) {
-			// We never mark a unit as terminated in this state,
-			// we just return it to waiting and wait for it to
-			// be run again
-			u.SetState(api.UnitState{
-				Waiting: &api.UnitStateWaiting{
-					Reason: fmt.Sprintf(
-						"Waiting for unit restart, last exit code: %d",
-						exitCode),
-				},
-			}, &restarts)
-		} else {
-			// Game over, man!
-			u.SetState(api.UnitState{
-				Terminated: &api.UnitStateTerminated{
-					ExitCode:   int32(exitCode),
-					FinishedAt: api.Now(),
-				},
-			}, &restarts)
-			return procErr
-		}
-		maybeBackOff(procErr, command, &backoff, d)
+		startupWorker.Stop()
 	}
+
+	isReady := readinessProbe == nil
+	isStarted := true
+	u.UpdateStatusAttr(&isReady, &isStarted)
+
+	livenessWorker := prober.NewWorker(u.Name, prober.Liveness, livenessProbe)
+	livenessWorker.Start()
+	defer livenessWorker.Stop()
+	readinessWorker := prober.NewWorker(u.Name, prober.Readiness, readinessProbe)
+	readinessWorker.Start()
+	defer readinessWorker.Stop()
+	for {
+		select {
+		case cmdErr := <-cmdDoneChan:
+			return cmdErr, nil
+		case livenessResult := <-livenessWorker.Results():
+			if livenessResult == prober.Failure {
+				glog.Warningln("liveness probe failed")
+				return nil, fmt.Errorf("liveness probe failed")
+			}
+		case readinessResult := <-readinessWorker.Results():
+			// this will never fire if we don't have a readiness probe
+			ready := readinessResult == prober.Success
+			u.UpdateStatusAttr(&ready, nil)
+		}
+	}
+	return nil, nil
+}
+
+func waitForCmd(cmd *exec.Cmd) chan error {
+	// prevent leaking a goroutine by buffering the channel
+	doneChan := make(chan error, 1)
+	go func() {
+		procErr := cmd.Wait()
+		doneChan <- procErr
+	}()
+	return doneChan
+}
+
+func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy api.RestartPolicy, startTime time.Time) (keepGoing bool) {
+	keepGoing = true
+	d := time.Since(startTime)
+	failure := false
+	exitCode := 0
+	fullCmd := append([]string{cmd.Path}, cmd.Args...)
+	if cmdErr != nil {
+		failure = true
+		foundRc := false
+		if exiterr, ok := cmdErr.(*exec.ExitError); ok {
+			if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+				foundRc = true
+				exitCode = ws.ExitStatus()
+				glog.Infof("Command %v pid %d exited with %d after %.2fs",
+					fullCmd, cmd.Process.Pid, exitCode, d.Seconds())
+			}
+		}
+		if !foundRc {
+			glog.Infof("Command %v pid %d exited with %v after %.2fs",
+				fullCmd, cmd.Process.Pid, cmdErr, d.Seconds())
+		}
+	} else if probeErr != nil {
+		glog.Infof("Command %s saw a probe error %s after %.2fs",
+			fullCmd, probeErr.Error(), d.Seconds())
+		//
+		// Todo: eventaully this will need to abide by the unit's
+		// terminationGracePeriod
+		//
+		err := cmd.Process.Kill()
+		if err != nil {
+			glog.Warningf("Couldn't kill %s process %s: %v",
+				u.Name, fullCmd, err)
+		}
+	} else {
+		glog.Infof("Command %v pid %d exited with 0 after %.2fs",
+			fullCmd, cmd.Process.Pid, d.Seconds())
+	}
+
+	// Todo: grab the termination log, put it in Message
+	// also create LastTerminationState
+
+	falseval := false
+	u.UpdateStatusAttr(&falseval, &falseval)
+
+	if policy == api.RestartPolicyAlways ||
+		(policy == api.RestartPolicyOnFailure && failure) {
+		// We never mark a unit as terminated in this state,
+		// we just return it to waiting and wait for it to
+		// be run again
+		u.SetState(api.UnitState{
+			Waiting: &api.UnitStateWaiting{
+				Reason: fmt.Sprintf(
+					"Waiting for unit restart, last exit code: %d",
+					exitCode),
+			},
+		}, nil)
+
+	} else {
+		// Game over, man!
+		u.SetState(api.UnitState{
+			Terminated: &api.UnitStateTerminated{
+				ExitCode:   int32(exitCode),
+				FinishedAt: api.Now(),
+			},
+		}, nil)
+		keepGoing = false
+	}
+	return keepGoing
 }
 
 func createDir(dir string, uid, gid int) error {
