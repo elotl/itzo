@@ -349,14 +349,14 @@ func tailBytes(f *os.File, maxBytes, fileSize int64) (string, error) {
 func tailFile(path string, lines int, maxBytes int64) (string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", fmt.Errorf("Could not stat file: %s", err)
+		return "", err
 	}
 	fileSize := info.Size()
 	f, err := os.Open(path)
 	defer f.Close()
 
 	if err != nil {
-		return "", fmt.Errorf("Error opening file: %s", err)
+		return "", err
 	}
 	if maxBytes == 0 || maxBytes > MaxBufferSize {
 		maxBytes = MaxBufferSize

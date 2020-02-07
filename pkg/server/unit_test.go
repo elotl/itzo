@@ -381,7 +381,7 @@ func TestGetUser(t *testing.T) {
 	assert.Equal(t, uint32(5678), gid)
 	assert.Empty(t, groups)
 	// Looking up user from pod security context.
-	unit.securityContext = &securityContext{
+	unit.unitConfig = UnitConfig{
 		PodSecurityContext: api.PodSecurityContext{
 			RunAsUser:          int64ptr(1111),
 			RunAsGroup:         int64ptr(2222),
@@ -394,7 +394,7 @@ func TestGetUser(t *testing.T) {
 	assert.Equal(t, uint32(2222), gid)
 	assert.ElementsMatch(t, []uint32{1, 2, 3}, groups)
 	// Looking up user from unit security context.
-	unit.securityContext.SecurityContext = api.SecurityContext{
+	unit.unitConfig.SecurityContext = api.SecurityContext{
 		RunAsUser:  int64ptr(3333),
 		RunAsGroup: int64ptr(4444),
 	}
@@ -417,7 +417,7 @@ func TestGetCapabilities(t *testing.T) {
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, defaultCapabilities, caps)
 	// Add capability.
-	unit.securityContext = &securityContext{
+	unit.unitConfig = UnitConfig{
 		SecurityContext: api.SecurityContext{
 			Capabilities: &api.Capabilities{
 				Add:  []string{"CAP_NET_ADMIN"},
@@ -429,7 +429,7 @@ func TestGetCapabilities(t *testing.T) {
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, append(defaultCapabilities, "CAP_NET_ADMIN"), caps)
 	// Drop capability.
-	unit.securityContext = &securityContext{
+	unit.unitConfig = UnitConfig{
 		SecurityContext: api.SecurityContext{
 			Capabilities: &api.Capabilities{
 				Add:  []string{},
@@ -447,7 +447,7 @@ func TestGetCapabilities(t *testing.T) {
 		assert.Contains(t, caps, c)
 	}
 	// Add and drop capabilities.
-	unit.securityContext = &securityContext{
+	unit.unitConfig = UnitConfig{
 		SecurityContext: api.SecurityContext{
 			Capabilities: &api.Capabilities{
 				Add:  []string{"CAP_NET_ADMIN", "CAP_MKNOD"},
@@ -467,7 +467,7 @@ func TestGetCapabilities(t *testing.T) {
 		assert.Contains(t, caps, c)
 	}
 	// Drop all.
-	unit.securityContext = &securityContext{
+	unit.unitConfig = UnitConfig{
 		SecurityContext: api.SecurityContext{
 			Capabilities: &api.Capabilities{
 				Add:  []string{},
@@ -479,7 +479,7 @@ func TestGetCapabilities(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, caps)
 	// Add all.
-	unit.securityContext = &securityContext{
+	unit.unitConfig = UnitConfig{
 		SecurityContext: api.SecurityContext{
 			Capabilities: &api.Capabilities{
 				Add:  []string{"ALL"},

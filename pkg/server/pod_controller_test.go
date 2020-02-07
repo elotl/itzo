@@ -571,7 +571,7 @@ func TestPodControllerStatus(t *testing.T) {
 }
 
 func TestFindPortByName(t *testing.T) {
-	unit := api.Unit{
+	unit := &api.Unit{
 		Ports: []api.ServicePort{
 			{
 				Name: "foo",
@@ -598,7 +598,7 @@ func TestTranslateProbePorts(t *testing.T) {
 			},
 		},
 	}
-	unit := api.Unit{
+	unit := &api.Unit{
 		Ports: []api.ServicePort{
 			{
 				Name: "foo",
