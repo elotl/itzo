@@ -165,6 +165,7 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 			glog.Errorf("%v", err)
 			return err
 		}
+		found = true
 		var packagepath = filepath.Join(om.basedir, "..", "packages", volume.Name)
 		if volume.PackagePath != nil {
 			packagepath = filepath.Join(packagepath, volume.PackagePath.Path)
