@@ -1056,6 +1056,10 @@ func (u *Unit) doRun(podname string, command []string, workingdir string, policy
 		}
 	}
 
+	if u.unitConfig.TerminationMessagePath != "" {
+		createEmptyFile(u.unitConfig.TerminationMessagePath, 0666)
+	}
+
 	if workingdir != "" {
 		err = changeToWorkdir(workingdir, uid, gid)
 		if err != nil {
@@ -1098,4 +1102,14 @@ func makeHostname(podname string) string {
 		return noNSName[:MAX_HOSTNAME_LEN]
 	}
 	return noNSName
+}
+
+func createEmptyFile(path string, mode os.FileMode) error {
+	os.MkdirAll(filepath.Dir(path), 0755)
+	_, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	os.Chmod(path, mode)
+	return err
 }

@@ -14,7 +14,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-var specChanSize = 100
+var (
+	specChanSize                = 100
+	waitForInitUnitPollInterval = 1 * time.Second
+)
 
 type Puller interface {
 	PullImage(rootdir, name, image, server, username, password string) error
@@ -497,7 +500,7 @@ func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]
 	for _, unit := range initUnits {
 		// Start init units first, one by one, and wait for each to finish.
 		pc.startUnit(ctx, unit, allCreds, ipolicy, podSecurityContext)
-		if !pc.waitForUnit(ctx, unit.Name) {
+		if !pc.waitForInitUnit(ctx, unit.Name, ipolicy) {
 			return
 		}
 	}
@@ -506,13 +509,13 @@ func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]
 	}
 }
 
-func (pc *PodController) waitForUnit(ctx context.Context, name string) bool {
+func (pc *PodController) waitForInitUnit(ctx context.Context, name string, policy api.RestartPolicy) bool {
 	for {
 		select {
 		case <-ctx.Done():
 			glog.Infof("Cancelled waiting for init unit %s", name)
 			return false
-		case <-time.After(1 * time.Second):
+		case <-time.After(waitForInitUnitPollInterval):
 			glog.Infof("Checking status of init unit %s", name)
 		}
 		u, err := OpenUnit(pc.rootdir, name)
@@ -527,13 +530,16 @@ func (pc *PodController) waitForUnit(ctx context.Context, name string) bool {
 		}
 		glog.Infof("Init unit %s status is %+v", name, status)
 		if status.State.Terminated != nil {
-			succeeded := false
 			ec := status.State.Terminated.ExitCode
-			if ec == 0 {
-				succeeded = true
-			}
 			glog.Infof("Init unit %s exited with %d", name, ec)
-			return succeeded
+			// If the init unit succeded, return true otherwise, keep
+			// going unless hte restart policy is never, in that case
+			// we return false.
+			if ec == 0 {
+				return true
+			} else if policy == api.RestartPolicyNever {
+				return false
+			}
 		}
 	}
 }

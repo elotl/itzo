@@ -5,10 +5,12 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/net/context"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -452,7 +454,7 @@ func TestFullSyncErrors(t *testing.T) {
 	}
 }
 
-func createTestUnits(names []string) (string, []*Unit, func()) {
+func createTestUnits(names ...string) (string, []*Unit, func()) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	if err != nil {
 		panic(err)
@@ -504,7 +506,7 @@ func TestPodControllerStatus(t *testing.T) {
 		Image:   "elotl/init",
 		Command: []string{"runinit"},
 	}
-	rootdir, units, closer := createTestUnits([]string{myUnit.Name, initUnit.Name})
+	rootdir, units, closer := createTestUnits(myUnit.Name, initUnit.Name)
 	defer closer()
 	status := api.PodSpec{
 		Units:     []api.Unit{myUnit},
@@ -613,4 +615,70 @@ func TestTranslateProbePorts(t *testing.T) {
 	assert.Equal(t, intstr.String, probe.HTTPGet.Port.Type)
 	assert.Equal(t, "foo", probe.HTTPGet.Port.StrVal)
 
+}
+
+func TestWaitForInitUnitReturnCases(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		exitCode      int32
+		restartPolicy api.RestartPolicy
+		success       bool
+		contextDone   bool
+	}{
+		{
+			exitCode:      int32(0),
+			restartPolicy: api.RestartPolicyNever,
+			success:       true,
+			contextDone:   false,
+		},
+		{
+			exitCode:      int32(0),
+			restartPolicy: api.RestartPolicyOnFailure,
+			success:       true,
+			contextDone:   false,
+		},
+		{
+			exitCode:      int32(1),
+			restartPolicy: api.RestartPolicyNever,
+			success:       false,
+			contextDone:   false,
+		},
+		{
+			exitCode:      int32(1),
+			restartPolicy: api.RestartPolicyOnFailure,
+			success:       false,
+			contextDone:   true,
+		},
+	}
+	waitForInitUnitPollInterval = 1 * time.Millisecond
+	for i, tc := range tests {
+		msg := fmt.Sprintf("Test case %d", i)
+		rootDir, units, closer := createTestUnits("testunit")
+		podCtl := PodController{
+			rootdir:     rootDir,
+			mountCtl:    NewMountMock(),
+			unitMgr:     NewUnitMock(),
+			imagePuller: NewImagePullMock(),
+			syncErrors:  make(map[string]api.UnitStatus),
+		}
+
+		u := units[0]
+		err := u.SetState(api.UnitState{
+			Terminated: &api.UnitStateTerminated{
+				ExitCode: tc.exitCode,
+			},
+		}, nil)
+		assert.NoError(t, err, msg)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		retVal := podCtl.waitForInitUnit(ctx, u.Name, tc.restartPolicy)
+		select {
+		case <-ctx.Done():
+			assert.True(t, tc.contextDone, msg)
+		default:
+			assert.False(t, tc.contextDone, msg)
+		}
+		assert.Equal(t, tc.success, retVal, msg)
+		closer()
+		cancel()
+	}
 }
