@@ -182,6 +182,109 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 			return err
 		}
 	}
+	if volume.HostPath != nil {
+		if found {
+			err = fmt.Errorf("multiple volumes are specified in %v", volume)
+			glog.Errorf("%v", err)
+			return err
+		}
+		found = true
+		path := volume.HostPath.Path
+		hostPathType := api.HostPathUnset
+		if volume.HostPath.Type != nil {
+			hostPathType = *volume.HostPath.Type
+		}
+		switch hostPathType {
+		case api.HostPathUnset:
+			// No-op.
+		case api.HostPathDirectoryOrCreate:
+			err = os.MkdirAll(path, 0755)
+			if err != nil {
+				glog.Errorf("error creating dir %s: %v", path, err)
+				return err
+			}
+			fallthrough
+		case api.HostPathDirectory:
+			fi, err := os.Stat(path)
+			if err != nil {
+				glog.Errorf("error checking dir %s: %v", path, err)
+				return err
+			}
+			if !fi.IsDir() {
+				err = fmt.Errorf("%s is not a directory", path)
+				glog.Errorf("%v", err)
+				return err
+			}
+		case api.HostPathFileOrCreate:
+			_, err = os.Stat(path)
+			if os.IsNotExist(err) {
+				f, err := os.Create(path)
+				if err != nil {
+					glog.Errorf("creating file %s: %v", path, err)
+					return err
+				}
+				f.Close()
+			} else if err != nil {
+				glog.Errorf("checking file %s: %v", path, err)
+				return err
+			}
+			fallthrough
+		case api.HostPathFile:
+			fi, err := os.Stat(path)
+			if err != nil {
+				glog.Errorf("error checking file %s: %v", path, err)
+				return err
+			}
+			if fi.IsDir() {
+				err = fmt.Errorf("%s is not a file", path)
+				glog.Errorf("%v", err)
+				return err
+			}
+		case api.HostPathSocket:
+			fi, err := os.Stat(path)
+			if err != nil {
+				glog.Errorf("error checking socket %s: %v", path, err)
+				return err
+			}
+			if (fi.Mode() & os.ModeSocket) == os.ModeSocket {
+				err = fmt.Errorf("%s is not a socket", path)
+				glog.Errorf("%v", err)
+				return err
+			}
+		case api.HostPathCharDev:
+			fi, err := os.Stat(path)
+			if err != nil {
+				glog.Errorf("error checking chardev %s: %v", path, err)
+				return err
+			}
+			if (fi.Mode() & os.ModeCharDevice) == os.ModeCharDevice {
+				err = fmt.Errorf("%s is not a chardev", path)
+				glog.Errorf("%v", err)
+				return err
+			}
+		case api.HostPathBlockDev:
+			fi, err := os.Stat(path)
+			if err != nil {
+				glog.Errorf("error checking blockdev %s: %v", path, err)
+				return err
+			}
+			if (fi.Mode()&os.ModeDevice) == os.ModeDevice &&
+				(fi.Mode()&os.ModeCharDevice) != os.ModeCharDevice {
+				err = fmt.Errorf("%s is not a blockdev", path)
+				glog.Errorf("%v", err)
+				return err
+			}
+		default:
+			err = fmt.Errorf("invalid HostPath type %v", hostPathType)
+			glog.Errorf("%v", err)
+			return err
+		}
+		err = os.Symlink(path, mountpath)
+		if err != nil {
+			glog.Errorf("error creating link %s->%s: %v", path, mountpath, err)
+			return err
+		}
+	}
 	if !found {
 		err = fmt.Errorf("no volume specified in %v", volume)
 		glog.Errorf("%v", err)
@@ -196,8 +299,6 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 	if err != nil {
 		glog.Errorf("Error accessing mount %s: %v", mountpath, err)
 	}
-	// For now, we only support EmptyDir. Later on we will need to check if
-	// only one volume is in volspec.
 	found := false
 	if volume.EmptyDir != nil {
 		found = true
@@ -216,7 +317,10 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 			}
 		}
 	}
-	if volume.PackagePath != nil {
+	if volume.PackagePath != nil ||
+		volume.ConfigMap != nil ||
+		volume.Secret != nil ||
+		volume.HostPath != nil {
 		if found {
 			err = fmt.Errorf("Multiple volumes are specified in %v", volume)
 			glog.Errorf("%v", err)
@@ -225,7 +329,7 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 		found = true
 		err = os.RemoveAll(mountpath)
 		if err != nil {
-			glog.Errorf("Error removing PackagePath %s: %v", mountpath, err)
+			glog.Errorf("Error removing old mount path %s: %v", mountpath, err)
 			return err
 		}
 	}
