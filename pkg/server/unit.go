@@ -103,9 +103,9 @@ type Config struct {
 type UnitConfig struct {
 	api.PodSecurityContext   `json:"podSecurityContext"`
 	api.SecurityContext      `json:"securityContext"`
-	StartupProbe             *api.Probe `json:",omitempty`
-	ReadinessProbe           *api.Probe `json:",omitempty`
-	LivenessProbe            *api.Probe `json:",omitempty`
+	StartupProbe             *api.Probe `json:",omitempty"`
+	ReadinessProbe           *api.Probe `json:",omitempty"`
+	LivenessProbe            *api.Probe `json:",omitempty"`
 	TerminationMessagePolicy api.TerminationMessagePolicy
 	TerminationMessagePath   string
 }
