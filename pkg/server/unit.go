@@ -27,10 +27,11 @@ import (
 )
 
 const (
-	MAX_BACKOFF_TIME   = 5 * time.Minute
-	BACKOFF_RESET_TIME = 10 * time.Minute
-	CHILD_OOM_SCORE    = 15 // chosen arbitrarily... kernel will adjust this value
-	MAX_HOSTNAME_LEN   = 63
+	MAX_BACKOFF_TIME                     = 5 * time.Minute
+	BACKOFF_RESET_TIME                   = 10 * time.Minute
+	CHILD_OOM_SCORE                      = 15 // chosen arbitrarily... kernel will adjust this value
+	MAX_HOSTNAME_LEN                     = 63
+	MaxContainerTerminationMessageLength = 1024 * 4
 )
 
 const defaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -99,16 +100,14 @@ type Config struct {
 	Shell           []string `json:",omitempty"`
 }
 
-// This is the combination of the pod's and the unit's security context.
-type securityContext struct {
-	api.PodSecurityContext `json:"podSecurityContext"`
-	api.SecurityContext    `json:"securityContext"`
-}
-
-type probes struct {
-	StartupProbe   *api.Probe
-	ReadinessProbe *api.Probe
-	LivenessProbe  *api.Probe
+type UnitConfig struct {
+	api.PodSecurityContext   `json:"podSecurityContext"`
+	api.SecurityContext      `json:"securityContext"`
+	StartupProbe             *api.Probe `json:",omitempty"`
+	ReadinessProbe           *api.Probe `json:",omitempty"`
+	LivenessProbe            *api.Probe `json:",omitempty"`
+	TerminationMessagePolicy api.TerminationMessagePolicy
+	TerminationMessagePath   string
 }
 
 func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
@@ -126,15 +125,14 @@ func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
 
 type Unit struct {
 	*LogPipe
-	Directory       string
-	Name            string
-	Image           string
-	statusPath      string
-	config          *Config
-	securityContext *securityContext
-	probes          *probes
-	stdinPath       string
-	stdinCloser     chan struct{}
+	Directory   string
+	Name        string
+	Image       string
+	statusPath  string
+	config      *Config
+	unitConfig  UnitConfig
+	stdinPath   string
+	stdinCloser chan struct{}
 }
 
 func IsUnitExist(rootdir, name string) bool {
@@ -176,13 +174,9 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 	if err != nil && !os.IsNotExist(err) {
 		glog.Warningf("Failed to get unit %s config: %v", name, err)
 	}
-	u.securityContext, err = u.getSecurityContext()
+	u.unitConfig, err = u.getUnitConfig()
 	if err != nil && !os.IsNotExist(err) {
-		glog.Warningf("Failed to get unit %s security context: %v", name, err)
-	}
-	u.probes, err = u.getProbes()
-	if err != nil && !os.IsNotExist(err) {
-		glog.Warningf("Failed to get unit %s probes: %v", name, err)
+		glog.Warningf("Failed to get unit %s configuration: %v", name, err)
 	}
 
 	// We need to get the image, that's saved in the status
@@ -248,71 +242,30 @@ func (u *Unit) closeStdin() {
 	}
 }
 
-func (u *Unit) getSecurityContext() (*securityContext, error) {
-	path := filepath.Join(u.Directory, "securityContext")
-	var sc securityContext
-	err := u.getUnitFile(path, &sc)
-	return &sc, err
-}
-
-func (u *Unit) getProbes() (*probes, error) {
-	path := filepath.Join(u.Directory, "probes")
-	var p probes
-	err := u.getUnitFile(path, &p)
-	return &p, err
-}
-
-func (u *Unit) getUnitFile(path string, obj interface{}) error {
+func (u *Unit) getUnitConfig() (UnitConfig, error) {
+	path := filepath.Join(u.Directory, "unitConfig")
 	buf, err := ioutil.ReadFile(path)
+	var uc UnitConfig
 	if err != nil {
 		if !os.IsNotExist(err) {
 			glog.Errorf("Error reading unit file %s for %q", path, u.Name)
 		}
-		return err
+		return uc, err
 	}
 
-	err = json.Unmarshal(buf, &obj)
+	err = json.Unmarshal(buf, &uc)
 	if err != nil {
 		glog.Errorf("Error deserializing %s '%v' for %q: %v",
 			path, buf, u.Name, err)
-		return err
+		return uc, err
 	}
-	return nil
+	return uc, nil
 }
 
-func (u *Unit) SaveSecurityContext(podSecurityContext *api.PodSecurityContext, unitSecurityContext *api.SecurityContext) error {
-	sc := securityContext{}
-	if podSecurityContext != nil {
-		sc.PodSecurityContext = *podSecurityContext
-	}
-	if unitSecurityContext != nil {
-		sc.SecurityContext = *unitSecurityContext
-	}
-	err := u.saveUnitFile("securityContext", sc)
-	if err != nil {
-		return err
-	}
-	u.securityContext = &sc
-	return nil
-}
-
-func (u *Unit) SaveProbes(startupProbe, readinessProbe, livenessProbe *api.Probe) error {
-	p := probes{
-		StartupProbe:   startupProbe,
-		ReadinessProbe: readinessProbe,
-		LivenessProbe:  livenessProbe,
-	}
-	err := u.saveUnitFile("probes", p)
-	if err != nil {
-		return err
-	}
-	u.probes = &p
-	return nil
-}
-
-func (u *Unit) saveUnitFile(filename string, obj interface{}) error {
+func (u *Unit) SaveUnitConfig(unitConfig UnitConfig) error {
+	filename := "unitConfig"
 	path := filepath.Join(u.Directory, filename)
-	buf, err := json.Marshal(&obj)
+	buf, err := json.Marshal(&unitConfig)
 	if err != nil {
 		glog.Errorf("Error serializing %s '%v' for %q: %v",
 			filename, buf, u.Name, err)
@@ -454,29 +407,27 @@ func (u *Unit) GetUser(lookup util.UserLookup) (uid, gid uint32, groups []uint32
 			return 0, 0, nil, "", err
 		}
 	}
-	if u.securityContext == nil {
-		return uid, gid, groups, homedir, nil
-	}
+
 	// Next, pod security context for uid/groups.
-	if u.securityContext.PodSecurityContext.RunAsUser != nil {
-		uid = uint32(*u.securityContext.PodSecurityContext.RunAsUser)
+	if u.unitConfig.PodSecurityContext.RunAsUser != nil {
+		uid = uint32(*u.unitConfig.PodSecurityContext.RunAsUser)
 	}
-	if u.securityContext.PodSecurityContext.RunAsGroup != nil {
-		gid = uint32(*u.securityContext.PodSecurityContext.RunAsGroup)
+	if u.unitConfig.PodSecurityContext.RunAsGroup != nil {
+		gid = uint32(*u.unitConfig.PodSecurityContext.RunAsGroup)
 	}
-	if len(u.securityContext.PodSecurityContext.SupplementalGroups) > 0 {
-		suppGroups := u.securityContext.PodSecurityContext.SupplementalGroups
+	if len(u.unitConfig.PodSecurityContext.SupplementalGroups) > 0 {
+		suppGroups := u.unitConfig.PodSecurityContext.SupplementalGroups
 		groups = make([]uint32, len(suppGroups))
 		for i, g := range suppGroups {
 			groups[i] = uint32(g)
 		}
 	}
 	// Last, unit security context for uid.
-	if u.securityContext.SecurityContext.RunAsUser != nil {
-		uid = uint32(*u.securityContext.SecurityContext.RunAsUser)
+	if u.unitConfig.SecurityContext.RunAsUser != nil {
+		uid = uint32(*u.unitConfig.SecurityContext.RunAsUser)
 	}
-	if u.securityContext.SecurityContext.RunAsGroup != nil {
-		gid = uint32(*u.securityContext.SecurityContext.RunAsGroup)
+	if u.unitConfig.SecurityContext.RunAsGroup != nil {
+		gid = uint32(*u.unitConfig.SecurityContext.RunAsGroup)
 	}
 	return uid, gid, groups, homedir, nil
 }
@@ -554,6 +505,9 @@ func (u *Unit) SetState(state api.UnitState, restarts *int) error {
 	}
 	glog.Infof("Updating state of unit '%s' to %v\n", u.Name, state)
 	status.State = state
+	if status.State.Terminated != nil {
+		status.LastTerminationState = state
+	}
 	if restarts != nil && *restarts >= 0 {
 		status.RestartCount = int32(*restarts)
 	}
@@ -634,7 +588,7 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 		} else {
 			glog.Warningf("cmd has nil process: %#v", cmd)
 		}
-		cmdErr, probeErr := u.watchRunningCmd(cmd, u.probes.StartupProbe, u.probes.ReadinessProbe, u.probes.LivenessProbe)
+		cmdErr, probeErr := u.watchRunningCmd(cmd, u.unitConfig.StartupProbe, u.unitConfig.ReadinessProbe, u.unitConfig.LivenessProbe)
 		keepGoing := u.handleCmdCleanup(cmd, cmdErr, probeErr, policy, startTime)
 		if !keepGoing {
 			return cmdErr
@@ -710,9 +664,11 @@ func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy ap
 	failure := false
 	exitCode := 0
 	fullCmd := append([]string{cmd.Path}, cmd.Args...)
+	reason := ""
 	if cmdErr != nil {
 		failure = true
 		foundRc := false
+		reason = "Error"
 		if exiterr, ok := cmdErr.(*exec.ExitError); ok {
 			if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 				foundRc = true
@@ -729,49 +685,56 @@ func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy ap
 		glog.Infof("Command %s saw a probe error %s after %.2fs",
 			fullCmd, probeErr.Error(), d.Seconds())
 		//
-		// Todo: eventaully this will need to abide by the unit's
-		// terminationGracePeriod
+		// Todo: this should abide by the unit's terminationGracePeriod
 		//
+		reason = "Error"
 		err := cmd.Process.Kill()
 		if err != nil {
 			glog.Warningf("Couldn't kill %s process %s: %v",
 				u.Name, fullCmd, err)
 		}
 	} else {
+		reason = "Completed"
 		glog.Infof("Command %v pid %d exited with 0 after %.2fs",
 			fullCmd, cmd.Process.Pid, d.Seconds())
 	}
 
-	// Todo: grab the termination log, put it in Message
-	// also create LastTerminationState
-
 	falseval := false
 	u.UpdateStatusAttr(&falseval, &falseval)
+	u.setTerminatedState(exitCode, reason, startTime)
 
-	if policy == api.RestartPolicyAlways ||
-		(policy == api.RestartPolicyOnFailure && failure) {
-		// We never mark a unit as terminated in this state,
-		// we just return it to waiting and wait for it to
-		// be run again
-		u.SetState(api.UnitState{
-			Waiting: &api.UnitStateWaiting{
-				Reason: fmt.Sprintf(
-					"Waiting for unit restart, last exit code: %d",
-					exitCode),
-			},
-		}, nil)
-
-	} else {
-		// Game over, man!
-		u.SetState(api.UnitState{
-			Terminated: &api.UnitStateTerminated{
-				ExitCode:   int32(exitCode),
-				FinishedAt: api.Now(),
-			},
-		}, nil)
+	if policy == api.RestartPolicyNever ||
+		policy == api.RestartPolicyOnFailure && !failure {
 		keepGoing = false
 	}
 	return keepGoing
+}
+
+func (u *Unit) setTerminatedState(exitCode int, reason string, startedAt time.Time) {
+	t := &api.UnitStateTerminated{
+		ExitCode:   int32(exitCode),
+		FinishedAt: api.Now(),
+		Reason:     reason,
+		Message:    u.getTerminationLog(),
+		StartedAt:  api.Time{startedAt},
+	}
+	u.SetState(api.UnitState{Terminated: t}, nil)
+}
+
+func (u *Unit) getTerminationLog() string {
+	if u.unitConfig.TerminationMessagePolicy != api.TerminationMessageReadFile ||
+		u.unitConfig.TerminationMessagePath == "" {
+		return ""
+	}
+
+	data, err := tailFile(u.unitConfig.TerminationMessagePath, 0, MaxContainerTerminationMessageLength)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ""
+		}
+		glog.Warningf("Error reading termination message file: %s", err)
+	}
+	return data
 }
 
 func createDir(dir string, uid, gid int) error {
@@ -842,9 +805,9 @@ func mapUintptrCapabilities(keys []string) []uintptr {
 func (u *Unit) getCapabilities() ([]string, error) {
 	addCaps := []string{}
 	dropCaps := []string{}
-	if u.securityContext != nil && u.securityContext.SecurityContext.Capabilities != nil {
-		addCaps = u.securityContext.SecurityContext.Capabilities.Add
-		dropCaps = u.securityContext.SecurityContext.Capabilities.Drop
+	if u.unitConfig.SecurityContext.Capabilities != nil {
+		addCaps = u.unitConfig.SecurityContext.Capabilities.Add
+		dropCaps = u.unitConfig.SecurityContext.Capabilities.Drop
 	}
 	capStringList, err := caps.TweakCapabilities(
 		defaultCapabilities, addCaps, dropCaps, nil, false)
@@ -875,10 +838,10 @@ func (u *Unit) setCapabilities(capStringList []string) error {
 }
 
 func (u *Unit) applySysctls() error {
-	if u.securityContext == nil || len(u.securityContext.Sysctls) == 0 {
+	if len(u.unitConfig.Sysctls) == 0 {
 		return nil
 	}
-	for _, sc := range u.securityContext.Sysctls {
+	for _, sc := range u.unitConfig.Sysctls {
 		err := sysctl.Set(sc.Name, sc.Value)
 		if err != nil {
 			glog.Errorf("Applying sysctl %q=%q: %v", sc.Name, sc.Value, err)
@@ -894,12 +857,12 @@ func (u *Unit) setupGpu() error {
 }
 
 func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter, nser net.NetNamespacer) error {
-	sc, err := u.getSecurityContext()
+	unitConfig, err := u.getUnitConfig()
 	if err != nil {
-		glog.Warningf("getting security context: %v", err)
+		glog.Warningf("getting unit configuration: %v", err)
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	}
-	if sc != nil && api.IsHostNetwork(&sc.PodSecurityContext) {
+	if api.IsHostNetwork(&unitConfig.PodSecurityContext) {
 		glog.Infof("pod %q requested host network mode", podname)
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	}
@@ -1093,6 +1056,10 @@ func (u *Unit) doRun(podname string, command []string, workingdir string, policy
 		}
 	}
 
+	if u.unitConfig.TerminationMessagePath != "" {
+		createEmptyFile(u.unitConfig.TerminationMessagePath, 0666)
+	}
+
 	if workingdir != "" {
 		err = changeToWorkdir(workingdir, uid, gid)
 		if err != nil {
@@ -1135,4 +1102,14 @@ func makeHostname(podname string) string {
 		return noNSName[:MAX_HOSTNAME_LEN]
 	}
 	return noNSName
+}
+
+func createEmptyFile(path string, mode os.FileMode) error {
+	os.MkdirAll(filepath.Dir(path), 0755)
+	_, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	os.Chmod(path, mode)
+	return err
 }

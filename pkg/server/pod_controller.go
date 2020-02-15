@@ -14,7 +14,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-var specChanSize = 100
+var (
+	specChanSize                = 100
+	waitForInitUnitPollInterval = 1 * time.Second
+)
 
 type Puller interface {
 	PullImage(rootdir, name, image, server, username, password string) error
@@ -359,32 +362,29 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	}
 }
 
-func (pc *PodController) saveSecurityContext(unitName string, podSecurityContext *api.PodSecurityContext, unitSecurityContext *api.SecurityContext) error {
-	glog.Infof("Saving security context for unit %q in %q", unitName, pc.rootdir)
-	u, err := OpenUnit(pc.rootdir, unitName)
-	if err != nil {
-		return fmt.Errorf("opening unit %q for saving security context: %v",
-			unitName, err)
+func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.PodSecurityContext) error {
+	unitConfig := UnitConfig{
+		StartupProbe:             translateProbePorts(unit, unit.StartupProbe),
+		ReadinessProbe:           translateProbePorts(unit, unit.ReadinessProbe),
+		LivenessProbe:            translateProbePorts(unit, unit.LivenessProbe),
+		TerminationMessagePolicy: unit.TerminationMessagePolicy,
+		TerminationMessagePath:   unit.TerminationMessagePath,
 	}
-	err = u.SaveSecurityContext(podSecurityContext, unitSecurityContext)
-	if err != nil {
-		return fmt.Errorf("saving security context for unit %q: %v",
-			unitName, err)
+	if podSecurityContext != nil {
+		unitConfig.PodSecurityContext = *podSecurityContext
 	}
-	return nil
-}
-
-func (pc *PodController) saveUnitProbes(unitName string, startupProbe, readinessProbe, livenessProbe *api.Probe) error {
-	glog.Infof("Saving probesfor unit %q in %q", unitName, pc.rootdir)
-	u, err := OpenUnit(pc.rootdir, unitName)
-	if err != nil {
-		return fmt.Errorf("opening unit %q for saving probes: %v",
-			unitName, err)
+	if unit.SecurityContext != nil {
+		unitConfig.SecurityContext = *unit.SecurityContext
 	}
-	err = u.SaveProbes(startupProbe, readinessProbe, livenessProbe)
+	u, err := OpenUnit(pc.rootdir, unit.Name)
 	if err != nil {
-		return fmt.Errorf("saving proves for unit %q: %v",
-			unitName, err)
+		return fmt.Errorf("opening unit %q for saving unit configuration: %v",
+			unit.Name, err)
+	}
+	err = u.SaveUnitConfig(unitConfig)
+	if err != nil {
+		return fmt.Errorf("saving unit %q configuration: %v",
+			unit.Name, err)
 	}
 	return nil
 }
@@ -406,28 +406,9 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		return
 	}
 
-	// Save security context.
-	err = pc.saveSecurityContext(
-		unit.Name,
-		podSecurityContext,
-		unit.SecurityContext)
+	err = pc.saveUnitConfig(&unit, podSecurityContext)
 	if err != nil {
-		msg := fmt.Sprintf("Error saving security context for unit %s: %v",
-			unit.Name, err)
-		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-		return
-	}
-
-	startupProbe := translateProbePorts(unit, unit.StartupProbe)
-	readinessProbe := translateProbePorts(unit, unit.ReadinessProbe)
-	livenessProbe := translateProbePorts(unit, unit.LivenessProbe)
-	err = pc.saveUnitProbes(
-		unit.Name,
-		startupProbe,
-		readinessProbe,
-		livenessProbe)
-	if err != nil {
-		msg := fmt.Sprintf("Error saving pod probes for unit %s: %v",
+		msg := fmt.Sprintf("Error saving unit %s configuration: %v",
 			unit.Name, err)
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
@@ -479,7 +460,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 // can't change a probe in-place since that messes up the diffs we do
 // on pods during UpdatePod and would cause us to delete and recreate
 // pods.
-func translateProbePorts(unit api.Unit, probe *api.Probe) *api.Probe {
+func translateProbePorts(unit *api.Unit, probe *api.Probe) *api.Probe {
 	// only translate the port name if this is an http probe with a port
 	// with a string name
 	if probe != nil &&
@@ -501,7 +482,7 @@ func translateProbePorts(unit api.Unit, probe *api.Probe) *api.Probe {
 }
 
 // findPortByName is a helper function to look up a port in a container by name.
-func findPortByName(unit api.Unit, portName string) (int, error) {
+func findPortByName(unit *api.Unit, portName string) (int, error) {
 	for _, port := range unit.Ports {
 		if port.Name == portName {
 			return int(port.Port), nil
@@ -519,7 +500,7 @@ func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]
 	for _, unit := range initUnits {
 		// Start init units first, one by one, and wait for each to finish.
 		pc.startUnit(ctx, unit, allCreds, ipolicy, podSecurityContext)
-		if !pc.waitForUnit(ctx, unit.Name) {
+		if !pc.waitForInitUnit(ctx, unit.Name, ipolicy) {
 			return
 		}
 	}
@@ -528,13 +509,13 @@ func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]
 	}
 }
 
-func (pc *PodController) waitForUnit(ctx context.Context, name string) bool {
+func (pc *PodController) waitForInitUnit(ctx context.Context, name string, policy api.RestartPolicy) bool {
 	for {
 		select {
 		case <-ctx.Done():
 			glog.Infof("Cancelled waiting for init unit %s", name)
 			return false
-		case <-time.After(1 * time.Second):
+		case <-time.After(waitForInitUnitPollInterval):
 			glog.Infof("Checking status of init unit %s", name)
 		}
 		u, err := OpenUnit(pc.rootdir, name)
@@ -549,13 +530,16 @@ func (pc *PodController) waitForUnit(ctx context.Context, name string) bool {
 		}
 		glog.Infof("Init unit %s status is %+v", name, status)
 		if status.State.Terminated != nil {
-			succeeded := false
 			ec := status.State.Terminated.ExitCode
-			if ec == 0 {
-				succeeded = true
-			}
 			glog.Infof("Init unit %s exited with %d", name, ec)
-			return succeeded
+			// If the init unit succeded, return true otherwise, keep
+			// going unless hte restart policy is never, in that case
+			// we return false.
+			if ec == 0 {
+				return true
+			} else if policy == api.RestartPolicyNever {
+				return false
+			}
 		}
 	}
 }

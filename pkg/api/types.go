@@ -6,6 +6,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+const (
+	TerminationMessagePathDefault = "/dev/termination-log"
+)
+
 type PodSpec struct {
 	// Desired condition of the pod.
 	Phase PodPhase `json:"phase"`
@@ -261,6 +265,20 @@ type ResourceSpec struct {
 	PrivateIPOnly bool `json:"privateIPOnly"`
 }
 
+type TerminationMessagePolicy string
+
+const (
+	// TerminationMessageReadFile is the default behavior and will set
+	// the container status message to the contents of the container's
+	// terminationMessagePath when the container exits.
+	TerminationMessageReadFile TerminationMessagePolicy = "File"
+	// TerminationMessageFallbackToLogsOnError will read the most
+	// recent contents of the container logs for the container status
+	// message when the container exits with an error and the
+	// terminationMessagePath has no contents.
+	TerminationMessageFallbackToLogsOnError TerminationMessagePolicy = "FallbackToLogsOnError"
+)
+
 // Units run applications. A pod consists of one or more units.
 type Unit struct {
 	// Name of the unit.
@@ -307,6 +325,25 @@ type Unit struct {
 	//initialized. If specified, no other probes are executed until
 	//this completes successfully.
 	StartupProbe *Probe `json:"startupProbe,omitempty"`
+
+	// Optional: Path at which the file to which the container's
+	// termination message will be written is mounted into the
+	// container's filesystem.  Message written is intended to be
+	// brief final status, such as an assertion failure message.  Will
+	// be truncated by the node if greater than 4096 bytes. The total
+	// message length across all containers will be limited to 12kb.
+	// Defaults to /dev/termination-log.  Cannot be updated.
+	TerminationMessagePath string `json:"terminationMessagePath,omitempty"`
+
+	// Indicate how the termination message should be populated. File
+	// will use the contents of terminationMessagePath to populate the
+	// container status message on both success and failure.
+	// FallbackToLogsOnError will use the last chunk of container log
+	// output if the termination message file is empty and the
+	// container exited with an error.  The log output is limited to
+	// 2048 bytes or 80 lines, whichever is smaller.  Defaults to
+	// File.  Cannot be updated.
+	TerminationMessagePolicy TerminationMessagePolicy `json:"terminationMessagePolicy,omitempty"`
 }
 
 // Optional security context that overrides whatever is set for the pod.
@@ -461,8 +498,11 @@ type UnitStateRunning struct {
 }
 
 type UnitStateTerminated struct {
-	ExitCode   int32 `json:"exitCode"`
-	FinishedAt Time  `json:"finishedAt,omitempty"`
+	ExitCode   int32  `json:"exitCode"`
+	FinishedAt Time   `json:"finishedAt,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Message    string `json:"message,omitempty"`
+	StartedAt  Time   `json:"startedAt,omitempty"`
 }
 
 // UnitState holds a possible state of a pod unit.  Only one of its
@@ -475,12 +515,13 @@ type UnitState struct {
 }
 
 type UnitStatus struct {
-	Name         string    `json:"name"`
-	State        UnitState `json:"state,omitempty"`
-	RestartCount int32     `json:"restartCount"`
-	Image        string    `json:"image"`
-	Ready        bool      `json:"ready"`
-	Started      *bool     `json:"started"`
+	Name                 string    `json:"name"`
+	State                UnitState `json:"state,omitempty"`
+	LastTerminationState UnitState `json:"lastState,omitempty"`
+	RestartCount         int32     `json:"restartCount"`
+	Image                string    `json:"image"`
+	Ready                bool      `json:"ready"`
+	Started              *bool     `json:"started"`
 }
 
 type ResourceMetrics map[string]float64
