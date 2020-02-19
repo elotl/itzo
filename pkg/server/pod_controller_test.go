@@ -574,14 +574,14 @@ func TestPodControllerStatus(t *testing.T) {
 
 func TestFindPortByName(t *testing.T) {
 	unit := &api.Unit{
-		Ports: []api.ServicePort{
+		Ports: []api.ContainerPort{
 			{
-				Name: "foo",
-				Port: 8080,
+				Name:          "foo",
+				ContainerPort: 8080,
 			},
 			{
-				Name: "bar",
-				Port: 9000,
+				Name:          "bar",
+				ContainerPort: 9000,
 			},
 		},
 	}
@@ -601,10 +601,10 @@ func TestTranslateProbePorts(t *testing.T) {
 		},
 	}
 	unit := &api.Unit{
-		Ports: []api.ServicePort{
+		Ports: []api.ContainerPort{
 			{
-				Name: "foo",
-				Port: 8080,
+				Name:          "foo",
+				ContainerPort: 8080,
 			},
 		},
 	}

@@ -351,7 +351,7 @@ type Unit struct {
 	// A list of volumes that will be attached in the unit.
 	VolumeMounts []VolumeMount `json:"volumeMounts,omitempty"`
 	// A list of ports that will be opened up for this unit.
-	Ports []ServicePort `json:"ports,omitempty"`
+	Ports []ContainerPort `json:"ports,omitempty"`
 	// Working directory to change to before running the command for the unit.
 	WorkingDir string `json:"workingDir,omitempty"`
 	// Unit security context.
@@ -509,14 +509,29 @@ const (
 	RestartPolicyNever     RestartPolicy = "Never"
 )
 
-// Service port definition. This is a TCP or UDP port that a service uses.
-type ServicePort struct {
-	// Name of the service port.
-	Name string `json:"name"`
-	// Protocol. Can be "TCP", "UDP" or "ICMP".
-	Protocol Protocol `json:"protocol"`
-	// Port number. Not used for "ICMP".
-	Port int `json:"port"`
+// ContainerPort represents a network port in a single container.
+type ContainerPort struct {
+	// If specified, this must be an IANA_SVC_NAME and unique within the pod. Each
+	// named port in a pod must have a unique name. Name for the port that can be
+	// referred to by services.
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+	// Number of port to expose on the host.
+	// If specified, this must be a valid port number, 0 < x < 65536.
+	// If HostNetwork is specified, this must match ContainerPort.
+	// Most containers do not need this.
+	// +optional
+	HostPort int32 `json:"hostPort,omitempty" protobuf:"varint,2,opt,name=hostPort"`
+	// Number of port to expose on the pod's IP address.
+	// This must be a valid port number, 0 < x < 65536.
+	ContainerPort int32 `json:"containerPort" protobuf:"varint,3,opt,name=containerPort"`
+	// Protocol for port. Must be UDP, TCP, or SCTP.
+	// Defaults to "TCP".
+	// +optional
+	Protocol Protocol `json:"protocol,omitempty" protobuf:"bytes,4,opt,name=protocol,casttype=Protocol"`
+	// What host IP to bind the external port to.
+	// +optional
+	HostIP string `json:"hostIP,omitempty" protobuf:"bytes,5,opt,name=hostIP"`
 }
 
 // Protocol defines network protocols supported for things like ports.

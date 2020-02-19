@@ -485,7 +485,7 @@ func translateProbePorts(unit *api.Unit, probe *api.Probe) *api.Probe {
 func findPortByName(unit *api.Unit, portName string) (int, error) {
 	for _, port := range unit.Ports {
 		if port.Name == portName {
-			return int(port.Port), nil
+			return int(port.ContainerPort), nil
 		}
 	}
 	return 0, fmt.Errorf("port %s not found", portName)
