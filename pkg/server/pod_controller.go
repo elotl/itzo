@@ -52,7 +52,8 @@ type PodController struct {
 	syncErrors map[string]api.UnitStatus
 	cancelFunc context.CancelFunc
 	waitGroup  sync.WaitGroup
-	netns      string
+	netNS      string
+	podIP      string
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -71,8 +72,9 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 	}
 }
 
-func (pc *PodController) SetNetNS(netns string) {
-	pc.netns = netns
+func (pc *PodController) SetPodNetwork(netNS, podIP string) {
+	pc.netNS = netNS
+	pc.podIP = podIP
 }
 
 func (pc *PodController) runUpdateLoop() {
@@ -369,6 +371,7 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 		LivenessProbe:            translateProbePorts(unit, unit.LivenessProbe),
 		TerminationMessagePolicy: unit.TerminationMessagePolicy,
 		TerminationMessagePath:   unit.TerminationMessagePath,
+		PodIP:                    pc.podIP,
 	}
 	if podSecurityContext != nil {
 		unitConfig.PodSecurityContext = *podSecurityContext
@@ -436,7 +439,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.podName,
 		unit.Name,
 		unit.WorkingDir,
-		pc.netns,
+		pc.netNS,
 		unit.Command,
 		unit.Args,
 		makeAppEnv(&unit),

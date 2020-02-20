@@ -44,6 +44,7 @@ const maxProbeRetries = 3
 type prober struct {
 	unitName string
 	unitEnv  []api.EnvVar
+	podIP    string
 	exec     execprobe.Prober
 	// probe types needs different httprobe instances so they don't
 	// share a connection pool which can cause collsions to the
@@ -58,13 +59,15 @@ type prober struct {
 // NewProber creates a Prober, it takes a command runner and
 // several container info managers.
 func newProber(
-	unitName string,
+	unitName,
+	podIP string,
 	env []api.EnvVar,
 ) *prober {
 	const followNonLocalRedirects = false
 	return &prober{
 		unitName:      unitName,
 		unitEnv:       env,
+		podIP:         podIP,
 		exec:          execprobe.New(),
 		readinessHttp: httprobe.New(followNonLocalRedirects),
 		livenessHttp:  httprobe.New(followNonLocalRedirects),
@@ -133,7 +136,7 @@ func (pb *prober) runProbe(probeType ProbeType, p *api.Probe) (probe.Result, str
 		scheme := strings.ToLower(string(p.HTTPGet.Scheme))
 		host := p.HTTPGet.Host
 		if host == "" {
-			host = "localhost"
+			host = pb.podIP
 		}
 		port, err := extractPort(p.HTTPGet.Port)
 		if err != nil {
@@ -157,7 +160,7 @@ func (pb *prober) runProbe(probeType ProbeType, p *api.Probe) (probe.Result, str
 		}
 		host := p.TCPSocket.Host
 		if host == "" {
-			host = "localhost"
+			host = pb.podIP
 		}
 		glog.V(4).Infof("TCP-Probe Host: %v, Port: %v, Timeout: %v", host, port, timeout)
 		return pb.tcp.Probe(host, port, timeout)
