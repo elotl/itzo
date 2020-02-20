@@ -862,15 +862,6 @@ func (u *Unit) setupGpu() error {
 }
 
 func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter, nser net.NetNamespacer) error {
-	unitConfig, err := u.getUnitConfig()
-	if err != nil {
-		glog.Warningf("getting unit configuration: %v", err)
-		return u.doRun(podname, command, workingdir, policy, mounter)
-	}
-	if api.IsHostNetwork(&unitConfig.PodSecurityContext) {
-		glog.Infof("pod %q requested host network mode", podname)
-		return u.doRun(podname, command, workingdir, policy, mounter)
-	}
 	return nser.WithNetNamespace(func() error {
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	})
