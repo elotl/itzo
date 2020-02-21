@@ -503,7 +503,7 @@ func (u *Unit) SetState(state api.UnitState, restarts *int) error {
 		glog.Errorf("Error getting current status for %s\n", u.Name)
 		return err
 	}
-	glog.Infof("Updating state of unit '%s' to %v\n", u.Name, state)
+	glog.V(5).Infof("Updating state of unit '%s' to %v\n", u.Name, state)
 	status.State = state
 	if status.State.Terminated != nil {
 		status.LastTerminationState = state
@@ -579,7 +579,7 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 			},
 		}, &restarts)
 		if cmd.Process != nil {
-			glog.Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+			glog.V(5).Infof("Command %v running as pid %d", command, cmd.Process.Pid)
 			err := util.SetOOMScore(cmd.Process.Pid, CHILD_OOM_SCORE)
 			if err != nil {
 				glog.Warningf("Error resetting oom score for pid %v: %s",
@@ -695,7 +695,7 @@ func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy ap
 		}
 	} else {
 		reason = "Completed"
-		glog.Infof("Command %v pid %d exited with 0 after %.2fs",
+		glog.V(5).Infof("Command %v pid %d exited with 0 after %.2fs",
 			fullCmd, cmd.Process.Pid, d.Seconds())
 	}
 

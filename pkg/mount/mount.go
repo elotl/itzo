@@ -93,7 +93,7 @@ func (om *OSMounter) UnmountSpecial(unitname string) {
 	for i := len(Mounts) - 1; i >= 0; i-- {
 		m := Mounts[i]
 		target := filepath.Join(rootfs, m.Target)
-		glog.Infof("Trying to Unmount() %s; this might fail", target)
+		glog.V(5).Infof("Trying to Unmount() %s; this might fail", target)
 		if err := unmounter(target, syscall.MNT_DETACH); err != nil {
 			glog.Warningf("Unmount() %s: %v", target, err)
 		}
