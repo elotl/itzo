@@ -28,7 +28,7 @@ func StartUnit(rootdir, podname, unitname, workingdir, netns string, command []s
 	}
 	mounter := mount.NewOSMounter(rootdir)
 	nser := net.NewNoopNetNamespacer()
-	if netns != "" {
+	if netns != "" && !api.IsHostNetwork(&unit.unitConfig.PodSecurityContext) {
 		nser = net.NewOSNetNamespacer(netns)
 	}
 	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",

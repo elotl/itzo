@@ -108,6 +108,7 @@ type UnitConfig struct {
 	LivenessProbe            *api.Probe `json:",omitempty"`
 	TerminationMessagePolicy api.TerminationMessagePolicy
 	TerminationMessagePath   string
+	PodIP                    string
 }
 
 func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
@@ -599,8 +600,10 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 
 func (u *Unit) watchRunningCmd(cmd *exec.Cmd, startupProbe, readinessProbe, livenessProbe *api.Probe) (error, error) {
 	cmdDoneChan := waitForCmd(cmd)
+	podIP := u.unitConfig.PodIP
 	if startupProbe != nil {
-		startupWorker := prober.NewWorker(u.Name, prober.Startup, startupProbe)
+		startupWorker := prober.NewWorker(
+			u.Name, podIP, prober.Startup, startupProbe)
 		startupWorker.Start()
 		defer startupWorker.Stop()
 	waitForStarted:
@@ -624,10 +627,12 @@ func (u *Unit) watchRunningCmd(cmd *exec.Cmd, startupProbe, readinessProbe, live
 	isStarted := true
 	u.UpdateStatusAttr(&isReady, &isStarted)
 
-	livenessWorker := prober.NewWorker(u.Name, prober.Liveness, livenessProbe)
+	livenessWorker := prober.NewWorker(
+		u.Name, podIP, prober.Liveness, livenessProbe)
 	livenessWorker.Start()
 	defer livenessWorker.Stop()
-	readinessWorker := prober.NewWorker(u.Name, prober.Readiness, readinessProbe)
+	readinessWorker := prober.NewWorker(
+		u.Name, podIP, prober.Readiness, readinessProbe)
 	readinessWorker.Start()
 	defer readinessWorker.Stop()
 	for {
@@ -857,15 +862,6 @@ func (u *Unit) setupGpu() error {
 }
 
 func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter, nser net.NetNamespacer) error {
-	unitConfig, err := u.getUnitConfig()
-	if err != nil {
-		glog.Warningf("getting unit configuration: %v", err)
-		return u.doRun(podname, command, workingdir, policy, mounter)
-	}
-	if api.IsHostNetwork(&unitConfig.PodSecurityContext) {
-		glog.Infof("pod %q requested host network mode", podname)
-		return u.doRun(podname, command, workingdir, policy, mounter)
-	}
 	return nser.WithNetNamespace(func() error {
 		return u.doRun(podname, command, workingdir, policy, mounter)
 	})

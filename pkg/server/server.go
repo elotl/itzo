@@ -182,7 +182,7 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 				s.podIP = s.primaryIP
 			} else {
 				s.podIP = s.secondaryIP
-				s.podController.SetNetNS(podNS)
+				s.podController.SetPodNetwork(podNS, s.podIP)
 			}
 			glog.Infof("IP addresses: %q %q pod network namespace: %q",
 				s.primaryIP, s.podIP, podNS)

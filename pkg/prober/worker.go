@@ -90,13 +90,14 @@ func EnvironToAPIEnvVar(envs []string) []api.EnvVar {
 
 // Creates and starts a new probe worker.
 func NewWorker(
-	unitName string,
+	unitName,
+	podIP string,
 	probeType ProbeType,
 	probe *api.Probe) *worker {
 
 	// apiEnv := util.EnvironToAPIEnvVar(os.Environ())
 	apiEnv := EnvironToAPIEnvVar(os.Environ())
-	prober := newProber(unitName, apiEnv)
+	prober := newProber(unitName, podIP, apiEnv)
 	w := &worker{
 		stopCh:    make(chan struct{}, 1), // make stop() non-blocking
 		probeType: probeType,
