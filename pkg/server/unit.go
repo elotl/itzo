@@ -485,7 +485,7 @@ func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return makeStillCreatingStatus(u.Name, u.Image, "Unit creating"), nil
+			return makeStillCreatingStatus(u.Name, u.Image, "PodInitializing"), nil
 		}
 		glog.Errorf("Error reading statusfile for %s\n", u.Name)
 		return nil, err
@@ -870,7 +870,7 @@ func (u *Unit) Run(podname string, command []string, workingdir string, policy a
 func (u *Unit) doRun(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
-			Reason: "starting",
+			Reason: "PodInitializing",
 		},
 	}, nil)
 
