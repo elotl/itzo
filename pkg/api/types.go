@@ -11,45 +11,119 @@ const (
 )
 
 type PodSpec struct {
-	// Desired condition of the pod.
+	// Desired condition of the Pod.
 	Phase PodPhase `json:"phase"`
-	// List of units that together compose this pod.
+	// Restart policy for all Units in this Pod. It can be "always",
+	// "onFailure" or "never". Default is "always". The restartPolicy
+	// applies to all Units in the Pod. Exited Units are restarted
+	// with an exponential back-off delay (10s, 20s, 40s …) capped at
+	// five minutes, the delay is reset after 10 minutes.
+	RestartPolicy RestartPolicy `json:"restartPolicy"`
+	// List of Units that together compose this Pod.
 	Units []Unit `json:"units"`
-	// Init units. They are run in order, one at a time before regular units
+	// Init Units. They are run in order, one at a time before regular Units
 	// are started.
 	InitUnits []Unit `json:"initUnits"`
-	// List of secrets that will be used for authenticating when pulling
+	// List of Secrets that will be used for authenticating when pulling
 	// images.
 	ImagePullSecrets []string `json:"imagePullSecrets,omitemtpy"`
-	// Type of cloud instance type that will be used to run this pod.
-	InstanceType string `json:"instanceType"`
-	// Dictionary of image tags to determine which cloud image should be used
-	// to run this pod.  The latest available image that satisfies all these
-	// tags will be used to run this pod.
-	//
-	// Example:
-	//
-	// ```
-	// bootImageTags:
-	//   environment: production
-	//   version: 1.2.3
-	// ```
-	BootImageTags map[string]string `json:"bootImageTags"`
-	// Restart policy for all units in this pod. It can be "always",
-	// "onFailure" or "never". Default is "always".
-	RestartPolicy RestartPolicy `json:"restartPolicy"`
+	// Type of cloud instance type that will be used to run this Pod.
+	InstanceType string `json:"instanceType,omitempty"`
 	// PodSpot is the policy that determines if a spot instance may be used for
-	// a pod.
+	// a Pod.
 	Spot PodSpot `json:"spot,omitempty"`
-	// Resource requirements for the node that will run this pod. If both
+	// Resource requirements for the Node that will run this Pod. If both
 	// instanceType and resources are specified, instanceType will take
 	// precedence.
 	Resources ResourceSpec `json:"resources,omitempty"`
-	// List of volumes that will be made available to the pod. Units can then
+	// Placement is used to specify where a Pod will be place in the
+	// infrastructure.
+	Placement PlacementSpec `json:"placement,omitempty"`
+	// List of volumes that will be made available to the Pod. Units can then
 	// attach any of these mounts.
 	Volumes []Volume `json:"volumes,omitempty"`
 	// Pod security context.
 	SecurityContext *PodSecurityContext `json:"securityContext,omitempty"`
+	// Pod DNS policy.
+	DNSPolicy DNSPolicy `json:"dnsPolicy,omitempty"`
+	// Pod DNS config.
+	DNSConfig *PodDNSConfig `json:"dnsConfig,omitempty"`
+	// Specifies the hostname of the Pod
+	// If not specified, the pod's hostname will be set to a system-defined value.
+	// +optional
+	Hostname string `json:"hostname,omitempty"`
+	// If specified, the fully qualified Pod hostname will be "<hostname>.<subdomain>.<pod namespace>.svc.<cluster domain>".
+	// If not specified, the pod will not have a domainname at all.
+	// +optional
+	Subdomain string `json:"subdomain,omitempty"`
+	// HostAliases is an optional list of hosts and IPs that will be injected into the pod's hosts
+	// file if specified. This is only valid for non-hostNetwork pods.
+	// +optional
+	// +patchMergeKey=ip
+	// +patchStrategy=merge
+	HostAliases []HostAlias `json:"hostAliases,omitempty" patchStrategy:"merge" patchMergeKey:"ip"`
+}
+
+// HostAlias holds the mapping between IP and hostnames that will be injected as an entry in the
+// pod's hosts file.
+type HostAlias struct {
+	// IP address of the host file entry.
+	IP string `json:"ip,omitempty"`
+	// Hostnames for the above IP address.
+	Hostnames []string `json:"hostnames,omitempty"`
+}
+
+// DNSPolicy defines how a pod's DNS will be configured.
+type DNSPolicy string
+
+const (
+	// DNSClusterFirstWithHostNet indicates that the pod should use cluster DNS
+	// first, if it is available, then fall back on the default
+	// (as determined by kubelet) DNS settings.
+	DNSClusterFirstWithHostNet DNSPolicy = "ClusterFirstWithHostNet"
+
+	// DNSClusterFirst indicates that the pod should use cluster DNS
+	// first unless hostNetwork is true, if it is available, then
+	// fall back on the default (as determined by kubelet) DNS settings.
+	DNSClusterFirst DNSPolicy = "ClusterFirst"
+
+	// DNSDefault indicates that the pod should use the default (as
+	// determined by kubelet) DNS settings.
+	DNSDefault DNSPolicy = "Default"
+
+	// DNSNone indicates that the pod should use empty DNS settings. DNS
+	// parameters such as nameservers and search paths should be defined via
+	// DNSConfig.
+	DNSNone DNSPolicy = "None"
+)
+
+// PodDNSConfig defines the DNS parameters of a pod in addition to
+// those generated from DNSPolicy.
+type PodDNSConfig struct {
+	// A list of DNS name server IP addresses.
+	// This will be appended to the base nameservers generated from DNSPolicy.
+	// Duplicated nameservers will be removed.
+	// +optional
+	Nameservers []string `json:"nameservers,omitempty"`
+	// A list of DNS search domains for host-name lookup.
+	// This will be appended to the base search paths generated from DNSPolicy.
+	// Duplicated search paths will be removed.
+	// +optional
+	Searches []string `json:"searches,omitempty"`
+	// A list of DNS resolver options.
+	// This will be merged with the base options generated from DNSPolicy.
+	// Duplicated entries will be removed. Resolution options given in Options
+	// will override those that appear in the base DNSPolicy.
+	// +optional
+	Options []PodDNSConfigOption `json:"options,omitempty"`
+}
+
+// PodDNSConfigOption defines DNS resolver options of a pod.
+type PodDNSConfigOption struct {
+	// Required.
+	Name string `json:"name,omitempty"`
+	// +optional
+	Value *string `json:"value,omitempty"`
 }
 
 type PodSecurityContext struct {
@@ -681,4 +755,12 @@ type Probe struct {
 	// failed after having succeeded.  Defaults to 3. Minimum value is
 	// 1.
 	FailureThreshold int32 `json:"failureThreshold,omitempty"`
+}
+
+type PlacementSpec struct {
+	AvailabilityZone string `json:"availabilityZone,omitempty"`
+
+	// Future additions: In addition to explicitly specifying a subnet
+	// we could make it so that users can use a selector to match
+	// cloud tags on a subnet.
 }
