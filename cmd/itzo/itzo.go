@@ -22,6 +22,7 @@ func main() {
 	var port = flag.Int("port", 6421, "Port to listen on")
 	var rootdir = flag.String("rootdir", server.DEFAULT_ROOTDIR, "Directory to install packages in")
 	var podname = flag.String("podname", "", "Pod name")
+	var hostname = flag.String("hostname", "", "Pod hostname")
 	var appunit = flag.String("unit", "", "Unit name")
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var apprestartpolicy = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Unit restart policy: always, never or onfailure")
@@ -41,7 +42,7 @@ func main() {
 			glog.Fatalf("Invalid command '%s' for unit %s: %v",
 				*appcmdline, *appunit, err)
 		}
-		err = server.StartUnit(*rootdir, *podname, *appunit, *workingdir, *netns, cmdargs, policy)
+		err = server.StartUnit(*rootdir, *podname, *hostname, *appunit, *workingdir, *netns, cmdargs, policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s for unit %s: %v",
 				*appcmdline, *appunit, err)
