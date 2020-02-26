@@ -159,7 +159,8 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 	}
 	if volume.PackagePath != nil ||
 		volume.Secret != nil ||
-		volume.ConfigMap != nil {
+		volume.ConfigMap != nil ||
+		volume.Projected != nil {
 		if found {
 			err = fmt.Errorf("multiple volumes are specified in %v", volume)
 			glog.Errorf("%v", err)
@@ -320,7 +321,8 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 	if volume.PackagePath != nil ||
 		volume.ConfigMap != nil ||
 		volume.Secret != nil ||
-		volume.HostPath != nil {
+		volume.HostPath != nil ||
+		volume.Projected != nil {
 		if found {
 			err = fmt.Errorf("Multiple volumes are specified in %v", volume)
 			glog.Errorf("%v", err)
