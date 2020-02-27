@@ -16,7 +16,6 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
 	"github.com/elotl/itzo/pkg/mount"
-	"github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/prober"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
@@ -861,13 +860,7 @@ func (u *Unit) setupGpu() error {
 	return setupGpu(u.GetRootfs())
 }
 
-func (u *Unit) Run(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter, nser net.NetNamespacer) error {
-	return nser.WithNetNamespace(func() error {
-		return u.doRun(podname, command, workingdir, policy, mounter)
-	})
-}
-
-func (u *Unit) doRun(podname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
+func (u *Unit) Run(podname, hostname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
 	u.SetState(api.UnitState{
 		Waiting: &api.UnitStateWaiting{
 			Reason: "starting",
@@ -1004,7 +997,9 @@ func (u *Unit) doRun(podname string, command []string, workingdir string, policy
 		u.statusPath = "/status"
 	}
 
-	hostname := makeHostname(podname)
+	if hostname == "" {
+		hostname = makeHostname(podname)
+	}
 	err = syscall.Sethostname([]byte(hostname))
 	if err != nil {
 		glog.Errorf("Failed to set hostname to %s: %v", hostname, err)

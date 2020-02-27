@@ -21,7 +21,7 @@ const (
 	logBuffSize = 4096
 )
 
-func StartUnit(rootdir, podname, unitname, workingdir, netns string, command []string, policy api.RestartPolicy) error {
+func StartUnit(rootdir, podname, hostname, unitname, workingdir, netns string, command []string, policy api.RestartPolicy) error {
 	unit, err := OpenUnit(rootdir, unitname)
 	if err != nil {
 		return err
@@ -33,7 +33,9 @@ func StartUnit(rootdir, podname, unitname, workingdir, netns string, command []s
 	}
 	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",
 		command, unitname, rootdir, os.Environ(), workingdir, policy)
-	return unit.Run(podname, command, workingdir, policy, mounter, nser)
+	return nser.WithNetNamespace(func() error {
+		return unit.Run(podname, hostname, command, workingdir, policy, mounter)
+	})
 }
 
 type UnitManager struct {
@@ -122,7 +124,7 @@ func (um *UnitManager) RemoveUnit(name string) error {
 // This is a bit tricky in Go, since we are not supposed to use fork().
 // Instead, call the daemon with command line flags indicating that it is only
 // used as a helper to start a new unit in a new filesystem namespace.
-func (um *UnitManager) StartUnit(podname, unitname, workingdir, netns string, command, args, appenv []string, policy api.RestartPolicy) error {
+func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns string, command, args, appenv []string, policy api.RestartPolicy) error {
 	glog.Infof("Starting unit %s", unitname)
 
 	unit, err := OpenUnit(um.rootDir, unitname)
@@ -143,6 +145,8 @@ func (um *UnitManager) StartUnit(podname, unitname, workingdir, netns string, co
 		string(policy),
 		"--podname",
 		podname,
+		"--hostname",
+		hostname,
 		"--unit",
 		unitname,
 		"--rootdir",
