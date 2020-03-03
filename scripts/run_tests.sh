@@ -16,35 +16,59 @@
 
 set -e
 
+PATH=$PATH:$HOME/.local/bin
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR=$SCRIPT_DIR/..
 
 cd $ROOT_DIR
+make
 go test ./...
 
-CURRENT_BRANCH=$(echo $GIT_BRANCH | sed -e "s|origin/||g")
 CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)
 
-echo "Current branch is $CURRENT_BRANCH"
-echo "Current tag is $CURRENT_TAG"
-echo "Build number is $BUILD_NUMBER"
+CURRENT_BRANCH=$(echo $TRAVIS_PULL_REQUEST_BRANCH | sed -e "s|origin/||g")
+if [[ -z "$CURRENT_BRANCH" ]]; then
+    CURRENT_BRANCH=$(echo $TRAVIS_BRANCH | sed -e "s|origin/||g")
+fi
+if [[ -z "$CURRENT_BRANCH" ]]; then
+    echo "Error: failed to detect current branch."
+    exit 1
+fi
 
-if [[ $CURRENT_TAG =~ ^v[0-9].* ]] || [[ $CURRENT_BRANCH == "master" ]]; then
-    echo "Building itzo binary"
-    export PATH=$PATH:$HOME/.local/bin
-    make itzo
-    itzo_build="itzo-$BUILD_NUMBER"
-    itzo_dev_bucket=itzo-dev-download
-    aws s3 cp itzo s3://$itzo_dev_bucket/$itzo_build --acl public-read
-    aws s3 cp itzo s3://$itzo_dev_bucket/itzo-latest --acl public-read
-    if [[ $CURRENT_TAG =~ ^v[0-9].* ]]; then
-	versiontag=$CURRENT_TAG
-	echo "Making an itzo release at $versiontag"
-	echo "How can you say you wanna sit there With all this funk going on?"
-	echo "Get up. Time to release the beast!"
-	release_file=itzo-$versiontag
-	release_bucket=itzo-download
-	aws s3 cp itzo s3://$release_bucket/$release_file --acl public-read
-	aws s3 cp itzo s3://$release_bucket/itzo-latest --acl public-read
-    fi
+CURRENT_BUILD_NUMBER="$TRAVIS_BUILD_NUMBER"
+if [[ -z "$CURRENT_BUILD_NUMBER" ]]; then
+    echo "Error: failed to detect current build number."
+    exit 1
+fi
+
+echo "Current tag is \"$CURRENT_TAG\""
+echo "Current branch is \"$CURRENT_BRANCH\""
+echo "Build number is \"$CURRENT_BUILD_NUMBER\""
+
+itzo_release=false
+itzo_bucket="itzo-kip-download"
+itzo_dev_bucket="itzo-kip-dev-download"
+if [[ $CURRENT_TAG =~ ^v[0-9].* ]]; then
+    itzo_release=true
+fi
+
+#
+# We use two buckets: itzo-kip-dev-download for builds, and itzo-kip-download
+# for releases (tagged using a semantic version, in the form of vX.Y.Z).
+#
+# We upload each build to itzo-kip-dev-download, and update itzo-latest if this
+# is the master branch.
+#
+# If the commit is tagged with a release version (vX.Y.Z), we also update the
+# build to itzo-kip-download, and update itzo-latest there.
+#
+echo "Uploading itzo build $CURRENT_BUILD_NUMBER"
+aws s3 cp itzo s3://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER --acl public-read
+if [[ $CURRENT_BRANCH == "master" ]]; then
+	aws s3 cp itzo s3://$itzo_dev_bucket/itzo-latest --acl public-read
+fi
+if $itzo_release; then
+    echo "Making an itzo release at $CURRENT_TAG"
+	aws s3 cp itzo s3://$itzo_bucket/itzo-$CURRENT_TAG --acl public-read
+	aws s3 cp itzo s3://$itzo_bucket/itzo-latest --acl public-read
 fi
