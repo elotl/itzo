@@ -389,7 +389,7 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 		LivenessProbe:            translateProbePorts(unit, unit.LivenessProbe),
 		TerminationMessagePolicy: unit.TerminationMessagePolicy,
 		TerminationMessagePath:   unit.TerminationMessagePath,
-		PodIP:                    pc.podIP,
+		PodIP: pc.podIP,
 	}
 	if podSecurityContext != nil {
 		unitConfig.PodSecurityContext = *podSecurityContext
@@ -605,21 +605,21 @@ func (pc *PodController) getUnitStatuses(units []api.Unit) []api.UnitStatus {
 	for _, podUnit := range units {
 		// when errors opening the
 		if !IsUnitExist(pc.rootdir, podUnit.Name) {
-			reason := "Unit waiting"
+			reason := "PodInitializing"
 			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
 				podUnit.Name, podUnit.Image, reason)
 			continue
 		}
 		unit, err := OpenUnit(pc.rootdir, podUnit.Name)
 		if err != nil {
-			reason := "Constructing unit"
+			reason := "PodInitializing"
 			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
 				podUnit.Name, podUnit.Image, reason)
 			continue
 		}
 		us, err := unit.GetStatus()
 		if err != nil {
-			reason := "Constructing unit, no status yet"
+			reason := "PodInitializing"
 			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
 				podUnit.Name, podUnit.Image, reason)
 			continue

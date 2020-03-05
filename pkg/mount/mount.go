@@ -109,7 +109,7 @@ func (om *OSMounter) UnmountSpecial(unitname string) {
 	for i := len(Mounts) - 1; i >= 0; i-- {
 		m := Mounts[i]
 		target := filepath.Join(rootfs, m.Target)
-		glog.Infof("Trying to Unmount() %s; this might fail", target)
+		glog.V(5).Infof("Trying to Unmount() %s; this might fail", target)
 		if err := unmounter(target, syscall.MNT_DETACH); err != nil {
 			glog.Warningf("Unmount() %s: %v", target, err)
 		}
@@ -127,7 +127,7 @@ func (om *OSMounter) MountSpecial(unitname string) error {
 			glog.Errorf("MkdirAll() %s: %v", target, err)
 			return err
 		}
-		glog.Infof("Mounting %s -> %s", m.Source, target)
+		glog.V(5).Infof("Mounting %s -> %s", m.Source, target)
 		if err := mounter(m.Source, target, m.Fs, uintptr(m.Flags), m.Data); err != nil {
 			glog.Errorf("Mount() %s -> %s: %v", m.Source, target, err)
 			om.UnmountSpecial(unitname)
@@ -175,7 +175,8 @@ func (om *OSMounter) CreateMount(volume *api.Volume) error {
 	}
 	if volume.PackagePath != nil ||
 		volume.Secret != nil ||
-		volume.ConfigMap != nil {
+		volume.ConfigMap != nil ||
+		volume.Projected != nil {
 		if found {
 			err = fmt.Errorf("multiple volumes are specified in %v", volume)
 			glog.Errorf("%v", err)
@@ -336,7 +337,8 @@ func (om *OSMounter) DeleteMount(volume *api.Volume) error {
 	if volume.PackagePath != nil ||
 		volume.ConfigMap != nil ||
 		volume.Secret != nil ||
-		volume.HostPath != nil {
+		volume.HostPath != nil ||
+		volume.Projected != nil {
 		if found {
 			err = fmt.Errorf("Multiple volumes are specified in %v", volume)
 			glog.Errorf("%v", err)
@@ -362,11 +364,11 @@ func resolveLinks(base, target string) (string, error) {
 	var path string
 	for i, _ := range targetList {
 		path = filepath.Join(base, filepath.Join(targetList[:i+1]...))
-		glog.Infof("Checking %s", path)
+		glog.V(5).Infof("Checking %s", path)
 		fi, err := os.Lstat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				glog.Infof("%s does not exist", path)
+				glog.V(5).Infof("%s does not exist", path)
 				return filepath.Join(base, target), nil
 			}
 			glog.Errorf("Lstat() error on %s: %v", path, err)
@@ -384,7 +386,7 @@ func resolveLinks(base, target string) (string, error) {
 			// Absolute link. It should stay inside the chroot, so prepend
 			// base, and then check the rest of the path.
 			base = filepath.Join(base, dst)
-			glog.Infof("%s is absolute link, new base: %s", dst, base)
+			glog.V(5).Infof("%s is absolute link, new base: %s", dst, base)
 			return resolveLinks(base, filepath.Join(targetList[i+1:]...))
 		}
 	}
@@ -392,12 +394,12 @@ func resolveLinks(base, target string) (string, error) {
 }
 
 func ShareMount(target string, flags uintptr) error {
-	glog.Infof("Setting sharing of mount at %s to %d", target, flags)
+	glog.V(5).Infof("Setting sharing of mount at %s to %d", target, flags)
 	return mounter("none", target, "", flags, "")
 }
 
 func (om *OSMounter) AttachMount(unit, src, dst string) error {
-	glog.Infof("Mounting %s->%s", src, dst)
+	glog.V(5).Infof("Mounting %s->%s", src, dst)
 	// Directory for mount source.
 	source := filepath.Join(om.basedir, "../mounts", src)
 	// Check symlinks in dst.
@@ -407,7 +409,7 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 		glog.Errorf("Error resolving links in %s %s: %v", base, dst, err)
 		return err
 	}
-	glog.Infof("Mounting %s->%s, actual path %s->%s", src, dst, source, target)
+	glog.V(5).Infof("Mounting %s->%s, actual path %s->%s", src, dst, source, target)
 	// Create directory for target if necessary.
 	fi, err := os.Stat(source)
 	if err != nil {
@@ -417,9 +419,9 @@ func (om *OSMounter) AttachMount(unit, src, dst string) error {
 	dir := filepath.Clean(target)
 	if !fi.IsDir() {
 		dir = filepath.Clean(filepath.Join(target, ".."))
-		glog.Infof("Mount source %s is a file, creating dir at %s", source, dir)
+		glog.V(5).Infof("Mount source %s is a file, creating dir at %s", source, dir)
 	} else {
-		glog.Infof("Mount source %s is a directory, creating dir at %s", source, dir)
+		glog.V(5).Infof("Mount source %s is a directory, creating dir at %s", source, dir)
 	}
 	if !filepath.HasPrefix(dir, base) {
 		err = fmt.Errorf("Invalid mount target %s (%s is not in %s)",
@@ -465,7 +467,7 @@ func (om *OSMounter) DetachMount(unit, dst string) error {
 		glog.Errorf("Error resolving links in %s %s: %v", base, dst, err)
 		return err
 	}
-	glog.Infof("Unmounting %s, actual path %s", dst, target)
+	glog.V(5).Infof("Unmounting %s, actual path %s", dst, target)
 	if err := unmounter(target, syscall.MNT_DETACH); err != nil {
 		glog.Errorf("Error unmounting %s: %v", target, err)
 		return err
@@ -495,7 +497,7 @@ func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
 	// rbind mount the emptydir onto itself so we can set mount
 	// sharing parameters for anything mounted within the emptydir and
 	// share mounted volumes through the emptydir.
-	glog.Infof("Bind mounting Emptydir onto itself")
+	glog.V(5).Infof("Bind mounting Emptydir onto itself")
 	err = mounter(dir, dir, "", uintptr(syscall.MS_BIND|syscall.MS_REC), "")
 	if err != nil {
 		glog.Errorf("Error bindmounting emptydir at %s: %v", dir, err)
@@ -511,10 +513,10 @@ func createEmptydir(dir string, emptyDir *api.EmptyDir) error {
 	}
 	switch emptyDir.Medium {
 	case api.StorageMediumDefault:
-		glog.Infof("Using disk space for backing EmptyDir %s", dir)
+		glog.V(5).Infof("Using disk space for backing EmptyDir %s", dir)
 		return nil
 	case api.StorageMediumMemory:
-		glog.Infof("Using tmpfs for backing EmptyDir %s", dir)
+		glog.V(5).Infof("Using tmpfs for backing EmptyDir %s", dir)
 		return createTmpfs(dir, emptyDir.SizeLimit)
 	}
 	err = fmt.Errorf("Unknown medium %s in createEmptydir()", emptyDir.Medium)

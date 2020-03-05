@@ -20,6 +20,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -32,6 +35,7 @@ import (
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/syndtr/gocapability/capability"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestOpenUnit(t *testing.T) {
@@ -684,6 +688,46 @@ func TestWatchCmdLivenessReadiness(t *testing.T) {
 			assert.Equal(t, tc.isReady, s.Ready)
 		})
 	}
+}
+
+func TestHTTPLivenessProbe(t *testing.T) {
+	t.Parallel()
+	u, closer := mkTestUnit(t)
+	defer closer()
+
+	recordedPath := "UNSET"
+	probePath := "/healthy"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recordedPath = r.URL.Path
+		fmt.Fprintln(w, "Hello, client")
+	}))
+	defer ts.Close()
+	serverURL, err := url.Parse(ts.URL)
+	assert.NoError(t, err)
+	portStr := serverURL.Port()
+	port, err := strconv.ParseInt(portStr, 10, 64)
+	assert.NoError(t, err)
+	cmd := exec.Command("/bin/bash", "-c", "sleep 2")
+	lp := &api.Probe{
+		Handler: api.Handler{
+			HTTPGet: &api.HTTPGetAction{
+				Path:   probePath,
+				Port:   intstr.FromInt(int(port)),
+				Scheme: api.URISchemeHTTP,
+			},
+		},
+		InitialDelaySeconds: 0,
+		PeriodSeconds:       1,
+		SuccessThreshold:    1,
+		FailureThreshold:    1,
+	}
+	err = cmd.Start()
+	assert.NoError(t, err)
+
+	cmdErr, probeErr := u.watchRunningCmd(cmd, nil, nil, lp)
+	assert.Equal(t, probePath, recordedPath)
+	assert.Nil(t, cmdErr)
+	assert.Nil(t, probeErr)
 }
 
 func TestStartupProbe(t *testing.T) {
