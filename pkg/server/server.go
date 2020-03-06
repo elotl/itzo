@@ -49,8 +49,9 @@ import (
 
 const (
 	MULTIPART_PACKAGE = "package"
-	CERTS_DIR         = "/tmp/milpa"
-	DEFAULT_ROOTDIR   = "/tmp/milpa/units"
+	ITZO_DIR          = "/tmp/itzo"
+	CERTS_DIR         = ITZO_DIR
+	DEFAULT_ROOTDIR   = ITZO_DIR + "/units"
 	ITZO_VERSION      = "1.0"
 	FILE_BYTES_LIMIT  = 4096
 	// Screw it, I'm changing to go convention, no captials...
