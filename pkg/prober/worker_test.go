@@ -30,7 +30,7 @@ import (
 // create a fake exec prober
 
 func makeTestWorker(probeType ProbeType, probe *api.Probe, result probe.Result, expectedError error) *worker {
-	w := NewWorker("testUnit", probeType, probe)
+	w := NewWorker("testUnit", "10.20.30.40", probeType, probe)
 	w.prober.exec = fakeExecProber{result, expectedError}
 	w.startedAt = time.Now()
 	return w
