@@ -91,12 +91,12 @@ echo "-1000" > /proc/self/oom_score_adj
 itzo_dir=/usr/local/bin
 \${itzo_dir}/itzo-cloud-init --from-metadata-service --from-waagent /var/lib/waagent >> /var/log/itzo/itzo.log 2>&1
 
-itzo_url_file="/tmp/milpa/itzo_url"
+itzo_url_file="/tmp/itzo/itzo_url"
 itzo_url="http://itzo-download.s3.amazonaws.com"
 if [[ -f \$itzo_url_file ]]; then
     itzo_url=\$(head -n 1 \$itzo_url_file)
 fi
-itzo_version_file="/tmp/milpa/itzo_version"
+itzo_version_file="/tmp/itzo/itzo_version"
 itzo_version="latest"
 if [[ -f \$itzo_version_file ]]; then
     itzo_version=\$(head -n 1 \$itzo_version_file)
@@ -122,7 +122,7 @@ wget -O /usr/local/bin/tosi http://tosi.s3.amazonaws.com/tosi
 chmod 755 /usr/local/bin/tosi
 
 step 'Add cloud-init'
-wget -O /usr/local/bin/itzo-cloud-init http://itzo-dev-download.s3.amazonaws.com/itzo-cloud-init
+wget -O /usr/local/bin/itzo-cloud-init http://itzo-dev-download.s3.amazonaws.com/itzo-cloud-init-latest
 chmod 755 /usr/local/bin/itzo-cloud-init
 
 step 'Add kube-router'

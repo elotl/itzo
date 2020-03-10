@@ -17,7 +17,7 @@ limitations under the License.
 package util
 
 var (
-	// VERSION is set during the build from the file at milpa/version
+	// VERSION is set during the build from the file at itzo/version
 	VERSION string = ""
 	// GIT_REVISION and GIT_DIRTY are set during build.
 	GIT_REVISION string = ""

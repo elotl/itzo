@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -240,8 +241,9 @@ func runNetworkAgent(IP, nodeName string) *exec.Cmd {
 	// Kubeconfig has been deployed as a package. Find the actual config file
 	// inside the package directory.
 	kubeconfig := ""
+	kubeconfigDir := path.Join(ITZO_DIR, "packages/kubeconfig")
 	err = filepath.Walk(
-		"/tmp/milpa/packages/kubeconfig",
+		kubeconfigDir,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err

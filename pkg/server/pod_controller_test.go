@@ -457,7 +457,7 @@ func TestFullSyncErrors(t *testing.T) {
 
 	for _, testCase := range testCases {
 		podCtl := PodController{
-			rootdir:     "/tmp/milpa/units",
+			rootdir:     DEFAULT_ROOTDIR,
 			mountCtl:    NewMountMock(),
 			unitMgr:     NewUnitMock(),
 			imagePuller: NewImagePullMock(),
