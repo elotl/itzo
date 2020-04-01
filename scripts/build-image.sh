@@ -20,6 +20,7 @@ IMAGE_SIZE="2G"
 NO_IMAGE=false
 BUILD_VERSION=""
 CLOUD_PROVIDER=""
+CUSTOM_PACKAGE_DIR=""
 
 while [[ -n "$1" ]]; do
     case "$1" in
@@ -31,7 +32,7 @@ while [[ -n "$1" ]]; do
             echo "    -s|--size <size>: image size, default is 2G"
             echo "    -o|--out <output path>: image output path, " \
                 "default is alpine.qcow2"
-            echo "    -n|--no-image: don't create AMI from qcow2 image"
+            echo "    -p|--custom-package-dir: path to custom packages directory"
 
             echo "    -v|--version <buildnumber>: version of the image, used in image name" \
             echo "Example:"
@@ -45,6 +46,11 @@ while [[ -n "$1" ]]; do
                 echo "Error, invalid cloud provider specified."
                 exit 1
             fi
+            shift
+            ;;
+        "-p"|"--custom-package-dir")
+            shift
+            CUSTOM_PACKAGE_DIR="$1"
             shift
             ;;
         "-s"|"--size")
@@ -163,7 +169,11 @@ pushd alpine-make-vm-image > /dev/null
 #     kvm -m 512 -net nic,model=virtio -net user,hostfwd=tcp:127.0.0.1:9222-:22 -drive file=alpine.qcow2,if=virtio
 #
 PACKAGES="$(cat ../elotl/packages-$CLOUD_PROVIDER)"
-./alpine-make-vm-image --kernel-flavor virt --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$PACKAGES" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh "$CLOUD_PROVIDER"
+if [ -d "$CUSTOM_PACKAGE_DIR" ]; then
+    ./alpine-make-vm-image --kernel-flavor virt --custom-package-dir "$CUSTOM_PACKAGE_DIR" --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$PACKAGES" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh "$CLOUD_PROVIDER"
+else
+    ./alpine-make-vm-image --kernel-flavor virt --image-format qcow2 --image-size "$IMAGE_SIZE" --repositories-file ../elotl/repositories --keys-dir ../elotl/keys --packages "$PACKAGES" --script-chroot "$IMAGE_ABSPATH" -- ../elotl/configure.sh "$CLOUD_PROVIDER"
+fi
 
 popd > /dev/null
 
