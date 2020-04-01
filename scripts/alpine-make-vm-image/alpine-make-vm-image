@@ -454,9 +454,9 @@ else
 fi
 
 if [ -d "$CUSTOM_PACKAGE_DIR" ]; then
-  readonly package_dir=/workspace/packages
+  readonly package_dir=workspace/packages
   mkdir -p "$package_dir"
-  cp -r "$CUSTOM_PACKAGE_DIR"/* "$package_dir"
+  cp -r "$CUSTOM_PACKAGE_DIR"/* "$package_dir"/
 fi
 
 _apk add --root . --update-cache --initdb alpine-base
