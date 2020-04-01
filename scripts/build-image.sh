@@ -150,12 +150,12 @@ fi
 
 echo "Creating image of size $IMAGE_SIZE at $IMAGE_ABSPATH."
 
-[[ -f ./alpine-make-vm-image/.git/HEAD ]] || git clone --recurse-submodules https://github.com/alpinelinux/alpine-make-vm-image.git
+#[[ -f ./alpine-make-vm-image/.git/HEAD ]] || git clone --recurse-submodules https://github.com/alpinelinux/alpine-make-vm-image.git
 
 pushd alpine-make-vm-image > /dev/null
 
-git checkout ea6dcfe63580dc3c4aa14c7bb362c9bb67f23e01
-git clean -fdx
+#git checkout ea6dcfe63580dc3c4aa14c7bb362c9bb67f23e01
+#git clean -fdx
 
 #
 # You can test the image locally via something like this:
