@@ -34,6 +34,7 @@ import (
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/prober"
 	"github.com/elotl/itzo/pkg/util"
+	"github.com/elotl/itzo/pkg/util/kill"
 	"github.com/golang/glog"
 	sysctl "github.com/lorenzosaino/go-sysctl"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -708,15 +709,19 @@ func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy ap
 		// Todo: this should abide by the unit's terminationGracePeriod
 		//
 		reason = "Error"
-		err := cmd.Process.Kill()
-		if err != nil {
-			glog.Warningf("Couldn't kill %s process %s: %v",
-				u.Name, fullCmd, err)
-		}
 	} else {
 		reason = "Completed"
 		glog.V(5).Infof("Command %v pid %d exited with 0 after %.2fs",
 			fullCmd, cmd.Process.Pid, d.Seconds())
+	}
+
+	ptk := kill.NewProcessTreeKiller(&kill.OSProcessHandler{})
+	err := ptk.KillProcessTree(cmd.Process.Pid)
+	if err != nil {
+		// Something failed. Try to kill at least the main process we started.
+		glog.Warningf("%s killing process tree for %s: %v",
+			u.Name, fullCmd, err)
+		cmd.Process.Kill()
 	}
 
 	falseval := false
