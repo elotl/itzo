@@ -64,7 +64,7 @@ func (le *LogEntry) Format(withMetadata bool) string {
 type LogBuffer struct {
 	buf      []LogEntry
 	capacity int64
-	offset   int64 // Points to the next place we're going to write
+	offset   int64 // Points to the next place we're going to write, increment only
 }
 
 func NewLogBuffer(capacity int) *LogBuffer {
@@ -107,12 +107,8 @@ func (lb *LogBuffer) Read(nn int) []LogEntry {
 		n = util.Minint64(lb.capacity, lb.offset)
 	}
 	entries := make([]LogEntry, n)
-	// Xibit: Yo dawg, I heard you like off-by-one-errors so I put an
-	// off-by one-error in your off-by-one-error so you can fuck up
-	// while your're fucking up, while you're fucking up, while you're
-	// fucking up.
-	//
-	// I did walk through this on paper...
+	// A little tricky with the indexing but I did walk through this
+	// on paper...
 	for i, j := int64(1), n-1; i <= n; i, j = i+1, j-1 {
 		bufLoc := (offset - i) % lb.capacity
 		entries[j] = lb.buf[bufLoc]
