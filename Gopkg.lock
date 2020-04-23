@@ -256,6 +256,14 @@
   version = "v1.0.0"
 
 [[projects]]
+  digest = "1:cccec58c8ed2fea1b7571248e28f3220d49182bc49bf3efc952bc3a5c083c500"
+  name = "github.com/ramr/go-reaper"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "8f6f50505771f9e016c28df834815b535b2f0dcf"
+  version = "v0.2.0"
+
+[[projects]]
   digest = "1:ba5b13dd523555370672ed82facbcfe033a8c657f67049ec6b0dcf5b25f0ac69"
   name = "github.com/shirou/gopsutil"
   packages = [
@@ -427,6 +435,7 @@
     "github.com/mitchellh/go-ps",
     "github.com/opencontainers/runc/libcontainer/user",
     "github.com/opencontainers/runtime-spec/specs-go",
+    "github.com/ramr/go-reaper",
     "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
