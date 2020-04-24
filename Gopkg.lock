@@ -146,6 +146,22 @@
   version = "v1.2.0"
 
 [[projects]]
+  digest = "1:0ade334594e69404d80d9d323445d2297ff8161637f9b2d347cc6973d2d6f05b"
+  name = "github.com/hashicorp/errwrap"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "8a6fb523712970c966eefc6b39ed2c5e74880354"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:8aa2b4301dac6d0e002849c008f0d017ef0f6b50813cb7ac3b0dbc04fc3fb8be"
+  name = "github.com/hashicorp/go-multierror"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "2004d9dba6b07a5b8d133209244f376680f9d472"
+  version = "v1.1.0"
+
+[[projects]]
   branch = "master"
   digest = "1:207adbd3bf30084db288db95cf09faef3bbdf92d7462c53629d4ed8b7c87f78e"
   name = "github.com/jandre/procfs"
@@ -200,6 +216,14 @@
   version = "v0.1.0"
 
 [[projects]]
+  digest = "1:69530a15507094162be4eb3180c1d68b787177e8c9bbe76d4da40d44d6586f6f"
+  name = "github.com/mitchellh/go-ps"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "147ff83818ae939913b2e20b91ae3cd6c391771c"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:38ee335aedf4626620f3cf8f605661e71abdcce7b40b38921962beb3980f0a20"
   name = "github.com/opencontainers/runc"
   packages = ["libcontainer/user"]
@@ -230,6 +254,14 @@
   pruneopts = "UT"
   revision = "792786c7400a136282c1664665ae0a8db921c6c2"
   version = "v1.0.0"
+
+[[projects]]
+  digest = "1:cccec58c8ed2fea1b7571248e28f3220d49182bc49bf3efc952bc3a5c083c500"
+  name = "github.com/ramr/go-reaper"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "8f6f50505771f9e016c28df834815b535b2f0dcf"
+  version = "v0.2.0"
 
 [[projects]]
   digest = "1:ba5b13dd523555370672ed82facbcfe033a8c657f67049ec6b0dcf5b25f0ac69"
@@ -394,13 +426,16 @@
     "github.com/elotl/wsstream",
     "github.com/golang/glog",
     "github.com/gorilla/websocket",
+    "github.com/hashicorp/go-multierror",
     "github.com/jandre/procfs",
     "github.com/justnoise/genny/generic",
     "github.com/kballard/go-shellquote",
     "github.com/kr/pty",
     "github.com/lorenzosaino/go-sysctl",
+    "github.com/mitchellh/go-ps",
     "github.com/opencontainers/runc/libcontainer/user",
     "github.com/opencontainers/runtime-spec/specs-go",
+    "github.com/ramr/go-reaper",
     "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
@@ -411,7 +446,6 @@
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
     "k8s.io/apimachinery/pkg/util/intstr",
-    "k8s.io/klog",
     "k8s.io/kubernetes/pkg/probe",
     "k8s.io/kubernetes/pkg/probe/exec",
     "k8s.io/kubernetes/pkg/probe/http",
