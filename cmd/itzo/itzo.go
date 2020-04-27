@@ -27,6 +27,7 @@ import (
 
 	"github.com/golang/glog"
 	quote "github.com/kballard/go-shellquote"
+	"github.com/ramr/go-reaper"
 )
 
 var buildDate string
@@ -48,6 +49,8 @@ func main() {
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
+
+	go reaper.Reap()
 
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
