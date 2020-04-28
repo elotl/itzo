@@ -81,7 +81,8 @@ func (g *GceCloudInfo) GetPodIPv4Address() (string, error) {
 		return "", err
 	}
 
-	// we dont want the cidr only the ip if the mask is 32 bits if larger return
+	// we dont want the cidr only the ip of the pod,
+	// if the mask is larger than 32 bits return error
 	// returns us an IP addr, an IP network (IP + submask), and err
 	_, ipNet, err := net.ParseCIDR(cidr)
 	if err != nil {
