@@ -41,7 +41,9 @@ while [[ -n "$1" ]]; do
         "-c"|"--cloud")
             shift
             CLOUD_PROVIDER="$1"
-            if [[ "$CLOUD_PROVIDER" != "aws" ]] && [[ "$CLOUD_PROVIDER" != "azure" ]]; then
+            if [[ "$CLOUD_PROVIDER" != "aws" ]] && 
+                [[ "$CLOUD_PROVIDER" != "azure" ]] &&
+                [[ "$CLOUD_PROVIDER" != "gce" ]]; then
                 echo "Error, invalid cloud provider specified."
                 exit 1
             fi
@@ -122,6 +124,16 @@ if [[ "$CLOUD_PROVIDER" == "azure" ]] && [[ "$NO_IMAGE" = false ]]; then
     echo "OK"
 fi
 
+if [[ "$CLOUD_PROVIDER" == "gce" ]] && [[ "$NO_IMAGE" = false ]]; then
+    REQUIRED_PROGRAMS="$REQUIRED_PROGRAMS gsutil gcloud jq"
+    if [[ ! -d "$HOME/.config/gcloud" ]]; then
+        echo "Error: please set up gcloud with a service account"
+        echo "e.g. gcloud auth activate-service-account --key-file PATH_TO_KEYFILE.json"
+        exit 1
+    fi
+    echo "OK"
+fi
+
 REQUIRED_PROGRAMS="qemu-img qemu-nbd"
 echo "Checking if required programs are installed."
 for prg in $REQUIRED_PROGRAMS; do
@@ -178,6 +190,8 @@ if [[ "$CLOUD_PROVIDER" == "aws" ]]; then
     python ec2-make-ami.py --input "$IMAGE_ABSPATH" --name $IMAGE_NAME
 elif [[ "$CLOUD_PROVIDER" == "azure" ]]; then
     ./azure-make-image.sh "$IMAGE_ABSPATH" $IMAGE_NAME
+elif [[ "$CLOUD_PROVIDER" == "gce" ]]; then
+    ./gce-make-image.sh "$IMAGE_ABSPATH" "$IMAGE_NAME"
 else
     echo "Unknown cloud provider: $CLOUD_PROVIDER"
 fi
