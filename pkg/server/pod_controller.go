@@ -389,7 +389,7 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 		LivenessProbe:            translateProbePorts(unit, unit.LivenessProbe),
 		TerminationMessagePolicy: unit.TerminationMessagePolicy,
 		TerminationMessagePath:   unit.TerminationMessagePath,
-		PodIP: pc.podIP,
+		PodIP:                    pc.podIP,
 	}
 	if podSecurityContext != nil {
 		unitConfig.PodSecurityContext = *podSecurityContext
