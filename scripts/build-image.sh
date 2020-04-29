@@ -134,7 +134,7 @@ if [[ "$CLOUD_PROVIDER" == "gce" ]] && [[ "$NO_IMAGE" = false ]]; then
     echo "OK"
 fi
 
-REQUIRED_PROGRAMS="qemu-img qemu-nbd"
+REQUIRED_PROGRAMS="$REQUIRED_PROGRAMS qemu-img qemu-nbd"
 echo "Checking if required programs are installed."
 for prg in $REQUIRED_PROGRAMS; do
     found=true
