@@ -44,7 +44,11 @@ type GceCloudInfo struct {
 	metadata *metadata.Client
 }
 
-func NewGceCloudInfo() (CloudInfo, error) {
+func NewGCECloudInfo() (CloudInfo, error) {
+	if !metadata.OnGCE() {
+		return nil, fmt.Errorf("instance is not running inside GCE, could not retrieve Node IP")
+	}
+
 	c := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: itzoTransport{
@@ -59,23 +63,10 @@ func NewGceCloudInfo() (CloudInfo, error) {
 }
 
 func (g *GceCloudInfo) GetMainIPv4Address() (string, error) {
-	if !metadata.OnGCE() {
-		return "", fmt.Errorf("instance is not running inside GCE, could not retrieve Node IP")
-	}
-
-	addr, err := g.metadata.Get(metadataIPv4)
-	if err != nil {
-		return "", err
-	}
-
-	return addr, nil
+	return g.metadata.Get(metadataIPv4)
 }
 
 func (g *GceCloudInfo) GetPodIPv4Address() (string, error) {
-	if !metadata.OnGCE() {
-		return "", fmt.Errorf("instance is not running inside GCE, could not retrieve Pod IP")
-	}
-
 	cidr, err := g.metadata.Get(metadataAliasCIDR)
 	if err != nil {
 		return "", err

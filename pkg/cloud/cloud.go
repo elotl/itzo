@@ -32,7 +32,7 @@ func NewCloudInfo() (CloudInfo, error) {
 	if err == nil {
 		return cloudInfo, nil
 	}
-	cloudInfo, err = NewGceCloudInfo()
+	cloudInfo, err = NewGCECloudInfo()
 	if err == nil {
 		return cloudInfo, nil
 	}
