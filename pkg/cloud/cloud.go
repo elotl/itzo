@@ -32,6 +32,9 @@ func NewCloudInfo() (CloudInfo, error) {
 	if err == nil {
 		return cloudInfo, nil
 	}
-	// We only support AWS and Azure.
+	cloudInfo, err = NewGCECloudInfo()
+	if err == nil {
+		return cloudInfo, nil
+	}
 	return nil, fmt.Errorf("unable to identify cloud platform")
 }
