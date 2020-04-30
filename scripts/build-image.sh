@@ -166,8 +166,6 @@ echo "Creating image of size $IMAGE_SIZE at $IMAGE_ABSPATH."
 
 pushd alpine-make-vm-image > /dev/null
 
-git clean -fdx
-
 #
 # You can test the image locally via something like this:
 #
