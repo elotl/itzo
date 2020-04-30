@@ -31,6 +31,7 @@ import (
 	"github.com/containerd/cgroups"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
+	imagecli "github.com/elotl/itzo/pkg/image"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/prober"
 	"github.com/elotl/itzo/pkg/util"
@@ -369,7 +370,7 @@ func (u *Unit) GetRootfs() string {
 	return filepath.Join(u.Directory, "ROOTFS")
 }
 
-func (u *Unit) PullAndExtractImage(image, url, username, password string) error {
+func (u *Unit) PullAndExtractImage(image, server, username, password string) error {
 	if u.Image != "" {
 		glog.Warningf("Unit %s has already pulled image %s", u.Name, u.Image)
 	}
@@ -378,32 +379,20 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	if err != nil {
 		return fmt.Errorf("Error setting image for unit: %v", err)
 	}
-	tp, err := exec.LookPath(TOSI_PRG)
-	if err != nil {
-		tp = "/tmp/tosiprg"
-		err = downloadTosi(tp)
+	rootfs := u.GetRootfs()
+	configPath := filepath.Join(u.Directory, "config")
+	cli := imagecli.NewTosi()
+	if username != "" || password != "" {
+		err = cli.Login(server, username, password)
+		if err != nil {
+			return err
+		}
 	}
+	err = cli.Pull(server, image)
 	if err != nil {
 		return err
 	}
-	args := []string{
-		"-image",
-		image,
-		"-extractto",
-		u.GetRootfs(),
-		"-saveconfig",
-		filepath.Join(u.Directory, "config"),
-	}
-	if username != "" {
-		args = append(args, []string{"-username", username}...)
-	}
-	if password != "" {
-		args = append(args, []string{"-password", password}...)
-	}
-	if url != "" {
-		args = append(args, []string{"-url", url}...)
-	}
-	err = runTosi(tp, args...)
+	err = cli.Unpack(image, rootfs, configPath)
 	if err != nil {
 		return err
 	}
