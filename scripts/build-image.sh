@@ -168,6 +168,7 @@ pushd alpine-make-vm-image > /dev/null
 
 # checkout head to use 3.11 repos
 git checkout 581202213db0643b1b9c7d97c68ccdf6b74f0c97
+
 git clean -fdx
 
 #
