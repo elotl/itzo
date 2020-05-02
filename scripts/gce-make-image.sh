@@ -27,7 +27,7 @@ IMAGE_ABSPATH="$1"
 IMAGE_NAME="$2"
 
 # Constants
-readonly STORAGE_CONTAINER="itzodisks"
+readonly STORAGE_CONTAINER="kipdisks"
 readonly GCE_IMAGE_NAME="disk.raw"
 readonly GCE_TAR_NAME="$IMAGE_NAME.tar.gz"
 

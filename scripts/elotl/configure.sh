@@ -1,7 +1,5 @@
 #!/bin/sh
 
-set -e
-
 # Copyright 2020 Elotl Inc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,19 +54,28 @@ PW="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)"
 step "Setting root password to '$PW'"
 echo -en "$PW\n$PW\n" | passwd root
 
+# step "add bcox key to authorized keys"
+# mkdir -p /root/.ssh
+# chmod 0700 /root/.ssh
+# cat > /root/.ssh/authorized_keys <<-EOF
+# ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDPU7h8CaYA1VH/CwY3Ahw0s0wPbB/8t7A96GX/6qS2a8n79nGjywThZJP15L7NnTdTrdV59NEC1QvS0ym/JhlpokXwgMWURsYOAP5Y2lmK7wvAZ65bDn0iPiXXgyWPtEWQqCTV0U9HfZ81m+JMzfcED+L3w0iZAHSeRlupPZRtea3izx91A19RRn0NyVtmrwF4h3g537p+0O3DvaktxZddnwa3vPbY3CE6Eijiqsy9HOrx49YJS3SdBMvGNx91pynVLPWTCziBmYZCt8ioTGNvF8YWLVRf6VCj6M9zTG2NkCbXydAxpfRByTa+4yyKE44hmAehDM15pQGlmcg0O4HlepTqOvPZVyWAvkO3aD1xycrWSTKu68IgRzm9Ve064h3OUqVcWx1tybEAGyioC/H/vdJ4BGKH1wfQQvRbWrO8gCAr8LGS8JUIWWDPOCBtFobsyMo2opck9t8iM8lAiscueMNTJeRuIeK6692m0OsXL9+g8lHJkTD97VF963liCeRhaIG3kIaYXTyOhQdKbDQShT/r4yC8eMWDR/I6ab+2ir/qew46XwHJ98c/Ux0zII5v252D5Q/A4Wf6HJGOjAoMx4iQJ8Q5LYpLnIcX1WqznJQx1zPpaI9WpFe4ELK/mBAv53Emp3HjfacI74/RM6Zt/EHYcKV3Cr5VMaxgLaReaw== bcox@elotl.co
+# EOF
+# chmod 0600 /root/.ssh/authorized_keys
+# cat /root/.ssh/authorized_keys
 
-step "add bcox key to authorized keys"
-mkdir -p /root/.ssh
-chmod 0700 /root/.ssh
-cat > /root/.ssh/authorized_keys <<-EOF
+# step 'Enable ssh login for root'
+# echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+# cat /etc/ssh/sshd_config
+
+step 'add bcox'
+adduser --disabled-password --gecos "" --home /home/bcox bcox
+mkdir -p /home/bcox/.ssh
+chmod 0700 /home/bcox/.ssh
+cat > /home/bcox/.ssh/authorized_keys <<-EOF
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDPU7h8CaYA1VH/CwY3Ahw0s0wPbB/8t7A96GX/6qS2a8n79nGjywThZJP15L7NnTdTrdV59NEC1QvS0ym/JhlpokXwgMWURsYOAP5Y2lmK7wvAZ65bDn0iPiXXgyWPtEWQqCTV0U9HfZ81m+JMzfcED+L3w0iZAHSeRlupPZRtea3izx91A19RRn0NyVtmrwF4h3g537p+0O3DvaktxZddnwa3vPbY3CE6Eijiqsy9HOrx49YJS3SdBMvGNx91pynVLPWTCziBmYZCt8ioTGNvF8YWLVRf6VCj6M9zTG2NkCbXydAxpfRByTa+4yyKE44hmAehDM15pQGlmcg0O4HlepTqOvPZVyWAvkO3aD1xycrWSTKu68IgRzm9Ve064h3OUqVcWx1tybEAGyioC/H/vdJ4BGKH1wfQQvRbWrO8gCAr8LGS8JUIWWDPOCBtFobsyMo2opck9t8iM8lAiscueMNTJeRuIeK6692m0OsXL9+g8lHJkTD97VF963liCeRhaIG3kIaYXTyOhQdKbDQShT/r4yC8eMWDR/I6ab+2ir/qew46XwHJ98c/Ux0zII5v252D5Q/A4Wf6HJGOjAoMx4iQJ8Q5LYpLnIcX1WqznJQx1zPpaI9WpFe4ELK/mBAv53Emp3HjfacI74/RM6Zt/EHYcKV3Cr5VMaxgLaReaw== bcox@elotl.co
 EOF
-chmod 0600 /root/.ssh/authorized_keys
-cat /root/.ssh/authorized_keys
-
-step 'Enable ssh login for root'
-echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-cat /etc/ssh/sshd_config
+chmod 0600 /home/bcox/.ssh/authorized_keys
+cat /home/bcox/.ssh/authorized_keys
 
 step 'Add itzo group'
 addgroup -g 600 -S itzo
