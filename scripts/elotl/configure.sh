@@ -89,7 +89,7 @@ cat > /usr/local/bin/itzo_download.sh <<-EOF
 
 echo "-1000" > /proc/self/oom_score_adj
 itzo_dir=/usr/local/bin
-\${itzo_dir}/itzo-cloud-init --from-metadata-service --from-waagent /var/lib/waagent >> /var/log/itzo/itzo.log 2>&1
+\${itzo_dir}/itzo-cloud-init --from-metadata-service --from-waagent /var/lib/waagent --from-gce-metadata "http://metadata.google.internal" >> /var/log/itzo/itzo.log 2>&1
 
 itzo_url_file="/tmp/itzo/itzo_url"
 itzo_url="http://itzo-download.s3.amazonaws.com"
