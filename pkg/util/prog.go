@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -111,7 +113,7 @@ func RunProg(prog string, outputLimit, maxRetries int, args ...string) error {
 	glog.Infof("running %s with args %v", prog, args)
 	n := 0
 	start := time.Now()
-	backoff := 1 * time.Second
+	backoff := 3
 	for {
 		n++
 		var stderr bytes.Buffer
@@ -145,7 +147,8 @@ func RunProg(prog string, outputLimit, maxRetries int, args ...string) error {
 			return err
 		}
 		glog.Infof("retrying %s %v", prog, args)
-		time.Sleep(backoff)
-		backoff = backoff * 2
+		time.Sleep(time.Duration(backoff) * time.Second)
+		jitter := int(math.Ceil(rand.Float64() * float64(backoff)))
+		backoff = backoff*2 + jitter
 	}
 }
