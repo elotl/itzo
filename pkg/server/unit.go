@@ -934,8 +934,17 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	if rootfs != "" {
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 
-		if err := mounter.BindMount(rootfs, rootfs); err != nil {
-			glog.Errorf("Mount() %s: %v", rootfs, err)
+		// We used to bind mount rootfs so we could change it to private for
+		// pivot_root. Now that the rootfs is an overlayfs mount, this is not
+		// needed, and we can change the overlayfs mount to private directly.
+		//if err := mounter.BindMount(rootfs, rootfs); err != nil {
+		//	glog.Errorf("Mount() %s: %v", rootfs, err)
+		//	u.setStateToStartFailure(err)
+		//	return err
+		//}
+		privFlags := uintptr(syscall.MS_PRIVATE)
+		if err := mount.ShareMount(rootfs, privFlags); err != nil {
+			glog.Errorf("ShareMount(%s, private): %v", rootfs, err)
 			u.setStateToStartFailure(err)
 			return err
 		}
@@ -976,6 +985,12 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 			u.setStateToStartFailure(err)
 			return err
 		}
+		// Make the parent mount of rootfs private for pivot_root.
+		if err := mount.ShareMount("/", privFlags); err != nil {
+			glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
+			u.setStateToStartFailure(err)
+			return err
+		}
 		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
 			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
 			mounter.UnmountSpecial(u.Name)
@@ -992,8 +1007,8 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		// unmount any volumes living in the root that are shared
 		// between namespaces as emptyDirs when we unmount the old
 		// root.
-		shareFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
-		if err := mount.ShareMount("/.oldrootfs", shareFlags); err != nil {
+		recPrivFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
+		if err := mount.ShareMount("/.oldrootfs", recPrivFlags); err != nil {
 			glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
 			u.setStateToStartFailure(err)
 			return err

@@ -196,6 +196,12 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 			um.rootDir, err)
 	}
 	if !isUnitRootfsMissing {
+		// If the parent mount of rootfs is shared, pivot_root will fail with
+		// EINVAL. Adding CLONE_NEWNS to Unshareflags takes care of this, but
+		// it also does it recursively (MS_REC), which might interfere if the
+		// pod wants to share mounts under a rootfs subtree. We will make the
+		// parent mount private right before calling pivot_root instead. Also
+		// see https://go-review.googlesource.com/c/go/+/38471
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
 		}
