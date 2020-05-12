@@ -29,7 +29,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/elotl/itzo/pkg/util"
@@ -218,11 +217,6 @@ func runNetworkAgent(IP, nodeName string) *exec.Cmd {
 		"--run-router=false",
 		"--v=2",
 	)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Gid: uint32(util.ItzoGroupID),
-		},
-	}
 	cmd.Stdout = logfile
 	cmd.Stderr = logfile
 	err = cmd.Start()

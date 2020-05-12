@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	ItzoGroupID           = 600
 	semverRegexFmt string = `v?([0-9]+)(\.[0-9]+)(\.[0-9]+)?` +
 		`(-([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))*` +
 		`(\+([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?`
@@ -119,9 +118,6 @@ func RunProg(prog string, outputLimit, maxRetries int, args ...string) error {
 		var stderr bytes.Buffer
 		cmd := exec.Command(prog, args...)
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
-		cmd.SysProcAttr.Credential = &syscall.Credential{
-			Gid: uint32(ItzoGroupID),
-		}
 		cmd.Stderr = &stderr
 		err := cmd.Run()
 		if err == nil {
