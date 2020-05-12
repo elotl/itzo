@@ -37,10 +37,12 @@ import (
 )
 
 var (
+	KubeRouterProg                 = "kube-router"
+	KubeRouterURL                  = "https://milpa-builds.s3.amazonaws.com/kube-router"
+	KubeRouterMinimumVersion       = "v0.3.1"
 	MaxBufferSize            int64 = 1024 * 1024 * 10 // 10MB
 	NVIDIA_CONTAINER_CLI_PRG       = "nvidia-container-cli"
 	NVIDIA_SMI_PRG                 = "nvidia-smi"
-	NETWORK_AGENT                  = "kube-router"
 )
 
 func copyFile(src, dst string) error {
@@ -159,9 +161,10 @@ func ensureFileExists(name string) error {
 }
 
 func runNetworkAgent(IP, nodeName string) *exec.Cmd {
-	pth, err := exec.LookPath(NETWORK_AGENT)
+	pth, err := util.EnsureProg(
+		KubeRouterProg, KubeRouterURL, KubeRouterMinimumVersion, "--version")
 	if err != nil {
-		glog.Errorf("failed to look up path of %q: %v", NETWORK_AGENT, err)
+		glog.Errorf("failed to look up path of %q: %v", KubeRouterProg, err)
 		return nil
 	}
 	// Kubeconfig has been deployed as a package. Find the actual config file
