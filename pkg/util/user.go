@@ -100,11 +100,13 @@ func LookupUser(userspec string, lookup UserLookup) (uint32, uint32, string, err
 				groupName, err)
 			grp, err = lookup.LookupGroup(groupName)
 			if err != nil {
-				glog.Errorf("Failed to look up group %q: %v", groupName, err)
-				return 0, 0, "", err
+				// No such group, we will use the user's default group.
+				glog.Warningf("Failed to look up group %q: %v", groupName, err)
 			}
 		}
-		gidStr = grp.Gid
+		if grp != nil {
+			gidStr = grp.Gid
+		}
 	}
 	usr, err := lookup.LookupId(userName)
 	if err != nil {
