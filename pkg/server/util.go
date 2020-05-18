@@ -24,13 +24,11 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/elotl/itzo/pkg/util"
@@ -38,14 +36,12 @@ import (
 )
 
 var (
-	TOSI_MAX_RETRIES               = 3
+	KubeRouterProg                 = "kube-router"
+	KubeRouterURL                  = "https://milpa-builds.s3.amazonaws.com/kube-router"
+	KubeRouterMinimumVersion       = "v0.3.1"
 	MaxBufferSize            int64 = 1024 * 1024 * 10 // 10MB
-	TOSI_PRG                       = "tosi"
-	TOSI_OUTPUT_LIMIT              = 4096
 	NVIDIA_CONTAINER_CLI_PRG       = "nvidia-container-cli"
 	NVIDIA_SMI_PRG                 = "nvidia-smi"
-	ITZO_GROUP_ID                  = 600 // Group is created when the image is created
-	NETWORK_AGENT                  = "kube-router"
 )
 
 func copyFile(src, dst string) error {
@@ -163,79 +159,11 @@ func ensureFileExists(name string) error {
 	return nil
 }
 
-func downloadTosi(tosipath string) error {
-	resp, err := http.Get("http://tosi-download.s3.amazonaws.com/tosi")
-	if err != nil {
-		return fmt.Errorf("Error creating get request for tosi: %+v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("Error downloading tosi: got S3 statuscode %d",
-			resp.StatusCode)
-	}
-	f, err := os.OpenFile(tosipath, os.O_WRONLY|os.O_CREATE, 0755)
-	if err != nil {
-		return fmt.Errorf("Error opening tosi for writing after download: %+v",
-			err)
-	}
-	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
-	if err != nil {
-		return fmt.Errorf("Error writing tosi to filesystem: %+v", err)
-	}
-	return nil
-}
-
-func runTosi(tp string, args ...string) error {
-	glog.Infof("Running tosi %s with args %v", tp, args)
-	n := 0
-	start := time.Now()
-	backoff := 1 * time.Second
-	for {
-		n++
-		var stderr bytes.Buffer
-		cmd := exec.Command(tp, args...)
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-		cmd.SysProcAttr.Credential = &syscall.Credential{
-			Gid: uint32(ITZO_GROUP_ID),
-		}
-
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		if err == nil {
-			glog.Infof("Image download succeeded after %d attempt(s), %v",
-				n, time.Now().Sub(start))
-			return err
-		}
-		freebs, availbs, serr := util.GetNumberOfFreeAndAvailableBlocks("/")
-		if serr == nil && (freebs < 5 || availbs < 5) {
-			err = fmt.Errorf("Low disk space while getting image, "+
-				"free blocks: %d available blocks: %d",
-				freebs, availbs)
-			glog.Errorf("Image download problem: %v", err)
-			return err
-		}
-		output := stderr.String()
-		if len(output) > TOSI_OUTPUT_LIMIT {
-			output = output[len(output)-TOSI_OUTPUT_LIMIT:]
-		}
-		err = fmt.Errorf(
-			"Error getting image after %d attempt(s): %+v, tosi output:\n%s",
-			n, err, output)
-		glog.Errorf("Image download problem: %v", err)
-		if n >= TOSI_MAX_RETRIES {
-			return err
-		}
-		glog.Infof("Retrying image download in %v", backoff)
-		time.Sleep(backoff)
-		backoff = backoff * 2
-	}
-}
-
 func runNetworkAgent(IP, nodeName string) *exec.Cmd {
-	pth, err := exec.LookPath(NETWORK_AGENT)
+	pth, err := util.EnsureProg(
+		KubeRouterProg, KubeRouterURL, KubeRouterMinimumVersion, "--version")
 	if err != nil {
-		glog.Errorf("failed to look up path of %q: %v", NETWORK_AGENT, err)
+		glog.Errorf("failed to look up path of %q: %v", KubeRouterProg, err)
 		return nil
 	}
 	// Kubeconfig has been deployed as a package. Find the actual config file
@@ -289,11 +217,6 @@ func runNetworkAgent(IP, nodeName string) *exec.Cmd {
 		"--run-router=false",
 		"--v=2",
 	)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Gid: uint32(ITZO_GROUP_ID),
-		},
-	}
 	cmd.Stdout = logfile
 	cmd.Stderr = logfile
 	err = cmd.Start()

@@ -30,7 +30,6 @@ import (
 func TestCheckName(t *testing.T) {
 	checkName(PIPE_UNIT_STDOUT)
 	checkName(PIPE_UNIT_STDERR)
-	checkName(PIPE_HELPER_OUT)
 }
 
 func TestReadWrite(t *testing.T) {
@@ -47,7 +46,7 @@ func TestReadWrite(t *testing.T) {
 			defer wg.Done()
 			buf.Write([]byte(line))
 		})
-		w, err := lp.OpenWriter(name, false)
+		w, err := lp.OpenWriter(name)
 		assert.Nil(t, err)
 		defer w.Close()
 		output := []byte(fmt.Sprintf("Hello %s!\n", name))
@@ -68,7 +67,7 @@ func TestWriterClose(t *testing.T) {
 	})
 	for _, name := range UNIT_PIPES {
 		assert.Nil(t, lp.Pipes[name])
-		w, err := lp.OpenWriter(name, false)
+		w, err := lp.OpenWriter(name)
 		assert.Nil(t, err)
 		assert.NotNil(t, w)
 		assert.NotNil(t, lp.Pipes[name])
@@ -104,7 +103,7 @@ func TestRemoveActive(t *testing.T) {
 	pipes := make(map[string]*os.File)
 	for _, name := range UNIT_PIPES {
 		assert.Nil(t, lp.Pipes[name])
-		w, err := lp.OpenWriter(name, false)
+		w, err := lp.OpenWriter(name)
 		assert.Nil(t, err)
 		assert.NotNil(t, w)
 		pipes[name] = w

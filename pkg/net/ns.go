@@ -74,14 +74,14 @@ func (n *OSNetNamespacer) Create() error {
 func withNetNamespace(ns netns.NsHandle, cb func() error) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	oldNs, err := netns.Get()
+	oldNs, err := netns.GetFromPid(os.Getpid())
 	if err != nil {
-		return err
+		return fmt.Errorf("getting old net NS: %v", err)
 	}
 	defer oldNs.Close()
 	err = netns.Set(ns)
 	if err != nil {
-		return err
+		return fmt.Errorf("setting new net NS: %v", err)
 	}
 	defer netns.Set(oldNs)
 	return cb()
@@ -91,7 +91,7 @@ func withNetNamespace(ns netns.NsHandle, cb func() error) error {
 func (n *OSNetNamespacer) WithNetNamespace(cb func() error) error {
 	ns, err := netns.GetFromName(n.NSName)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting net NS from %s: %v", n.NSName, err)
 	}
 	defer ns.Close()
 	return withNetNamespace(ns, cb)

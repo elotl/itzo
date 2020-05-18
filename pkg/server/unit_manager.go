@@ -40,11 +40,13 @@ const (
 func StartUnit(rootdir, podname, hostname, unitname, workingdir, netns string, command []string, policy api.RestartPolicy) error {
 	unit, err := OpenUnit(rootdir, unitname)
 	if err != nil {
+		glog.Errorf("opening unit %s: %v", unitname, err)
 		return err
 	}
 	mounter := mount.NewOSMounter(rootdir)
 	nser := net.NewNoopNetNamespacer()
 	if netns != "" && !api.IsHostNetwork(&unit.unitConfig.PodSecurityContext) {
+		glog.Infof("%s/%s will run in namespace %s", podname, unitname, netns)
 		nser = net.NewOSNetNamespacer(netns)
 	}
 	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",
@@ -173,6 +175,8 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 		netns,
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	env := unit.GetEnv() // Default environment from image config.
 	for _, e := range appenv {
@@ -196,6 +200,12 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 			um.rootDir, err)
 	}
 	if !isUnitRootfsMissing {
+		// If the parent mount of rootfs is shared, pivot_root will fail with
+		// EINVAL. Adding CLONE_NEWNS to Unshareflags takes care of this, but
+		// it also does it recursively (MS_REC), which might interfere if the
+		// pod wants to share mounts under a rootfs subtree. We will make the
+		// parent mount private right before calling pivot_root instead. Also
+		// see https://go-review.googlesource.com/c/go/+/38471
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
 		}
@@ -232,8 +242,5 @@ func (um *UnitManager) CaptureLogs(name string, unit *Unit) {
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
 		um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
-	})
-	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
 	})
 }

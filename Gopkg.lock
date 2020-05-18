@@ -320,6 +320,14 @@
   revision = "7109fa855b0ff1ebef7fbd2f6aa613e8db7cfbc0"
 
 [[projects]]
+  digest = "1:2199118a5de91125b472c6a71ecd81b636d7ce252f64087e57f1ba5830f1451a"
+  name = "golang.org/x/mod"
+  packages = ["semver"]
+  pruneopts = "UT"
+  revision = "ed3ec21bb8e252814c380df79a80f366440ddb2d"
+  version = "v0.2.0"
+
+[[projects]]
   branch = "master"
   digest = "1:d1209fa9ed40a3a24de8498a9bead59eb3333f16a73fa23ba1fc6677a3cfc9d7"
   name = "golang.org/x/net"
@@ -452,6 +460,7 @@
     "github.com/syndtr/gocapability/capability",
     "github.com/vishvananda/netlink",
     "github.com/vishvananda/netns",
+    "golang.org/x/mod/semver",
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
     "k8s.io/apimachinery/pkg/util/intstr",

@@ -31,6 +31,7 @@ import (
 	"github.com/containerd/cgroups"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
+	imagecli "github.com/elotl/itzo/pkg/image"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/prober"
 	"github.com/elotl/itzo/pkg/util"
@@ -369,7 +370,7 @@ func (u *Unit) GetRootfs() string {
 	return filepath.Join(u.Directory, "ROOTFS")
 }
 
-func (u *Unit) PullAndExtractImage(image, url, username, password string) error {
+func (u *Unit) PullAndExtractImage(image, server, username, password string) error {
 	if u.Image != "" {
 		glog.Warningf("Unit %s has already pulled image %s", u.Name, u.Image)
 	}
@@ -378,32 +379,20 @@ func (u *Unit) PullAndExtractImage(image, url, username, password string) error 
 	if err != nil {
 		return fmt.Errorf("Error setting image for unit: %v", err)
 	}
-	tp, err := exec.LookPath(TOSI_PRG)
-	if err != nil {
-		tp = "/tmp/tosiprg"
-		err = downloadTosi(tp)
+	rootfs := u.GetRootfs()
+	configPath := filepath.Join(u.Directory, "config")
+	cli := imagecli.NewTosi()
+	if username != "" || password != "" {
+		err = cli.Login(server, username, password)
+		if err != nil {
+			return err
+		}
 	}
+	err = cli.Pull(server, image)
 	if err != nil {
 		return err
 	}
-	args := []string{
-		"-image",
-		image,
-		"-extractto",
-		u.GetRootfs(),
-		"-saveconfig",
-		filepath.Join(u.Directory, "config"),
-	}
-	if username != "" {
-		args = append(args, []string{"-username", username}...)
-	}
-	if password != "" {
-		args = append(args, []string{"-password", password}...)
-	}
-	if url != "" {
-		args = append(args, []string{"-url", url}...)
-	}
-	err = runTosi(tp, args...)
+	err = cli.Unpack(image, rootfs, configPath)
 	if err != nil {
 		return err
 	}
@@ -608,6 +597,7 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 		cmdErr, probeErr := u.watchRunningCmd(cmd, u.unitConfig.StartupProbe, u.unitConfig.ReadinessProbe, u.unitConfig.LivenessProbe)
 		keepGoing := u.handleCmdCleanup(cmd, cmdErr, probeErr, policy, startTime)
 		if !keepGoing {
+			glog.Infof("giving up on %+v", cmd)
 			return cmdErr
 		}
 		maybeBackOff(cmdErr, command, &backoff, time.Since(startTime))
@@ -914,22 +904,17 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	// Open log pipes _before_ chrooting, since the named pipes are outside of
 	// the rootfs.
 	lp := u.LogPipe
-	helperout, err := lp.OpenWriter(PIPE_HELPER_OUT, true)
+	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT)
 	if err != nil {
-		lp.Remove()
-		u.setStateToStartFailure(err)
-		return err
-	}
-	defer helperout.Close()
-	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT, false)
-	if err != nil {
+		glog.Errorf("opening stdout pipe: %v", err)
 		lp.Remove()
 		u.setStateToStartFailure(err)
 		return err
 	}
 	defer unitout.Close()
-	uniterr, err := lp.OpenWriter(PIPE_UNIT_STDERR, false)
+	uniterr, err := lp.OpenWriter(PIPE_UNIT_STDERR)
 	if err != nil {
+		glog.Errorf("opening stderr pipe: %v", err)
 		lp.Remove()
 		u.setStateToStartFailure(err)
 		return err
@@ -937,6 +922,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	defer uniterr.Close()
 	unitin, err := u.openStdinReader()
 	if err != nil {
+		glog.Errorf("opening pipe: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
@@ -945,8 +931,17 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	if rootfs != "" {
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 
-		if err := mounter.BindMount(rootfs, rootfs); err != nil {
-			glog.Errorf("Mount() %s: %v", rootfs, err)
+		// We used to bind mount rootfs so we could change it to private for
+		// pivot_root. Now that the rootfs is an overlayfs mount, this is not
+		// needed, and we can change the overlayfs mount to private directly.
+		//if err := mounter.BindMount(rootfs, rootfs); err != nil {
+		//	glog.Errorf("Mount() %s: %v", rootfs, err)
+		//	u.setStateToStartFailure(err)
+		//	return err
+		//}
+		privFlags := uintptr(syscall.MS_PRIVATE)
+		if err := mount.ShareMount(rootfs, privFlags); err != nil {
+			glog.Errorf("ShareMount(%s, private): %v", rootfs, err)
 			u.setStateToStartFailure(err)
 			return err
 		}
@@ -987,6 +982,12 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 			u.setStateToStartFailure(err)
 			return err
 		}
+		// Make the parent mount of rootfs private for pivot_root.
+		if err := mount.ShareMount("/", privFlags); err != nil {
+			glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
+			u.setStateToStartFailure(err)
+			return err
+		}
 		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
 			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
 			mounter.UnmountSpecial(u.Name)
@@ -1003,8 +1004,8 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		// unmount any volumes living in the root that are shared
 		// between namespaces as emptyDirs when we unmount the old
 		// root.
-		shareFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
-		if err := mount.ShareMount("/.oldrootfs", shareFlags); err != nil {
+		recPrivFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
+		if err := mount.ShareMount("/.oldrootfs", recPrivFlags); err != nil {
 			glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
 			u.setStateToStartFailure(err)
 			return err
@@ -1030,6 +1031,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 
 	uid, gid, groups, homedir, err := u.GetUser(&util.OsUserLookup{})
 	if err != nil {
+		glog.Errorf("failed to look up user: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
@@ -1062,6 +1064,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		for vol, _ := range u.config.Volumes {
 			err = createDir(vol, int(uid), int(gid))
 			if err != nil {
+				glog.Errorf("creating directory for volume %v: %v", vol, err)
 				u.setStateToStartFailure(err)
 				return err
 			}
@@ -1075,6 +1078,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	if workingdir != "" {
 		err = changeToWorkdir(workingdir, uid, gid)
 		if err != nil {
+			glog.Errorf("changing to workingdir %s: %v", workingdir, err)
 			u.setStateToStartFailure(err)
 			return err
 		}
@@ -1082,12 +1086,14 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 
 	caplist, err := u.getCapabilities()
 	if err != nil {
+		glog.Errorf("getting capabilities: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
 
 	err = u.applySysctls()
 	if err != nil {
+		glog.Errorf("applying sysctls: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}

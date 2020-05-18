@@ -741,7 +741,7 @@ func TestAttach(t *testing.T) {
 	unitin, err := u.openStdinReader()
 	assert.NoError(t, err)
 	lp := u.LogPipe
-	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT, false)
+	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT)
 	defer unitout.Close()
 
 	// start a unit that we can get stdin and stdout from
