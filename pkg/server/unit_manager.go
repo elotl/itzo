@@ -40,11 +40,13 @@ const (
 func StartUnit(rootdir, podname, hostname, unitname, workingdir, netns string, command []string, policy api.RestartPolicy) error {
 	unit, err := OpenUnit(rootdir, unitname)
 	if err != nil {
+		glog.Errorf("opening unit %s: %v", unitname, err)
 		return err
 	}
 	mounter := mount.NewOSMounter(rootdir)
 	nser := net.NewNoopNetNamespacer()
 	if netns != "" && !api.IsHostNetwork(&unit.unitConfig.PodSecurityContext) {
+		glog.Infof("%s/%s will run in namespace %s", podname, unitname, netns)
 		nser = net.NewOSNetNamespacer(netns)
 	}
 	glog.Infof("Starting %v for %s rootdir %s env %v workingdir %s policy %v",
