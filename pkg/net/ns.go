@@ -74,7 +74,7 @@ func (n *OSNetNamespacer) Create() error {
 func withNetNamespace(ns netns.NsHandle, cb func() error) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	oldNs, err := netns.Get()
+	oldNs, err := netns.GetFromPid(os.Getpid())
 	if err != nil {
 		return err
 	}
