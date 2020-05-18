@@ -597,6 +597,7 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 		cmdErr, probeErr := u.watchRunningCmd(cmd, u.unitConfig.StartupProbe, u.unitConfig.ReadinessProbe, u.unitConfig.LivenessProbe)
 		keepGoing := u.handleCmdCleanup(cmd, cmdErr, probeErr, policy, startTime)
 		if !keepGoing {
+			glog.Infof("giving up on %+v", cmd)
 			return cmdErr
 		}
 		maybeBackOff(cmdErr, command, &backoff, time.Since(startTime))
@@ -905,6 +906,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	lp := u.LogPipe
 	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT)
 	if err != nil {
+		glog.Errorf("opening stdout pipe: %v", err)
 		lp.Remove()
 		u.setStateToStartFailure(err)
 		return err
@@ -912,6 +914,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	defer unitout.Close()
 	uniterr, err := lp.OpenWriter(PIPE_UNIT_STDERR)
 	if err != nil {
+		glog.Errorf("opening stderr pipe: %v", err)
 		lp.Remove()
 		u.setStateToStartFailure(err)
 		return err
@@ -919,6 +922,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	defer uniterr.Close()
 	unitin, err := u.openStdinReader()
 	if err != nil {
+		glog.Errorf("opening pipe: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
@@ -1027,6 +1031,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 
 	uid, gid, groups, homedir, err := u.GetUser(&util.OsUserLookup{})
 	if err != nil {
+		glog.Errorf("failed to look up user: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
@@ -1059,6 +1064,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		for vol, _ := range u.config.Volumes {
 			err = createDir(vol, int(uid), int(gid))
 			if err != nil {
+				glog.Errorf("creating directory for volume %v: %v", vol, err)
 				u.setStateToStartFailure(err)
 				return err
 			}
@@ -1072,6 +1078,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	if workingdir != "" {
 		err = changeToWorkdir(workingdir, uid, gid)
 		if err != nil {
+			glog.Errorf("changing to workingdir %s: %v", workingdir, err)
 			u.setStateToStartFailure(err)
 			return err
 		}
@@ -1079,12 +1086,14 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 
 	caplist, err := u.getCapabilities()
 	if err != nil {
+		glog.Errorf("getting capabilities: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
 
 	err = u.applySysctls()
 	if err != nil {
+		glog.Errorf("applying sysctls: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
