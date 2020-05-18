@@ -175,6 +175,8 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 		netns,
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	env := unit.GetEnv() // Default environment from image config.
 	for _, e := range appenv {
@@ -240,8 +242,5 @@ func (um *UnitManager) CaptureLogs(name string, unit *Unit) {
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
 		um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
-	})
-	lp.StartReader(PIPE_HELPER_OUT, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.HelperLogSource, line)
 	})
 }

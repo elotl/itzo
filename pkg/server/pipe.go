@@ -28,12 +28,11 @@ import (
 )
 
 const (
-	PIPE_HELPER_OUT  = "helper-out"
 	PIPE_UNIT_STDOUT = "unit-stdout"
 	PIPE_UNIT_STDERR = "unit-stderr"
 )
 
-var UNIT_PIPES = []string{PIPE_HELPER_OUT, PIPE_UNIT_STDOUT, PIPE_UNIT_STDERR}
+var UNIT_PIPES = []string{PIPE_UNIT_STDOUT, PIPE_UNIT_STDERR}
 
 type LogPipe struct {
 	Unitdir string
@@ -59,7 +58,7 @@ func (l *LogPipe) Chown(uid, gid int) error {
 	return nil
 }
 
-func (l *LogPipe) OpenWriter(name string, redirect bool) (fp *os.File, err error) {
+func (l *LogPipe) OpenWriter(name string) (fp *os.File, err error) {
 	// Open pipe with name "name" for writing. The reader side was created and
 	// connected in New().
 	checkName(name)
@@ -70,24 +69,6 @@ func (l *LogPipe) OpenWriter(name string, redirect bool) (fp *os.File, err error
 		return nil, err
 	}
 	l.Pipes[name] = fp
-	if !redirect {
-		return fp, nil
-	}
-	// Dup2() stdout and stderr to the logpipe.
-	err = syscall.Dup2(int(fp.Fd()), int(os.Stdout.Fd()))
-	if err != nil {
-		l.Pipes[name] = nil
-		fp.Close()
-		glog.Errorf("Error dup2() %s to stdout: %v", pipepath, err)
-		return nil, err
-	}
-	err = syscall.Dup2(int(fp.Fd()), int(os.Stderr.Fd()))
-	if err != nil {
-		l.Pipes[name] = nil
-		fp.Close()
-		glog.Errorf("Error dup2() %s to stderr: %v", pipepath, err)
-		return nil, err
-	}
 	return fp, nil
 }
 

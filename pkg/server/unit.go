@@ -903,21 +903,14 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	// Open log pipes _before_ chrooting, since the named pipes are outside of
 	// the rootfs.
 	lp := u.LogPipe
-	helperout, err := lp.OpenWriter(PIPE_HELPER_OUT, true)
-	if err != nil {
-		lp.Remove()
-		u.setStateToStartFailure(err)
-		return err
-	}
-	defer helperout.Close()
-	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT, false)
+	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT)
 	if err != nil {
 		lp.Remove()
 		u.setStateToStartFailure(err)
 		return err
 	}
 	defer unitout.Close()
-	uniterr, err := lp.OpenWriter(PIPE_UNIT_STDERR, false)
+	uniterr, err := lp.OpenWriter(PIPE_UNIT_STDERR)
 	if err != nil {
 		lp.Remove()
 		u.setStateToStartFailure(err)
