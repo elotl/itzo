@@ -410,16 +410,20 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 	return nil
 }
 
-// Dockerhub can go by several names that the user can specify the
-// .docker/config.json uses index.docker.io but an empty server should
-// also map to that. We have used registry-1.docker.io internally. Users
-// might also just say "docker.io"
+// Dockerhub can go by several names that the user can specify in
+// their image spec.  .docker/config.json uses index.docker.io but an
+// empty server should also map to that. We have used
+// registry-1.docker.io internally and users might also just say
+// "docker.io".  Try to find the server that shows up in the
+// credentials sent over from kip.
 func getRepoCreds(server string, allCreds map[string]api.RegistryCredentials) (string, string) {
 	if creds, ok := allCreds[server]; ok {
 		return creds.Username, creds.Password
 	}
-	// if no server, try to find credentials for (in this order):
-	// index.docker.io, registry-1.docker.io, docker.io
+	// if credentials weren't found and the server is dockerhub
+	// (server is empty or ends in docker.io), try to find credentials
+	// for (in this order): index.docker.io, registry-1.docker.io,
+	// docker.io
 	if server == "" || strings.HasSuffix(server, "docker.io") {
 		possibleServers := []string{"index.docker.io", "registry-1.docker.io", "docker.io"}
 		for _, possibleServer := range possibleServers {
