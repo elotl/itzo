@@ -106,12 +106,17 @@ func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 		metrics[name+".cpuUsage"] = float64(cm.CPU.Usage.Total)
 	}
 	if cm.Memory != nil && cm.Memory.Usage != nil {
-		metrics[name+".memoryUsage"] = float64(cm.Memory.Usage.Usage)
-		metrics[name+".memoryWorkingSet"] = float64(getWorkingSet(cm.Memory))
-	}
-	if diskStats, err := disk.Usage("/"); err == nil {
-		metrics[name+".filesystemUsedBytes"] = float64(diskStats.Used)
-		metrics[name+".filesystemUsedInodes"] = float64(diskStats.InodesUsed)
+		m := cm.Memory
+		metrics[name+".memoryRSS"] = float64(m.TotalRSS)
+		metrics[name+".memoryPageFaults"] = float64(m.TotalPgFault)
+		metrics[name+".memoryMajorPageFaults"] = float64(m.TotalPgMajFault)
+		metrics[name+".memoryUsage"] = float64(m.Usage.Usage)
+		workingSet := getWorkingSet(m)
+		metrics[name+".memoryWorkingSet"] = float64(workingSet)
+		limit := m.Usage.Limit
+		if !isMemoryUnlimited(limit) {
+			metrics[name+".memoryAvailable"] = float64(limit - workingSet)
+		}
 	}
 	return metrics
 }
@@ -122,4 +127,10 @@ func getWorkingSet(memory *cgroups.MemoryStat) uint64 {
 		workingSet = memory.Usage.Usage - memory.TotalInactiveFile
 	}
 	return workingSet
+}
+
+func isMemoryUnlimited(v uint64) bool {
+	// Size after which we consider memory to be "unlimited". This is not MaxInt64 due to rounding by the kernel.
+	const maxMemorySize = uint64(1 << 62)
+	return v > maxMemorySize
 }
