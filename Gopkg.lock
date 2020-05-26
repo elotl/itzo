@@ -272,13 +272,14 @@
   version = "v0.2.0"
 
 [[projects]]
-  digest = "1:ba5b13dd523555370672ed82facbcfe033a8c657f67049ec6b0dcf5b25f0ac69"
+  digest = "1:0d1c08e0c1158a0694c918e90ac16f8adb103707321f2e09ff6204b202c26495"
   name = "github.com/shirou/gopsutil"
   packages = [
     "cpu",
     "disk",
     "internal/common",
     "mem",
+    "net",
   ]
   pruneopts = "UT"
   revision = "2cbc9195c892b304060269ef280375236d2fcac9"
@@ -456,6 +457,7 @@
     "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/disk",
     "github.com/shirou/gopsutil/mem",
+    "github.com/shirou/gopsutil/net",
     "github.com/stretchr/testify/assert",
     "github.com/syndtr/gocapability/capability",
     "github.com/vishvananda/netlink",
