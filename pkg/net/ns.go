@@ -31,6 +31,8 @@ import (
 
 const (
 	NetnsPath = "/var/run/netns"
+	Veth0     = "veth0"
+	Veth1     = "veth1"
 )
 
 type NetNamespacer interface {
@@ -106,23 +108,23 @@ func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
 	defer ns.Close()
 	veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
-			Name: "veth0",
+			Name: Veth0,
 		},
-		PeerName: "veth1",
+		PeerName: Veth1,
 	}
 	if err := netlink.LinkAdd(veth); err != nil {
 		return fmt.Errorf("can't create veth pair: %v", err)
 	}
-	veth0, err := netlink.LinkByName("veth0")
+	veth0, err := netlink.LinkByName(Veth0)
 	if err != nil {
-		return fmt.Errorf("can't find veth0: %v", err)
+		return fmt.Errorf("can't find %s: %v", Veth0, err)
 	}
-	peer, err := netlink.LinkByName("veth1")
+	peer, err := netlink.LinkByName(Veth1)
 	if err != nil {
-		return fmt.Errorf("can't find veth1: %v", err)
+		return fmt.Errorf("can't find %s: %v", Veth1, err)
 	}
 	if err := netlink.LinkSetUp(veth); err != nil {
-		return fmt.Errorf("can't bring veth0 up: %v", err)
+		return fmt.Errorf("can't bring %s up: %v", Veth0, err)
 	}
 	route := &netlink.Route{
 		LinkIndex: veth.Attrs().Index,
@@ -132,10 +134,10 @@ func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
 		},
 	}
 	if err := netlink.RouteAdd(route); err != nil {
-		return fmt.Errorf("can't add %q veth0 route: %v", ipaddr, err)
+		return fmt.Errorf("can't add %q %s route: %v", ipaddr, Veth0, err)
 	}
 	if err := netlink.LinkSetNsFd(peer, int(ns)); err != nil {
-		return fmt.Errorf("can't move veth1 to %s: %v", n.NSName, err)
+		return fmt.Errorf("can't move %s to %s: %v", Veth1, n.NSName, err)
 	}
 	if err := withNetNamespace(ns,
 		func() error {
@@ -147,14 +149,14 @@ func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
 			if err := netlink.LinkSetUp(lo); err != nil {
 				return fmt.Errorf("can't bring lo up in %s: %v", n.NSName, err)
 			}
-			veth1, err := netlink.LinkByName("veth1")
+			veth1, err := netlink.LinkByName(Veth1)
 			if err != nil {
 				return fmt.Errorf(
-					"can't find veth1 in namespace %s: %v", n.NSName, err)
+					"can't find %s in namespace %s: %v", Veth1, n.NSName, err)
 			}
 			if err := netlink.LinkSetUp(veth1); err != nil {
 				return fmt.Errorf(
-					"can't bring veth1 up in %s: %v", n.NSName, err)
+					"can't bring %s up in %s: %v", Veth1, n.NSName, err)
 			}
 			netaddr := &netlink.Addr{
 				IPNet: &net.IPNet{
@@ -164,7 +166,7 @@ func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
 			}
 			if err := netlink.AddrAdd(veth1, netaddr); err != nil {
 				return fmt.Errorf(
-					"can't add IP address %q to veth1: %v", ipaddr, err)
+					"can't add IP address %q to %s: %v", ipaddr, veth1, err)
 			}
 			route := &netlink.Route{
 				LinkIndex: veth1.Attrs().Index,
@@ -175,7 +177,7 @@ func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
 				Scope: netlink.SCOPE_LINK,
 			}
 			if err := netlink.RouteAdd(route); err != nil {
-				return fmt.Errorf("can't add 169.254.1.1 veth1 route: %v", err)
+				return fmt.Errorf("can't add 169.254.1.1 route: %v", err)
 			}
 			defroute := &netlink.Route{
 				LinkIndex: veth1.Attrs().Index,
@@ -186,7 +188,7 @@ func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
 				Gw: net.ParseIP("169.254.1.1"),
 			}
 			if err := netlink.RouteAdd(defroute); err != nil {
-				return fmt.Errorf("can't add default veth1 route: %v", err)
+				return fmt.Errorf("can't add default %s route: %v", Veth1, err)
 			}
 			neigh := &netlink.Neigh{
 				LinkIndex:    veth1.Attrs().Index,
@@ -195,7 +197,7 @@ func (n *OSNetNamespacer) CreateVeth(ipaddr string) error {
 				HardwareAddr: veth0.Attrs().HardwareAddr,
 			}
 			if err := netlink.NeighAdd(neigh); err != nil {
-				return fmt.Errorf("can't add arp veth0 entry: %v", err)
+				return fmt.Errorf("can't add arp %s entry: %v", Veth0, err)
 			}
 			return nil
 		}); err != nil {

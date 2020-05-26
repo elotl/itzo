@@ -75,20 +75,21 @@ func (pe *ParameterError) Error() string {
 }
 
 type Server struct {
-	env             EnvStore
-	httpServer      *http.Server
-	mux             http.ServeMux
-	startTime       time.Time
-	podController   *PodController
-	unitMgr         *UnitManager
-	wsUpgrader      websocket.Upgrader
-	installRootdir  string
-	lastMetricTime  time.Time
-	metrics         *metrics.Metrics
-	primaryIP       string
-	secondaryIP     string
-	podIP           string
-	networkAgentCmd *exec.Cmd
+	env                 EnvStore
+	httpServer          *http.Server
+	mux                 http.ServeMux
+	startTime           time.Time
+	podController       *PodController
+	unitMgr             *UnitManager
+	wsUpgrader          websocket.Upgrader
+	installRootdir      string
+	lastMetricTime      time.Time
+	metrics             *metrics.Metrics
+	primaryIP           string
+	secondaryIP         string
+	podIP               string
+	podNetworkInterface string
+	networkAgentCmd     *exec.Cmd
 }
 
 func New(rootdir string) *Server {
@@ -124,7 +125,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var resourceUsage api.ResourceMetrics
 		if time.Since(s.lastMetricTime) > minMetricPeriod {
-			resourceUsage = s.metrics.GetSystemMetrics()
+			resourceUsage = s.metrics.GetSystemMetrics(s.podNetworkInterface)
 			for _, us := range append(status, initStatus...) {
 				unitResourceUsage := s.metrics.GetUnitMetrics(us.Name)
 				for k, v := range unitResourceUsage {
@@ -195,8 +196,15 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			s.primaryIP = primaryIP
 			s.secondaryIP = secondaryIP
+			s.podNetworkInterface = itzonet.Veth0
 			if api.IsHostNetwork(params.Spec.SecurityContext) {
 				s.podIP = s.primaryIP
+				netif, err := itzonet.GetPrimaryNetworkInterface()
+				if err != nil {
+					glog.Warningf("getting primary network interface: %v", err)
+					netif = "eth0"
+				}
+				s.podNetworkInterface = netif
 			} else {
 				s.podIP = s.secondaryIP
 				s.podController.SetPodNetwork(podNS, s.podIP)
