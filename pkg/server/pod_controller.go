@@ -410,6 +410,31 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 	return nil
 }
 
+// Dockerhub can go by several names that the user can specify in
+// their image spec.  .docker/config.json uses index.docker.io but an
+// empty server should also map to that. We have used
+// registry-1.docker.io internally and users might also just say
+// "docker.io".  Try to find the server that shows up in the
+// credentials sent over from kip.
+func getRepoCreds(server string, allCreds map[string]api.RegistryCredentials) (string, string) {
+	if creds, ok := allCreds[server]; ok {
+		return creds.Username, creds.Password
+	}
+	// if credentials weren't found and the server is dockerhub
+	// (server is empty or ends in docker.io), try to find credentials
+	// for (in this order): index.docker.io, registry-1.docker.io,
+	// docker.io
+	if server == "" || strings.HasSuffix(server, "docker.io") {
+		possibleServers := []string{"index.docker.io", "registry-1.docker.io", "docker.io"}
+		for _, possibleServer := range possibleServers {
+			if creds, ok := allCreds[possibleServer]; ok {
+				return creds.Username, creds.Password
+			}
+		}
+	}
+	return "", ""
+}
+
 func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds map[string]api.RegistryCredentials, policy api.RestartPolicy, podSecurityContext *api.PodSecurityContext) {
 	// pull image
 	server, imageRepo, err := util.ParseImageSpec(unit.Image)
@@ -418,8 +443,8 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
 	}
-	creds := allCreds[server]
-	err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, creds.Username, creds.Password)
+	username, password := getRepoCreds(server, allCreds)
+	err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, username, password)
 	if err != nil {
 		msg := fmt.Sprintf("Error pulling image for unit %s: %v",
 			unit.Name, err)
