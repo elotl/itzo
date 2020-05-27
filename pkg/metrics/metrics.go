@@ -19,10 +19,12 @@ package metrics
 import (
 	"github.com/containerd/cgroups"
 	"github.com/elotl/itzo/pkg/api"
+	itzonet "github.com/elotl/itzo/pkg/net"
 	"github.com/golang/glog"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
+	psnet "github.com/shirou/gopsutil/net"
 )
 
 type Metrics struct {
@@ -69,27 +71,48 @@ func (m *Metrics) cpuPercent() float64 {
 	return percents[0]
 }
 
-// We choose percents over quantities since those values remain
-// constant for an autoscaler when you change your instance type.
-// Thus, if you vertically scale your application to double the CPU
-// count, but keep the autoscaling values the same, you should still
-// scale at the right place.
-//
-// At this time, We don't use cpuUtilization (including steal) like
-// AWS reports in cloudWatch since steal values dont come through in
-// Azure (hyper-v).
-func (m *Metrics) GetSystemMetrics() api.ResourceMetrics {
+// GetSystemMetrics returns a ResourceMetrics map with various pod and system
+// level metrics.
+func (m *Metrics) GetSystemMetrics(netif string) api.ResourceMetrics {
 	metrics := api.ResourceMetrics{}
 	if memoryStats, err := mem.VirtualMemory(); err == nil {
 		metrics["memory"] = memoryStats.UsedPercent
 	}
 	if diskStats, err := disk.Usage("/"); err == nil {
 		metrics["disk"] = diskStats.UsedPercent
+		metrics["fsAvailable"] = float64(diskStats.Free)
+		metrics["fsCapacity"] = float64(diskStats.Total)
+		metrics["fsUsed"] = float64(diskStats.Used)
+		metrics["fsInodesFree"] = float64(diskStats.InodesFree)
+		metrics["fsInodes"] = float64(diskStats.InodesTotal)
+		metrics["fsInodesUsed"] = float64(diskStats.InodesUsed)
+	}
+	if netCountersStat, err := psnet.IOCounters(true); err == nil {
+		for _, cs := range netCountersStat {
+			if cs.Name != netif {
+				continue
+			}
+			if netif == itzonet.Veth0 {
+				// Host interface of a veth pair. Switch RX and TX.
+				metrics["netRx"] = float64(cs.BytesSent)
+				metrics["netRxErrors"] = float64(cs.Errout)
+				metrics["netTx"] = float64(cs.BytesRecv)
+				metrics["netTxErrors"] = float64(cs.Errin)
+			} else {
+				metrics["netRx"] = float64(cs.BytesRecv)
+				metrics["netRxErrors"] = float64(cs.Errin)
+				metrics["netTx"] = float64(cs.BytesSent)
+				metrics["netTxErrors"] = float64(cs.Errout)
+			}
+			break
+		}
 	}
 	metrics["cpu"] = m.cpuPercent()
 	return metrics
 }
 
+// GetUnitMetrics returns a ResourceMetrics map with various container level
+// metrics.
 func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 	metrics := api.ResourceMetrics{}
 	control, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/"+name))
@@ -106,12 +129,17 @@ func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 		metrics[name+".cpuUsage"] = float64(cm.CPU.Usage.Total)
 	}
 	if cm.Memory != nil && cm.Memory.Usage != nil {
-		metrics[name+".memoryUsage"] = float64(cm.Memory.Usage.Usage)
-		metrics[name+".memoryWorkingSet"] = float64(getWorkingSet(cm.Memory))
-	}
-	if diskStats, err := disk.Usage("/"); err == nil {
-		metrics[name+".filesystemUsedBytes"] = float64(diskStats.Used)
-		metrics[name+".filesystemUsedInodes"] = float64(diskStats.InodesUsed)
+		m := cm.Memory
+		metrics[name+".memoryRSS"] = float64(m.TotalRSS)
+		metrics[name+".memoryPageFaults"] = float64(m.TotalPgFault)
+		metrics[name+".memoryMajorPageFaults"] = float64(m.TotalPgMajFault)
+		metrics[name+".memoryUsage"] = float64(m.Usage.Usage)
+		workingSet := getWorkingSet(m)
+		metrics[name+".memoryWorkingSet"] = float64(workingSet)
+		limit := m.Usage.Limit
+		if !isMemoryUnlimited(limit) {
+			metrics[name+".memoryAvailable"] = float64(limit - workingSet)
+		}
 	}
 	return metrics
 }
@@ -122,4 +150,10 @@ func getWorkingSet(memory *cgroups.MemoryStat) uint64 {
 		workingSet = memory.Usage.Usage - memory.TotalInactiveFile
 	}
 	return workingSet
+}
+
+func isMemoryUnlimited(v uint64) bool {
+	// Size after which we consider memory to be "unlimited". This is not MaxInt64 due to rounding by the kernel.
+	const maxMemorySize = uint64(1 << 62)
+	return v > maxMemorySize
 }
