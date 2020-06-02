@@ -26,19 +26,14 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 )
 
 var (
-	KubeRouterProg                 = "kube-router"
-	KubeRouterURL                  = "https://milpa-builds.s3.amazonaws.com/kube-router"
-	KubeRouterMinimumVersion       = "v0.3.1"
 	MaxBufferSize            int64 = 1024 * 1024 * 10 // 10MB
 	NVIDIA_CONTAINER_CLI_PRG       = "nvidia-container-cli"
 	NVIDIA_SMI_PRG                 = "nvidia-smi"
@@ -157,75 +152,6 @@ func ensureFileExists(name string) error {
 	}
 	f.Close()
 	return nil
-}
-
-func runNetworkAgent(IP, nodeName string) *exec.Cmd {
-	pth, err := util.EnsureProg(
-		KubeRouterProg, KubeRouterURL, KubeRouterMinimumVersion, "--version")
-	if err != nil {
-		glog.Errorf("failed to look up path of %q: %v", KubeRouterProg, err)
-		return nil
-	}
-	// Kubeconfig has been deployed as a package. Find the actual config file
-	// inside the package directory.
-	kubeconfig := ""
-	kubeconfigDir := path.Join(ITZO_DIR, "packages/kubeconfig")
-	err = filepath.Walk(
-		kubeconfigDir,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			if info.Name() == "kubeconfig" {
-				kubeconfig = path
-			}
-			return nil
-		},
-	)
-	if err != nil {
-		glog.Errorf("searching for kubeconfig package: %v", err)
-		return nil
-	}
-	if kubeconfig == "" {
-		glog.Errorf("no kubeconfig found")
-		return nil
-	}
-	err = os.MkdirAll("/var/log", 0755)
-	if err != nil {
-		glog.Warningf("ensuring /var/log exists: %v", err)
-	}
-	logfile, err := os.OpenFile(
-		"/var/log/kube-router.log", os.O_RDWR|os.O_APPEND|os.O_CREATE, 0600)
-	if err != nil {
-		glog.Warningf("opening kube-router logfile: %v", err)
-	}
-	if logfile != nil {
-		defer logfile.Close()
-	}
-	cmd := exec.Command(
-		pth,
-		"--kubeconfig="+kubeconfig,
-		"--hostname-override="+nodeName,
-		"--ip-address-override="+IP,
-		"--hairpin-mode=true",
-		"--disable-source-dest-check=false",
-		"--enable-pod-egress=false",
-		"--enable-cni=false",
-		"--run-router=false",
-		"--v=2",
-	)
-	cmd.Stdout = logfile
-	cmd.Stderr = logfile
-	err = cmd.Start()
-	if err != nil {
-		glog.Errorf("starting %v: %v", cmd, err)
-		return nil
-	}
-	glog.Infof("%v started", cmd)
-	return cmd
 }
 
 // I have no idea why I wrote this...  I mean, the host tail
