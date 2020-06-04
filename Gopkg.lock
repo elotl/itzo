@@ -379,6 +379,14 @@
   version = "v0.3.2"
 
 [[projects]]
+  digest = "1:c805e517269b0ba4c21ded5836019ed7d16953d4026cb7d00041d039c7906be9"
+  name = "gopkg.in/natefinch/lumberjack.v2"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a96e63847dc3c67d17befa69c303767e2f84e54f"
+  version = "v2.1"
+
+[[projects]]
   branch = "master"
   digest = "1:090c8aca4054c1e99bd6e765abf3b14742a718301de77ca753456eb4ce49bb5a"
   name = "k8s.io/apimachinery"
@@ -465,6 +473,7 @@
     "golang.org/x/mod/semver",
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
+    "gopkg.in/natefinch/lumberjack.v2",
     "k8s.io/apimachinery/pkg/util/intstr",
     "k8s.io/kubernetes/pkg/probe",
     "k8s.io/kubernetes/pkg/probe/exec",
