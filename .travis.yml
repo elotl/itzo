@@ -2,10 +2,19 @@ language: go
 go:
 - '1.13'
 before_install:
-- pip install awscli --upgrade --user
-- pip install --user boto3
-script: make; scripts/run_tests.sh
+- sudo apt-get install -y apt-transport-https ca-certificates gnupg
+- echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+- curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+- sudo apt-get update -y && sudo apt-get install -y awscli jq google-cloud-sdk
+before_script:
+- openssl aes-256-cbc -K $encrypted_fd1e2a9fc2bf_key -iv $encrypted_fd1e2a9fc2bf_iv -in .account.json.enc -out .account.json -d
+- gcloud auth activate-service-account --key-file=.account.json --project=elotl-kip
+script:
+- set -e
+- make
+- scripts/run_tests.sh
 env:
   global:
+  - GOOGLE_APPLICATION_CREDENTIALS=.account.json
   - secure: Q5KcWLWia1HB2i1EocSS2/VqRuTMZXPKsu+Qz22mWW8MyVuSXP8j+DY6GbzbXQsGyJGQQWjWY9fBK/0/zxMwpVK83zpvEa7xHzmtaSk4ZVFinQUMzrLrHCaOAjPcfyB1tkekCPltpLyGsQ41ymc5o0DBFA3GyX3mQsCrcfEERKDm6djPeZ94TgknruyGv2Z0nksaEiyQZkGL59Ykzq2ZsAkGU/dUR5/YZfAWuv1C2TUb5g4MNt7dnCAp2HEE61ZAfcPShxYODdtQjQMx1alON1Rtz3MQ8cZKw9z5xDULdPJFOpUgujjAlgNkWHPubSEY9gthR8ajUfPt5vtw0hE8/kIWBdRg89WaFHN5mI5E8GmwOCQQKDZ/7Yni3O990E/ZQOjabCAMwm/2FUYni3mmPOM1aHgYcd2TuyVaGyAWC/bC1/o0Vo8c4VMCDTq9uAdC4MBEazS5tWBK05JqVen4g5sgwloiiZvs4yemqk+xEKyhmvvvDXwcDwmgy7K5N4d4mPWH8gACrfS1rRJuf8GIiw5FgJo1d2rz6jZ7Idw5OKl5gW3Km1V+FLF/uJdi5Uzv7KEW0YXzzdD1XyKUxzEY8allrgN6Pj/YY75WQeAm1kpPDdrH4nMCJWmz8PVJTER/hdn/IIUxdTBBdn5MIg00pNcte3OXrtMm+u6Hu6MRiCw=
   - secure: qNCvx+3ZKZviSICUjK/ZUPEWA9jNumM8xwXOVXyC6psbEvWndzsxoDlWFqB/v8giT20d4rR9ZtjwACFMIHiAo5CCg82Bq9OTgyRUnmfiGKmbY7BJ9rC1kQqUoSmh3iZh8FK2OrDXHdaInljDm/TH3T2WcHlsFhr4Mxoj4xmvtD58M4pp8akoTiDwt61xlVvCv1JpOPbAUxiSmQMOj+sBEyYUvj/gn92wjKhFJJla6CZbvJEUt9hY73wgSgEp2JOq+Ppv64B5q2kDHe0ztXPkDo7euPunl9l708jfmYuY+pDI8zEx4x25Mf32wK16TllmeKf5/fQg5TVWtEXzMxlkAEovbHpm/aXoL7qTW6ig+hVCI59cRDAfrYz85lRcMbbcUeoTqOGnAg7inEcfJ0bMbEUrvdBhpaTt79CNG+lArMvTljgbl1NmcgHLlwaZ2RFZCMo+8EZWaznGz2gpLxIbOWbfUM/7NQLpEi3P3ueeYRc65JluwZsVh/yAY11k1acvElxBezZM9XVIIjHhPhfvlqh+rvtGoOaFSDLFoBmvhkddjwetJwUK/sTLi7s4qGipK8tx2oyG4KZHpSXNjLTwjShDytNEBjIT5RZFX0gZaeJ3ef0owP56zgWYvyihffuPcoRU8g6AVqDAzqAShAyG216fo4OwnyU8iZYb7QehamA=

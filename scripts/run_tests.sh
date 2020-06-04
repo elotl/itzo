@@ -63,12 +63,20 @@ fi
 # build to itzo-kip-download, and update itzo-latest there.
 #
 echo "Uploading itzo build $CURRENT_BUILD_NUMBER"
-aws s3 cp itzo s3://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER --acl public-read
+aws s3 cp --acl public-read itzo s3://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
+gsutil copy itzo gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER && \
+    gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
 if [[ $CURRENT_BRANCH == "master" ]]; then
-	aws s3 cp itzo s3://$itzo_dev_bucket/itzo-latest --acl public-read
+	aws s3 cp --acl public-read itzo s3://$itzo_dev_bucket/itzo-latest
+    gsutil copy itzo gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
 fi
 if $itzo_release; then
     echo "Making an itzo release at $CURRENT_TAG"
-	aws s3 cp itzo s3://$itzo_bucket/itzo-$CURRENT_TAG --acl public-read
-	aws s3 cp itzo s3://$itzo_bucket/itzo-latest --acl public-read
+	aws s3 cp --acl public-read itzo s3://$itzo_bucket/itzo-$CURRENT_TAG
+    gsutil copy itzo gs://$itzo_bucket/itzo-$CURRENT_TAG && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-$CURRENT_TAG
+	aws s3 cp --acl public-read itzo s3://$itzo_bucket/itzo-latest
+    gsutil copy itzo gs://$itzo_bucket/itzo-latest && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-latest
 fi
