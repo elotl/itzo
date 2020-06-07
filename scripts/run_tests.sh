@@ -68,8 +68,8 @@ gsutil copy itzo gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER && \
     gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
 if [[ $CURRENT_BRANCH == "master" ]]; then
 	aws s3 cp --acl public-read itzo s3://$itzo_dev_bucket/itzo-latest
-    gsutil copy itzo gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER && \
-        gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
+    gsutil copy itzo gs://$itzo_dev_bucket/itzo-latest && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-latest
 fi
 if $itzo_release; then
     echo "Making an itzo release at $CURRENT_TAG"
