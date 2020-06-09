@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/host"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/mount"
@@ -161,7 +162,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startNetworkAgent(IP, nodeName string) {
-	cmd := runNetworkAgent(IP, nodeName)
+	cmd := host.EnsureNetworkAgent(IP, nodeName, ITZO_DIR)
 	if cmd == nil {
 		return
 	}

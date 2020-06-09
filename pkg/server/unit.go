@@ -31,6 +31,7 @@ import (
 	"github.com/containerd/cgroups"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
+	"github.com/elotl/itzo/pkg/host"
 	imagecli "github.com/elotl/itzo/pkg/image"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/prober"
@@ -867,8 +868,8 @@ func (u *Unit) applySysctls() error {
 	return nil
 }
 
-func (u *Unit) setupGpu() error {
-	return setupGpu(u.GetRootfs())
+func (u *Unit) initializeGPU() error {
+	return host.InitializeGPU(u.GetRootfs())
 }
 
 func (u *Unit) Run(podname, hostname string, command []string, workingdir string, policy api.RestartPolicy, mounter mount.Mounter) error {
@@ -976,8 +977,8 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		//  rootfs of the unit. If this is a GPU instance, we'll have to do
 		//  some extra steps for setting up the unit (mounting in the right
 		//  version of support libraries, etc) before calling pivot_root().
-		if err := u.setupGpu(); err != nil {
-			glog.Errorf("setupGpu(): %v", err)
+		if err := u.initializeGPU(); err != nil {
+			glog.Errorf("initializeGPU(): %v", err)
 			mounter.UnmountSpecial(u.Name)
 			u.setStateToStartFailure(err)
 			return err
