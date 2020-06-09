@@ -22,8 +22,10 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/containerlog"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/net"
@@ -35,6 +37,12 @@ import (
 
 const (
 	logBuffSize = 4096
+)
+
+var (
+	// The kubelet stores container logfiles in this directory. To make it
+	// easier to configure logging agents on cells, we use the same directory.
+	ContainerLogDir = "/var/log/containers"
 )
 
 func StartUnit(rootdir, podname, hostname, unitname, workingdir, netns string, command []string, policy api.RestartPolicy) error {
@@ -63,6 +71,7 @@ type UnitManager struct {
 }
 
 func NewUnitManager(rootDir string) *UnitManager {
+	os.MkdirAll(ContainerLogDir, 0755)
 	return &UnitManager{
 		rootDir:      rootDir,
 		runningUnits: conmap.NewStringOsProcess(),
@@ -211,7 +220,7 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 		}
 	}
 
-	um.CaptureLogs(unitname, unit)
+	um.CaptureLogs(podname, unitname, unit.LogPipe)
 
 	if err = cmd.Start(); err != nil {
 		glog.Errorf("Failed to start %+v: %v", cmd, err)
@@ -233,14 +242,19 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 	return nil
 }
 
-func (um *UnitManager) CaptureLogs(name string, unit *Unit) {
-	// XXX: Make number of log lines retained configurable.
-	lp := unit.LogPipe
-	um.logbuf.Set(name, logbuf.NewLogBuffer(logBuffSize))
+func (um *UnitManager) CaptureLogs(podName, unitName string, lp *LogPipe) {
+	namespace, name := util.SplitNamespaceAndName(podName)
+	cid := fmt.Sprintf("%d", time.Now().UnixNano())
+	logFileName := fmt.Sprintf(
+		"%s/%s_%s_%s-%s.log", ContainerLogDir, name, namespace, unitName, cid)
+	writer := containerlog.NewLogger(logFileName, 100, 1, 7, nil)
+	um.logbuf.Set(unitName, logbuf.NewLogBuffer(logBuffSize))
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.StdoutLogSource, line)
+		um.logbuf.Get(unitName).Write(logbuf.StdoutLogSource, line)
+		writer.Write(containerlog.Stdout, line)
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		um.logbuf.Get(name).Write(logbuf.StderrLogSource, line)
+		um.logbuf.Get(unitName).Write(logbuf.StderrLogSource, line)
+		writer.Write(containerlog.Stderr, line)
 	})
 }

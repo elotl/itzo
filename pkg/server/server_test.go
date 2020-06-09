@@ -735,7 +735,7 @@ func TestAttach(t *testing.T) {
 	assert.NoError(t, err)
 	defer u.Destroy()
 
-	ss.unitMgr.CaptureLogs(unitName, u)
+	ss.unitMgr.CaptureLogs("mypod", unitName, u.LogPipe)
 	// silly hack that allows us to get the output from the unit
 	ss.unitMgr.runningUnits.Set(unitName, &os.Process{})
 	unitin, err := u.openStdinReader()
