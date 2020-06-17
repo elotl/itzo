@@ -633,7 +633,7 @@ func (s *Server) serveAttach(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.doUpgrade(w, r)
 	if err != nil {
-		glog.Errorf("Failed to upgrade WS connection for exec: %v", err)
+		glog.Errorf("upgrading WS connection for exec: %v", err)
 		return
 	}
 	defer ws.CloseAndCleanup()
@@ -641,7 +641,7 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	var params api.ExecParams
 	err = getInitialParams(ws, &params)
 	if err != nil {
-		glog.Errorf("Failed to get initial parameters for exec: %v", err)
+		glog.Errorf("getting initial parameters for exec: %v", err)
 		return
 	}
 
@@ -663,7 +663,7 @@ func (s *Server) runcmdHandler(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.Command(params.Command[0], params.Command[1:]...)
 	output, err := cmd.Output()
 	if err != nil {
-		serverError(w, fmt.Errorf("Error running command: %v", err))
+		serverError(w, fmt.Errorf("running command %s: %v", err, params.Command[0]))
 		return
 	}
 	// Todo: do we need to base64 encode the output from the command?

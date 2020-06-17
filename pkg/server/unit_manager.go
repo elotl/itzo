@@ -197,8 +197,7 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 	}
 	cmd.Env = env
 
-	glog.Infof("Unit %q workingdir %q command %v %v env %v policy %v",
-		unitname, workingdir, command, args, env, policy)
+	glog.Infof("unit %q workingdir %q policy %v", unitname, workingdir, policy)
 
 	// Check if a chroot exists for the unit. If it does, a package has been
 	// deployed there with a complete root filesystem, and we need to run our
@@ -223,7 +222,7 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 	um.CaptureLogs(podname, unitname, unit.LogPipe)
 
 	if err = cmd.Start(); err != nil {
-		glog.Errorf("Failed to start %+v: %v", cmd, err)
+		glog.Errorf("Failed to start %s/%s: %v", podname, unitname, err)
 		unit.LogPipe.Remove()
 		return err
 	}
@@ -232,9 +231,9 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 	go func() {
 		err = cmd.Wait()
 		if err == nil {
-			glog.Infof("Unit %v (helper pid %d) exited", command, pid)
+			glog.Infof("unit %s/%s (helper pid %d) exited", podname, unitname, pid)
 		} else {
-			glog.Errorf("Unit %v (helper pid %d) exited with error %v", command, pid, err)
+			glog.Errorf("unit %s/%s (helper pid %d) exited with error %v", podname, unitname, pid, err)
 		}
 		um.runningUnits.Delete(unitname)
 		unit.LogPipe.Remove()

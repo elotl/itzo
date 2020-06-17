@@ -170,12 +170,12 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 	directory := filepath.Join(rootdir, name)
 	// Make sure unit directory exists.
 	if err := os.MkdirAll(directory, 0700); err != nil {
-		glog.Errorf("Error creating unit '%s': %v\n", name, err)
+		glog.Errorf("creating unit %q: %v\n", name, err)
 		return nil, err
 	}
 	lp, err := NewLogPipe(directory)
 	if err != nil {
-		glog.Errorf("Error creating logpipes for unit '%s': %v\n", name, err)
+		glog.Errorf("creating logpipes for unit %q: %v\n", name, err)
 		return nil, err
 	}
 	u := Unit{
@@ -191,17 +191,17 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 	}
 	u.config, err = u.getConfig()
 	if err != nil && !os.IsNotExist(err) {
-		glog.Warningf("Failed to get unit %s config: %v", name, err)
+		glog.Warningf("getting unit %q config: %v", name, err)
 	}
 	u.unitConfig, err = u.getUnitConfig()
 	if err != nil && !os.IsNotExist(err) {
-		glog.Warningf("Failed to get unit %s configuration: %v", name, err)
+		glog.Warningf("getting unit %q configuration: %v", name, err)
 	}
 
 	// We need to get the image, that's saved in the status
 	s, err := u.GetStatus()
 	if err != nil {
-		glog.Warningf("Error getting unit %s status: %v", name, err)
+		glog.Warningf("getting unit %q status: %v", name, err)
 	} else {
 		u.Image = s.Image
 	}
@@ -212,7 +212,7 @@ func (u *Unit) createStdin() error {
 	pipepath := filepath.Join(u.Directory, "unit-stdin")
 	err := syscall.Mkfifo(pipepath, 0600)
 	if err != nil && !os.IsExist(err) {
-		glog.Errorf("Error creating stdin pipe %s: %v", pipepath, err)
+		glog.Errorf("creating stdin pipe %s: %v", pipepath, err)
 		return err
 	}
 	u.stdinPath = pipepath
@@ -227,7 +227,7 @@ func (u *Unit) openStdinReader() (io.ReadCloser, error) {
 	go func() {
 		wfp, err := os.OpenFile(u.stdinPath, os.O_WRONLY, 0200)
 		if err != nil {
-			glog.Errorf("Error opening stdin pipe %s: %v", u.stdinPath, err)
+			glog.Errorf("opening stdin pipe %s: %v", u.stdinPath, err)
 		} else {
 			defer wfp.Close()
 		}
@@ -238,7 +238,7 @@ func (u *Unit) openStdinReader() (io.ReadCloser, error) {
 	}()
 	fp, err := os.OpenFile(u.stdinPath, os.O_RDONLY, 0400)
 	if err != nil {
-		glog.Errorf("Error opening stdin pipe %s: %v", u.stdinPath, err)
+		glog.Errorf("opening stdin pipe %s: %v", u.stdinPath, err)
 		return nil, err
 	}
 	return fp, nil
@@ -247,7 +247,7 @@ func (u *Unit) openStdinReader() (io.ReadCloser, error) {
 func (u *Unit) OpenStdinWriter() (io.WriteCloser, error) {
 	fp, err := os.OpenFile(u.stdinPath, os.O_WRONLY, 0200)
 	if err != nil {
-		glog.Errorf("Error opening stdin pipe %s: %v", u.stdinPath, err)
+		glog.Errorf("opening stdin pipe %s: %v", u.stdinPath, err)
 		return nil, err
 	}
 	return fp, nil
@@ -257,7 +257,7 @@ func (u *Unit) closeStdin() {
 	select {
 	case u.stdinCloser <- struct{}{}:
 	default:
-		glog.Warningf("Stdin for unit %s has already been closed", u.Name)
+		glog.Warningf("stdin for unit %s has already been closed", u.Name)
 	}
 }
 
@@ -267,15 +267,14 @@ func (u *Unit) getUnitConfig() (UnitConfig, error) {
 	var uc UnitConfig
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error reading unit file %s for %q", path, u.Name)
+			glog.Errorf("reading unit file %s for %q", path, u.Name)
 		}
 		return uc, err
 	}
 
 	err = json.Unmarshal(buf, &uc)
 	if err != nil {
-		glog.Errorf("Error deserializing %s '%v' for %q: %v",
-			path, buf, u.Name, err)
+		glog.Errorf("deserializing %s for %q: %v", path, u.Name, err)
 		return uc, err
 	}
 	return uc, nil
@@ -286,14 +285,13 @@ func (u *Unit) SaveUnitConfig(unitConfig UnitConfig) error {
 	path := filepath.Join(u.Directory, filename)
 	buf, err := json.Marshal(&unitConfig)
 	if err != nil {
-		glog.Errorf("Error serializing %s '%v' for %q: %v",
-			filename, buf, u.Name, err)
+		glog.Errorf("serializing %s for %q: %v", filename, u.Name, err)
 		return err
 	}
 	err = ioutil.WriteFile(path, buf, 0755)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error writing %s for %s\n", filename, u.Name)
+			glog.Errorf("writing %s for %s\n", filename, u.Name)
 		}
 		return err
 	}
@@ -305,15 +303,14 @@ func (u *Unit) getConfig() (*Config, error) {
 	buf, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			glog.Errorf("Error reading config for %s\n", u.Name)
+			glog.Errorf("reading config for %s\n", u.Name)
 		}
 		return nil, err
 	}
 	var config Config
 	err = json.Unmarshal(buf, &config)
 	if err != nil {
-		glog.Errorf("Error deserializing config '%v' for %s: %v\n",
-			buf, u.Name, err)
+		glog.Errorf("deserializing config for %s: %v\n", u.Name, err)
 		return nil, err
 	}
 	return &config, nil
@@ -331,7 +328,7 @@ func (u *Unit) CreateCommand(command []string, args []string) []string {
 		}
 	}
 	if len(command) == 0 && len(args) == 0 {
-		glog.Warningf("No command or entrypoint for unit %s", u.Name)
+		glog.Warningf("no command or entrypoint for unit %s", u.Name)
 	}
 	return append(command, args...)
 }
@@ -373,12 +370,12 @@ func (u *Unit) GetRootfs() string {
 
 func (u *Unit) PullAndExtractImage(image, server, username, password string) error {
 	if u.Image != "" {
-		glog.Warningf("Unit %s has already pulled image %s", u.Name, u.Image)
+		glog.Warningf("unit %s has already pulled image %s", u.Name, u.Image)
 	}
-	glog.Infof("Unit %s pulling image %s", u.Name, image)
+	glog.Infof("unit %s pulling image %s", u.Name, image)
 	err := u.SetImage(image)
 	if err != nil {
-		return fmt.Errorf("Error setting image for unit: %v", err)
+		return fmt.Errorf("setting image for unit: %v", err)
 	}
 	rootfs := u.GetRootfs()
 	configPath := filepath.Join(u.Directory, "config")
@@ -442,15 +439,15 @@ func (u *Unit) GetUser(lookup util.UserLookup) (uid, gid uint32, groups []uint32
 func (u *Unit) copyFileFromHost(hostpath string, overwrite bool) error {
 	dpath := filepath.Join(u.GetRootfs(), filepath.Dir(hostpath))
 	if _, err := os.Stat(dpath); os.IsNotExist(err) {
-		glog.Infof("Creating directory %s", dpath)
+		glog.Infof("creating directory %s", dpath)
 		if err := os.MkdirAll(dpath, 0755); err != nil {
-			glog.Errorf("Could not create new directory %s: %v", dpath, err)
+			glog.Errorf("creating new directory %s: %v", dpath, err)
 			return err
 		}
 	}
 	fpath := filepath.Join(u.GetRootfs(), hostpath)
 	if _, err := os.Stat(fpath); os.IsNotExist(err) || overwrite {
-		glog.Infof("Copying %s from host to %s", hostpath, fpath)
+		glog.Infof("copying %s from host to %s", hostpath, fpath)
 		if err := copyFile(hostpath, fpath); err != nil {
 			glog.Errorf("copyFile() %s to %s: %v", hostpath, fpath, err)
 			return err
@@ -462,11 +459,11 @@ func (u *Unit) copyFileFromHost(hostpath string, overwrite bool) error {
 func (u *Unit) SetStatus(status *api.UnitStatus) error {
 	buf, err := json.Marshal(status)
 	if err != nil {
-		glog.Errorf("Error serializing status for %s\n", u.Name)
+		glog.Errorf("serializing status for %s\n", u.Name)
 		return err
 	}
 	if err := ioutil.WriteFile(u.statusPath, buf, 0600); err != nil {
-		glog.Errorf("Error updating statusfile for %s\n", u.Name)
+		glog.Errorf("updating statusfile for %s\n", u.Name)
 		return err
 	}
 	return nil
@@ -475,7 +472,7 @@ func (u *Unit) SetStatus(status *api.UnitStatus) error {
 func (u *Unit) UpdateStatusAttr(ready, started *bool) error {
 	status, err := u.GetStatus()
 	if err != nil {
-		glog.Errorf("Error getting current status for %s\n", u.Name)
+		glog.Errorf("getting current status for %s\n", u.Name)
 		return err
 	}
 	if ready != nil {
@@ -493,7 +490,7 @@ func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 		if os.IsNotExist(err) {
 			return makeStillCreatingStatus(u.Name, u.Image, "PodInitializing"), nil
 		}
-		glog.Errorf("Error reading statusfile for %s\n", u.Name)
+		glog.Errorf("reading statusfile for %s\n", u.Name)
 		return nil, err
 	}
 	var status api.UnitStatus
@@ -507,10 +504,10 @@ func (u *Unit) SetState(state api.UnitState, restarts *int) error {
 	// pass in a nil pointer to restarts to not update that value
 	status, err := u.GetStatus()
 	if err != nil {
-		glog.Errorf("Error getting current status for %s\n", u.Name)
+		glog.Errorf("getting current status for %s\n", u.Name)
 		return err
 	}
-	glog.V(5).Infof("Updating state of unit '%s' to %v\n", u.Name, state)
+	glog.V(5).Infof("updating state of unit '%s' to %v\n", u.Name, state)
 	status.State = state
 	if status.State.Terminated != nil {
 		status.LastTerminationState = state
@@ -531,7 +528,7 @@ func maybeBackOff(err error, command []string, backoff *time.Duration, runningTi
 			*backoff = MAX_BACKOFF_TIME
 		}
 	}
-	glog.Infof("Waiting for %v before starting %v again", *backoff, command)
+	glog.Infof("waiting for %v before starting %s again", *backoff, command[0])
 	sleep(*backoff)
 }
 
@@ -552,7 +549,7 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 			err := u.setCapabilities(caplist)
 			if err != nil {
 				u.setStateToStartFailure(err)
-				glog.Errorf("Setting capabilities %v: %v", caplist, err)
+				glog.Errorf("setting capabilities %v: %v", caplist, err)
 				maybeBackOff(err, command, &backoff, 0*time.Second)
 				continue
 			}
@@ -576,7 +573,7 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 					Reason:       err.Error(),
 				},
 			}, &restarts)
-			glog.Errorf("Start() %v: %v", command, err)
+			glog.Errorf("starting %s: %v", command[0], err)
 			maybeBackOff(err, command, &backoff, 0*time.Second)
 			continue
 		}
@@ -586,19 +583,18 @@ func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []
 			},
 		}, &restarts)
 		if cmd.Process != nil {
-			glog.V(5).Infof("Command %v running as pid %d", command, cmd.Process.Pid)
+			glog.V(5).Infof("command %s running as pid %d", command[0], cmd.Process.Pid)
 			err := util.SetOOMScore(cmd.Process.Pid, CHILD_OOM_SCORE)
 			if err != nil {
-				glog.Warningf("Error resetting oom score for pid %v: %s",
-					cmd.Process.Pid, err)
+				glog.Warningf("resetting oom score for pid %v: %s", cmd.Process.Pid, err)
 			}
 		} else {
-			glog.Warningf("cmd has nil process: %#v", cmd)
+			glog.Warningf("command %s has nil process", command[0])
 		}
 		cmdErr, probeErr := u.watchRunningCmd(cmd, u.unitConfig.StartupProbe, u.unitConfig.ReadinessProbe, u.unitConfig.LivenessProbe)
 		keepGoing := u.handleCmdCleanup(cmd, cmdErr, probeErr, policy, startTime)
 		if !keepGoing {
-			glog.Infof("giving up on %+v", cmd)
+			glog.Infof("giving up on %s", command[0])
 			return cmdErr
 		}
 		maybeBackOff(cmdErr, command, &backoff, time.Since(startTime))
@@ -675,7 +671,6 @@ func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy ap
 	d := time.Since(startTime)
 	failure := false
 	exitCode := 0
-	fullCmd := append([]string{cmd.Path}, cmd.Args...)
 	reason := ""
 	if cmdErr != nil {
 		failure = true
@@ -685,33 +680,32 @@ func (u *Unit) handleCmdCleanup(cmd *exec.Cmd, cmdErr, probeErr error, policy ap
 			if ws, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 				foundRc = true
 				exitCode = ws.ExitStatus()
-				glog.Infof("Command %v pid %d exited with %d after %.2fs",
-					fullCmd, cmd.Process.Pid, exitCode, d.Seconds())
+				glog.Infof("command %s pid %d exited with %d after %.2fs",
+					cmd.Path, cmd.Process.Pid, exitCode, d.Seconds())
 			}
 		}
 		if !foundRc {
-			glog.Infof("Command %v pid %d exited with %v after %.2fs",
-				fullCmd, cmd.Process.Pid, cmdErr, d.Seconds())
+			glog.Infof("command %s pid %d exited with %v after %.2fs",
+				cmd.Path, cmd.Process.Pid, cmdErr, d.Seconds())
 		}
 	} else if probeErr != nil {
-		glog.Infof("Command %s saw a probe error %s after %.2fs",
-			fullCmd, probeErr.Error(), d.Seconds())
+		glog.Infof("command %s saw a probe error %s after %.2fs",
+			cmd.Path, probeErr.Error(), d.Seconds())
 		//
 		// Todo: this should abide by the unit's terminationGracePeriod
 		//
 		reason = "Error"
 	} else {
 		reason = "Completed"
-		glog.V(5).Infof("Command %v pid %d exited with 0 after %.2fs",
-			fullCmd, cmd.Process.Pid, d.Seconds())
+		glog.V(5).Infof("command %s pid %d exited with 0 after %.2fs",
+			cmd.Path, cmd.Process.Pid, d.Seconds())
 	}
 
 	ptk := kill.NewProcessTreeKiller(&kill.OSProcessHandler{})
 	err := ptk.KillProcessTree(cmd.Process.Pid)
 	if err != nil {
 		// Something failed. Try to kill at least the main process we started.
-		glog.Warningf("%s killing process tree for %s: %v",
-			u.Name, fullCmd, err)
+		glog.Warningf("%s killing process tree for %s: %v", u.Name, cmd.Path, err)
 		cmd.Process.Kill()
 	}
 
@@ -748,7 +742,7 @@ func (u *Unit) getTerminationLog() string {
 		if os.IsNotExist(err) {
 			return ""
 		}
-		glog.Warningf("Error reading termination message file: %s", err)
+		glog.Warningf("reading termination message file: %s", err)
 	}
 	return data
 }
@@ -756,13 +750,12 @@ func (u *Unit) getTerminationLog() string {
 func createDir(dir string, uid, gid int) error {
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {
-		glog.Errorf("Failed to create directory %s: %v", dir, err)
+		glog.Errorf("creating directory %s: %v", dir, err)
 		return err
 	}
 	err = os.Chown(dir, uid, gid)
 	if err != nil {
-		glog.Errorf("Failed to change UID/GID of directory %s to %d/%d: %v",
-			dir, uid, gid, err)
+		glog.Errorf("changing UID/GID of directory %s to %d/%d: %v", dir, uid, gid, err)
 		return err
 	}
 	return nil
@@ -773,15 +766,13 @@ func changeToWorkdir(workingdir string, uid, gid uint32) error {
 	os.MkdirAll(workingdir, 0755)
 	err := os.Chdir(workingdir)
 	if err != nil {
-		glog.Errorf("Failed to change to working directory %s: %v",
-			workingdir, err)
+		glog.Errorf("changing to working directory %s: %v", workingdir, err)
 		return err
 	}
 	if uid != 0 || gid != 0 {
 		err = os.Chown(workingdir, int(uid), int(gid))
 		if err != nil {
-			glog.Errorf("Failed to chown workingdir %s to %d/%d: %v",
-				workingdir, uid, gid, err)
+			glog.Errorf("chown workingdir %s to %d/%d: %v", workingdir, uid, gid, err)
 			return err
 		}
 	}
@@ -860,10 +851,10 @@ func (u *Unit) applySysctls() error {
 	for _, sc := range u.unitConfig.Sysctls {
 		err := sysctl.Set(sc.Name, sc.Value)
 		if err != nil {
-			glog.Errorf("Applying sysctl %q=%q: %v", sc.Name, sc.Value, err)
+			glog.Errorf("applying sysctl %q=%q: %v", sc.Name, sc.Value, err)
 			return err
 		}
-		glog.Infof("Applied sysctl %q=%q", sc.Name, sc.Value)
+		glog.Infof("applied sysctl %q=%q", sc.Name, sc.Value)
 	}
 	return nil
 }
@@ -882,7 +873,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	control, err := cgroups.New(
 		cgroups.V1, cgroups.StaticPath("/"+u.Name), &specs.LinuxResources{})
 	if err != nil {
-		glog.Errorf("Failed to create cgroups control for %q: %v", u.Name, err)
+		glog.Errorf("creating cgroups control for %q: %v", u.Name, err)
 		u.setStateToStartFailure(err)
 		return err
 	}
@@ -890,7 +881,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	pid := os.Getpid()
 	err = control.Add(cgroups.Process{Pid: pid})
 	if err != nil {
-		glog.Errorf("Error adding pid %v to cgroups control: %v", pid, err)
+		glog.Errorf("adding pid %v to cgroups control: %v", pid, err)
 		u.setStateToStartFailure(err)
 		return err
 	}
@@ -899,7 +890,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	if _, err := os.Stat(rootfs); os.IsNotExist(err) {
 		// No chroot package has been deployed for the unit.
 		rootfs = ""
-		glog.Errorf("No rootfs found for %s; not chrooting", u.Name)
+		glog.Errorf("no rootfs found for %s; not chrooting", u.Name)
 	}
 
 	// Open log pipes _before_ chrooting, since the named pipes are outside of
@@ -1025,21 +1016,21 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	}
 	err = syscall.Sethostname([]byte(hostname))
 	if err != nil {
-		glog.Errorf("Failed to set hostname to %s: %v", hostname, err)
+		glog.Errorf("setting hostname to %s: %v", hostname, err)
 		u.setStateToStartFailure(err)
 		return err
 	}
 
 	uid, gid, groups, homedir, err := u.GetUser(&util.OsUserLookup{})
 	if err != nil {
-		glog.Errorf("failed to look up user: %v", err)
+		glog.Errorf("looking up user: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
 	if uid != 0 || gid != 0 {
 		err = lp.Chown(int(uid), int(gid))
 		if err != nil {
-			glog.Warningf("Chown %d:%d for pipes: %v", uid, gid, err)
+			glog.Warningf("chown %d:%d for pipes: %v", uid, gid, err)
 		}
 	}
 
@@ -1048,7 +1039,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		items := strings.SplitN(e, "=", 2)
 		err = os.Setenv(items[0], items[1])
 		if err != nil {
-			glog.Errorf("Failed to add default envvar %q: %v", e, err)
+			glog.Errorf("adding default envvar: %v", err)
 			u.setStateToStartFailure(err)
 			return err
 		}
@@ -1056,7 +1047,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 
 	err = os.Chmod("/", 0755)
 	if err != nil {
-		glog.Errorf("Failed to chmod / to 0755: %v", err)
+		glog.Errorf("chmod / to 0755: %v", err)
 		u.setStateToStartFailure(err)
 		return err
 	}
