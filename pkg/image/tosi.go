@@ -26,8 +26,8 @@ const (
 	TosiMaxRetries     = 3
 	TosiOutputLimit    = 4096
 	TosiExe            = "tosi"
-	TosiMinimumVersion = "v0.0.3"
-	TosiURL            = "https://github.com/elotl/tosi/releases/download/v0.0.3/tosi-amd64"
+	TosiMinimumVersion = "v0.0.7"
+	TosiURL            = "https://github.com/elotl/tosi/releases/download/v0.0.7/tosi-amd64"
 )
 
 type Tosi struct {

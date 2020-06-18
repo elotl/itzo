@@ -125,7 +125,7 @@ func InstallProg(url, path string) error {
 }
 
 func RunProg(prog string, outputLimit, maxRetries int, args ...string) error {
-	glog.Infof("running %s with args %v", prog, args)
+	glog.Infof("running %s", prog)
 	n := 0
 	start := time.Now()
 	backoff := 3
@@ -154,11 +154,11 @@ func RunProg(prog string, outputLimit, maxRetries int, args ...string) error {
 		}
 		err = fmt.Errorf("%s failed after %d attempt(s): %+v, output:\n%s",
 			prog, n, err, output)
-		glog.Errorf("running %s %v: %v", prog, args, err)
+		glog.Errorf("running %s: %v", prog, err)
 		if n >= maxRetries {
 			return err
 		}
-		glog.Infof("retrying %s %v", prog, args)
+		glog.Infof("retrying %s", prog)
 		time.Sleep(time.Duration(backoff) * time.Second)
 		jitter := int(math.Ceil(rand.Float64() * float64(backoff)))
 		backoff = backoff*2 + jitter

@@ -94,9 +94,9 @@ func EnsureNetworkAgent(IP, nodeName, baseDir string) *exec.Cmd {
 	cmd.Stderr = logfile
 	err = cmd.Start()
 	if err != nil {
-		glog.Errorf("starting %v: %v", cmd, err)
+		glog.Errorf("starting %s: %v", pth, err)
 		return nil
 	}
-	glog.Infof("%v started", cmd)
+	glog.Infof("%s started", pth)
 	return cmd
 }

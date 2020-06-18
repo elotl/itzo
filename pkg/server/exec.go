@@ -119,7 +119,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		command = append(nsenterCmd, command...)
 	}
 
-	glog.Infof("Exec command: %v params: %+v", command, params)
+	glog.Infof("Exec command: %s", command[0])
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Env = env
 	if params.TTY {
@@ -128,19 +128,10 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		err = s.runExecCmd(ws, cmd, params.Interactive)
 	}
 	if err != nil {
-		glog.Errorf("Error running exec command %v: %v", command, err)
+		glog.Errorf("Error running exec command %s: %v", command[0], err)
 		writeWSErrorExitcode(ws, err.Error())
 		return
 	}
-}
-
-type logWriter struct {
-	Prefix string
-}
-
-func (lw *logWriter) Write(p []byte) (n int, err error) {
-	glog.Infof("%s %s", lw.Prefix, string(p))
-	return len(p), nil
 }
 
 func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactive bool) error {
@@ -156,11 +147,7 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 
 	var wg sync.WaitGroup
 
-	outLogger := &logWriter{
-		Prefix: "[exec stdout]",
-	}
 	wsStdoutWriter := ws.CreateWriter(wsstream.StdoutChan)
-	outWriter := io.MultiWriter(wsStdoutWriter, outLogger)
 	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		glog.Errorf("Error creating stdout pipe: %v", err)
@@ -169,14 +156,10 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(outWriter, outPipe)
+		io.Copy(wsStdoutWriter, outPipe)
 	}()
 
-	errLogger := &logWriter{
-		Prefix: "[exec stderr]",
-	}
 	wsStderrWriter := ws.CreateWriter(wsstream.StderrChan)
-	errWriter := io.MultiWriter(wsStderrWriter, errLogger)
 	errPipe, err := cmd.StderrPipe()
 	if err != nil {
 		glog.Errorf("Error creating stderr pipe: %v", err)
@@ -185,7 +168,7 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(errWriter, errPipe)
+		io.Copy(wsStderrWriter, errPipe)
 	}()
 
 	err = cmd.Start()
@@ -203,7 +186,7 @@ func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactiv
 func (s *Server) runExecTTY(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactive bool) error {
 	tty, err := pty.Start(cmd)
 	if err != nil {
-		glog.Errorf("Error starting pty for exec command %+v: %v", cmd, err)
+		glog.Errorf("Error starting pty for exec command %s: %v", cmd.Path, err)
 		return err
 	}
 	defer tty.Close()

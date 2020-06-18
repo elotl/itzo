@@ -41,7 +41,7 @@ func InitializeGPU(rootfs string) error {
 			// Not a GPU instance.
 			return nil
 		}
-		glog.Errorf("Checking /dev/nvidiactl: %v", err)
+		glog.Errorf("checking /dev/nvidiactl: %v", err)
 		return err
 	}
 	cli, err := util.EnsureProg(
@@ -51,7 +51,7 @@ func InitializeGPU(rootfs string) error {
 		NvidiaContainerCliVersionFlag,
 	)
 	if err != nil {
-		glog.Errorf("Looking up %s: %v", NvidiaContainerCli, err)
+		glog.Errorf("looking up %s: %v", NvidiaContainerCli, err)
 		return err
 	}
 	var stdout bytes.Buffer
@@ -62,7 +62,7 @@ func InitializeGPU(rootfs string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err = cmd.Run(); err != nil {
-		glog.Errorf("Running %+v: %v stderr:\n%s", cmd, err, stderr.String())
+		glog.Errorf("running %s: %v stderr:\n%s", NvidiaSMI, err, stderr.String())
 		return err
 	}
 	stdout.Reset()
@@ -81,7 +81,7 @@ func InitializeGPU(rootfs string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err = cmd.Run(); err != nil {
-		glog.Errorf("Running %+v: %v stderr:\n%s", cmd, err, stderr.String())
+		glog.Errorf("running %s: %v stderr:\n%s", NvidiaSMI, err, stderr.String())
 		return err
 	}
 	return nil
