@@ -1,6 +1,6 @@
 # Itzo
 
-Itzo is the agent that runs on Kip cells (cloud instances) and takes care of running containers on the instance.  In many ways, itzo performs many of the duties of the kubelet:
+Itzo is the agent that runs on [Kip](https://github.com/elotl/kip) cells (cloud instances) and takes care of managing the lifecycle of pods and containers on the instance.  In many ways, itzo performs many of the duties of the kubelet:
 
 * Downloading containers
 * Setting up namespaces
