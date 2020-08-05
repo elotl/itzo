@@ -71,11 +71,12 @@ func main() {
 	}
 
 	if *version {
-		fmt.Println("itzo version:", util.Version())
+		fmt.Printf("itzo version: %s %s\n", util.BuildVersion, util.BuildDate)
 		os.Exit(0)
 	}
 
-	glog.Info("Starting up agent")
+	glog.Infof("Starting up itzo version %s %s", util.BuildVersion, util.BuildDate)
+
 	server := server.New(*rootdir)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)

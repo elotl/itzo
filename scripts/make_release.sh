@@ -31,7 +31,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR=$SCRIPT_DIR/..
 
 version_tag=$1
-version_string=${version_tag:1}  # strip off the leading 'v'
 if [[ $version_tag =~ ^v[0-9].* ]]; then
     echo $version_string > $ROOT_DIR/version
     git commit --allow-empty -am "release $version_tag"
