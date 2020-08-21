@@ -57,15 +57,6 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-func readLines(filename string) ([]string, error) {
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(string(content), "\n")
-	return lines, nil
-}
-
 // simply grabs the partition number from the end of the device name
 func getPartitionNumber(dev string) (string, error) {
 	if len(dev) == 0 {
@@ -74,6 +65,19 @@ func getPartitionNumber(dev string) (string, error) {
 	return string(dev[len(dev)-1]), nil
 }
 
+// The user can tell kip to enlarge the root volume when dispatching
+// (on AWS and GCE). We can enlarge the root partition to fill up all
+// the available space on the disk. Summary of the algorithm:
+//
+// 1. Get the root partition's device from /proc/mounts
+// 2. Grab the disk that the root partition is on. The disk might not
+//    have a partition so this should show the same value (untested).
+// 3. If we have a partition, resize the root partition.
+// 4. Resize the filesystem on the root partition.
+//
+// This will fail on systems that don't have the necessary executables
+// and cases when the root partition cannot be enlarged (when there is
+// another partition after the root partition).
 func resizeVolume() error {
 	mounts, err := os.Open("/proc/mounts")
 	if err != nil {
