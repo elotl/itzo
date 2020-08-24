@@ -69,11 +69,13 @@ func getPartitionNumber(dev string) (string, error) {
 // (on AWS and GCE). We can enlarge the root partition to fill up all
 // the available space on the disk. Summary of the algorithm:
 //
-// 1. Get the root partition's device from /proc/mounts
-// 2. Grab the disk that the root partition is on. The disk might not
-//    have a partition so this should show the same value (untested).
-// 3. If we have a partition, resize the root partition.
-// 4. Resize the filesystem on the root partition.
+// 1. From /proc/mounts, get the partition that is mounted
+//    as / (e.g. /dev/nvme0n1p1).
+// 2. Get the disk device of the partition from 1. (e.g. nvme0n1).
+// 3. If we found the disk device, extend the partition via updating
+//    the partition table using "growpart".
+// 4. Resize the filesystem on the partition. For now, we only support
+//    ext[34] via resize2fs.
 //
 // This will fail on systems that don't have the necessary executables
 // and cases when the root partition cannot be enlarged (when there is
