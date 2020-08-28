@@ -57,15 +57,29 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-func readLines(filename string) ([]string, error) {
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
+// simply grabs the partition number from the end of the device name
+func getPartitionNumber(dev string) (string, error) {
+	if len(dev) == 0 {
+		return "", fmt.Errorf("could not get partition number from empty string")
 	}
-	lines := strings.Split(string(content), "\n")
-	return lines, nil
+	return string(dev[len(dev)-1]), nil
 }
 
+// The user can tell kip to enlarge the root volume when dispatching
+// (on AWS and GCE). We can enlarge the root partition to fill up all
+// the available space on the disk. Summary of the algorithm:
+//
+// 1. From /proc/mounts, get the partition that is mounted
+//    as / (e.g. /dev/nvme0n1p1).
+// 2. Get the disk device of the partition from 1. (e.g. nvme0n1).
+// 3. If we found the disk device, extend the partition via updating
+//    the partition table using "growpart".
+// 4. Resize the filesystem on the partition. For now, we only support
+//    ext[34] via resize2fs.
+//
+// This will fail on systems that don't have the necessary executables
+// and cases when the root partition cannot be enlarged (when there is
+// another partition after the root partition).
 func resizeVolume() error {
 	mounts, err := os.Open("/proc/mounts")
 	if err != nil {
@@ -73,7 +87,8 @@ func resizeVolume() error {
 		return err
 	}
 	defer mounts.Close()
-	rootdev := ""
+	// rootPartition will look something like /dev/nvme0n1p1
+	rootPartition := ""
 	scanner := bufio.NewScanner(mounts)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -81,7 +96,7 @@ func resizeVolume() error {
 		if len(parts) < 2 || parts[1] != "/" {
 			continue
 		} else {
-			rootdev = parts[0]
+			rootPartition = parts[0]
 			break
 		}
 	}
@@ -89,40 +104,62 @@ func resizeVolume() error {
 		glog.Errorf("reading /proc/mounts: %v", err)
 		return err
 	}
-	if rootdev == "" {
-		err = fmt.Errorf("can't find device the root filesystem is mounted on")
+	if rootPartition == "" {
+		err = fmt.Errorf("can't find device the root filesystem partition is mounted on")
 		glog.Error(err)
 		return err
 	}
+	// Grab the root partition's raw device (e.g. /dev/nvme0n1)
+	out, err := exec.Command("lsblk", "-no", "pkname", rootPartition).Output()
+	if err != nil {
+		glog.Errorf("Could not get the root partition's root block device: %v", err)
+		return err
+	}
+	rootDevice := "/dev/" + strings.TrimSpace(string(out))
+
+	// if we have a partitioned device then we need to grow the root partition
+	// otherwise the disk has no partitions and we can skip this step
+	if rootDevice != rootPartition {
+		partitionNumber, err := getPartitionNumber(rootPartition)
+		if err != nil {
+			return err
+		}
+		out, err = exec.Command("growpart", rootDevice, partitionNumber).CombinedOutput()
+		if err != nil {
+			glog.Errorf("Could not grow root partition: %v, %s", err, string(out))
+			return err
+		}
+	}
+
 	for count := 0; count < 10; count++ {
 		// It might take a bit of time for Xen and/or the kernel to detect
 		// capacity changes on block devices. The output of resize2fs will
 		// contain if it did not need to do anything ("Nothing to do!") vs when
 		// it resized the device ("resizing required").
-		cmd := exec.Command("resize2fs", rootdev)
+		cmd := exec.Command("resize2fs", rootPartition)
 		var outbuf bytes.Buffer
 		var errbuf bytes.Buffer
 		cmd.Stdout = io.MultiWriter(os.Stdout, &outbuf)
 		cmd.Stderr = io.MultiWriter(os.Stderr, &errbuf)
-		glog.Infof("trying to resize %s", rootdev)
+		glog.Infof("trying to resize %s", rootPartition)
 		if err := cmd.Start(); err != nil {
-			glog.Errorf("resize2fs %s: %v", rootdev, err)
+			glog.Errorf("resize2fs %s: %v", rootPartition, err)
 			return err
 		}
 		if err := cmd.Wait(); err != nil {
-			glog.Errorf("resize2fs %s: %v", rootdev, err)
+			glog.Errorf("resize2fs %s: %v", rootPartition, err)
 			return err
 		}
 		if strings.Contains(outbuf.String(), "resizing required") ||
 			strings.Contains(errbuf.String(), "resizing required") {
-			glog.Infof("%s has been successfully resized", rootdev)
+			glog.Infof("%s has been successfully resized", rootPartition)
 			return nil
 		}
 		time.Sleep(1 * time.Second)
 	}
-	glog.Errorf("resizing %s failed", rootdev)
+	glog.Errorf("resizing %s failed", rootPartition)
 	return fmt.Errorf("no resizing performed; does %s have new capacity?",
-		rootdev)
+		rootPartition)
 }
 
 func isEmptyDir(name string) (bool, error) {
