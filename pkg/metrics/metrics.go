@@ -139,6 +139,10 @@ func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 		limit := m.Usage.Limit
 		if !isMemoryUnlimited(limit) {
 			metrics[name+".memoryAvailable"] = float64(limit - workingSet)
+		} else {
+			if sysMem, err := mem.VirtualMemory(); err == nil {
+				metrics[name+".memoryAvailable"] = float64(sysMem.Available)
+			}
 		}
 	}
 	return metrics
