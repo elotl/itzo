@@ -236,6 +236,8 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 			glog.Errorf("unit %s/%s (helper pid %d) exited with error %v", podname, unitname, pid, err)
 		}
 		um.runningUnits.Delete(unitname)
+		// sleep momentarily before removing the pipe to allow it to drain
+		time.Sleep(time.Second * 3)
 		unit.LogPipe.Remove()
 	}()
 	return nil
