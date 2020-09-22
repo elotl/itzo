@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elotl/kip/pkg/util"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 )
 
