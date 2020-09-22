@@ -130,11 +130,11 @@ func resizeVolume() error {
 		}
 		out, err = exec.Command("growpart", rootDevice, partitionNumber).CombinedOutput()
 		if err != nil {
-			if strings.Contains(string(out), "NOCHANGE") ||
+			if strings.Contains(string(out), "NOCHANGE") &&
 				strings.Contains(string(out), "cannot be grown") {
-				glog.Warningf("Partition already resized: %s: %s", out, err.Error())
+				glog.Warningf("partition already resized: %s: %s", out, err.Error())
 			} else {
-				err = fmt.Errorf("Could not grow root partition: %v, %s", err, string(out))
+				err = fmt.Errorf("could not grow root partition: %v, %s", err, string(out))
 				glog.Error(err)
 				return err
 			}
