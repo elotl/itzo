@@ -43,6 +43,8 @@ var (
 	// The kubelet stores container logfiles in this directory. To make it
 	// easier to configure logging agents on cells, we use the same directory.
 	ContainerLogDir = "/var/log/containers"
+	// Sleep length to allow log pipe to drain before closing
+	LOG_PIPE_FINISH_READ_SLEEP = time.Second * 3
 )
 
 func StartUnit(rootdir, podname, hostname, unitname, workingdir, netns string, command []string, policy api.RestartPolicy) error {
@@ -237,7 +239,7 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 		}
 		um.runningUnits.Delete(unitname)
 		// sleep momentarily before removing the pipe to allow it to drain
-		time.Sleep(time.Second * 3)
+		time.Sleep(LOG_PIPE_FINISH_READ_SLEEP)
 		unit.LogPipe.Remove()
 	}()
 	return nil
