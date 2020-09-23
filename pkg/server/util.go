@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -83,7 +84,8 @@ func getPartitionNumber(dev string) (string, error) {
 func resizeVolume() error {
 	mounts, err := os.Open("/proc/mounts")
 	if err != nil {
-		glog.Errorf("opening /proc/mounts: %v", err)
+		err = errors.Wrap(err, "opening /proc/mounts")
+		glog.Error(err)
 		return err
 	}
 	defer mounts.Close()
@@ -101,7 +103,8 @@ func resizeVolume() error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		glog.Errorf("reading /proc/mounts: %v", err)
+		err = errors.Wrap(err, "reading /proc/mounts")
+		glog.Error(err.Error())
 		return err
 	}
 	if rootPartition == "" {
@@ -112,7 +115,8 @@ func resizeVolume() error {
 	// Grab the root partition's raw device (e.g. /dev/nvme0n1)
 	out, err := exec.Command("lsblk", "-no", "pkname", rootPartition).Output()
 	if err != nil {
-		glog.Errorf("Could not get the root partition's root block device: %v", err)
+		err = errors.Wrap(err, "Could not get the root partition's root block device:")
+		glog.Error(err)
 		return err
 	}
 	rootDevice := "/dev/" + strings.TrimSpace(string(out))
@@ -126,8 +130,14 @@ func resizeVolume() error {
 		}
 		out, err = exec.Command("growpart", rootDevice, partitionNumber).CombinedOutput()
 		if err != nil {
-			glog.Errorf("Could not grow root partition: %v, %s", err, string(out))
-			return err
+			if strings.Contains(string(out), "NOCHANGE") &&
+				strings.Contains(string(out), "cannot be grown") {
+				glog.Warningf("partition already resized: %s: %s", out, err.Error())
+			} else {
+				err = fmt.Errorf("could not grow root partition: %v, %s", err, string(out))
+				glog.Error(err)
+				return err
+			}
 		}
 	}
 
@@ -143,11 +153,13 @@ func resizeVolume() error {
 		cmd.Stderr = io.MultiWriter(os.Stderr, &errbuf)
 		glog.Infof("trying to resize %s", rootPartition)
 		if err := cmd.Start(); err != nil {
-			glog.Errorf("resize2fs %s: %v", rootPartition, err)
+			err = errors.Wrapf(err, "resize2fs %s", rootPartition)
+			glog.Error(err)
 			return err
 		}
 		if err := cmd.Wait(); err != nil {
-			glog.Errorf("resize2fs %s: %v", rootPartition, err)
+			err = errors.Wrapf(err, "resize2fs %s: stdout: %s stderr: %s", rootPartition, outbuf.String(), errbuf.String())
+			glog.Error(err)
 			return err
 		}
 		if strings.Contains(outbuf.String(), "resizing required") ||
