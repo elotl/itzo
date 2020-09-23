@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -84,7 +84,7 @@ func getPartitionNumber(dev string) (string, error) {
 func resizeVolume() error {
 	mounts, err := os.Open("/proc/mounts")
 	if err != nil {
-		err = util.WrapError(err, "opening /proc/mounts")
+		err = errors.Wrap(err, "opening /proc/mounts")
 		glog.Error(err)
 		return err
 	}
@@ -103,7 +103,7 @@ func resizeVolume() error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		err = util.WrapError(err, "reading /proc/mounts")
+		err = errors.Wrap(err, "reading /proc/mounts")
 		glog.Error(err.Error())
 		return err
 	}
@@ -115,7 +115,7 @@ func resizeVolume() error {
 	// Grab the root partition's raw device (e.g. /dev/nvme0n1)
 	out, err := exec.Command("lsblk", "-no", "pkname", rootPartition).Output()
 	if err != nil {
-		err = util.WrapError(err, "Could not get the root partition's root block device:")
+		err = errors.Wrap(err, "Could not get the root partition's root block device:")
 		glog.Error(err)
 		return err
 	}
@@ -153,12 +153,12 @@ func resizeVolume() error {
 		cmd.Stderr = io.MultiWriter(os.Stderr, &errbuf)
 		glog.Infof("trying to resize %s", rootPartition)
 		if err := cmd.Start(); err != nil {
-			err = util.WrapError(err, "resize2fs %s", rootPartition)
+			err = errors.Wrapf(err, "resize2fs %s", rootPartition)
 			glog.Error(err)
 			return err
 		}
 		if err := cmd.Wait(); err != nil {
-			err = util.WrapError(err, "resize2fs %s: stdout: %s stderr: %s", rootPartition, outbuf.String(), errbuf.String())
+			err = errors.Wrapf(err, "resize2fs %s: stdout: %s stderr: %s", rootPartition, outbuf.String(), errbuf.String())
 			glog.Error(err)
 			return err
 		}
