@@ -18,6 +18,8 @@ package server
 
 import (
 	"fmt"
+	"github.com/jandre/procfs/status"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -226,17 +228,21 @@ func volumesToMap(volumes []api.Volume) map[string]interface{} {
 	return m
 }
 
-func DiffVolumes(spec []api.Volume, status []api.Volume) (map[string]api.Volume, map[string]api.Volume, sets.String) {
+func DiffVolumes(spec []api.Volume, status []api.Volume) (map[string]api.Volume, sets.String) {
+	//A Kubernetes volume, on the other hand, has an explicit lifetime - the same as the Pod that encloses it.
+	//Consequently, a volume outlives any Containers that run within the Pod,
+	//and data is preserved across Container restarts.
+	//Of course, when a Pod ceases to exist, the volume will cease to exist, too.
+	//Perhaps more importantly than this, Kubernetes supports many types of volumes,
+	//and a Pod can use any number of them simultaneously.
+	// https://kubernetes.io/docs/concepts/storage/volumes/#background
 	allModifiedVolumes := sets.NewString()
 
 	specMap := volumesToMap(spec)
 	statusMap := volumesToMap(status)
-	add, update, delete := util.MapDiff(specMap, statusMap)
-	glog.Infof("Added volumes: %v updated volumes: %v deleted volumes: %v",
-		add, update, delete)
+	add, update, _ := util.MapDiff(specMap, statusMap)
+	glog.Infof("Added volumes: %v updated volumes: %v", add, update)
 
-	// Updates need to be deleted and then added
-	delete = append(delete, update...)
 	add = append(add, update...)
 
 	addVolumes := make(map[string]api.Volume)
@@ -244,128 +250,126 @@ func DiffVolumes(spec []api.Volume, status []api.Volume) (map[string]api.Volume,
 		addVolumes[volName] = specMap[volName].(api.Volume)
 		allModifiedVolumes.Insert(volName)
 	}
-	deleteVolumes := make(map[string]api.Volume)
-	for _, volName := range delete {
-		deleteVolumes[volName] = statusMap[volName].(api.Volume)
-		allModifiedVolumes.Insert(volName)
-	}
-	return addVolumes, deleteVolumes, allModifiedVolumes
+	return addVolumes, allModifiedVolumes
 }
 
-func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.String) ([]api.Unit, []api.Unit) {
-	miniSpecMap := unitToMiniUnitMap(spec)
-	specMap := unitToUnitMap(spec)
-	miniStatusMap := unitToMiniUnitMap(status)
-	statusMap := unitToUnitMap(status)
-
-	add, update, delete := util.MapDiff(miniSpecMap, miniStatusMap)
-
-	// Updates need to be deleted and then added
-	delete = append(delete, update...)
-	add = append(add, update...)
-
-	addUnits := make(map[string]api.Unit)
-	for _, unitName := range add {
-		addUnits[unitName] = specMap[unitName]
+func getUnitsImages(spec []api.Unit) map[string]api.Unit {
+	imageNames := make(map[string]api.Unit, len(spec))
+	for _, unit := range spec {
+		imageNames[unit.Image] = unit
 	}
-	deleteUnits := make(map[string]api.Unit)
-	for _, unitName := range delete {
-		deleteUnits[unitName] = statusMap[unitName]
-	}
+	return imageNames
+}
 
-	// Go through all modified volume names, find any running units that
-	// depend on those volumes.  Those units need to be deleted.
-	// go through any speced units, if any of those depend on the
-	// volumes, those need to be added
-	for _, u := range status {
-		for _, vol := range u.VolumeMounts {
-			if allModifiedVolumes.Has(vol.Name) {
-				deleteUnits[u.Name] = statusMap[u.Name]
-			}
-		}
+func initUnitsEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
+	// Changes to the init container spec are limited to the container image field.
+	// Altering an init container image field is equivalent to restarting the Pod.
+	// https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#detailed-behavior
+	specInitImages := getUnitsImages(specUnits)
+	specInitImageNames := make([]string, len(specInitImages))
+	for imageName := range specInitImages {
+		specInitImageNames = append(specInitImageNames, imageName)
 	}
-	for _, u := range spec {
-		for _, vol := range u.VolumeMounts {
-			if allModifiedVolumes.Has(vol.Name) {
-				addUnits[u.Name] = specMap[u.Name]
-			}
-		}
+	statusInitImages := getUnitsImages(statusUnits)
+	statusImageNames := make([]string, len(statusUnits))
+	for imageName := range statusInitImages {
+		statusImageNames = append(statusImageNames, imageName)
 	}
+	return reflect.DeepEqual(specInitImageNames, statusImageNames)
+}
 
-	// Order does matter for initunits, so let's convert the map back to a
-	// list, preserving original order.
-	addList := make([]api.Unit, 0)
-	deleteList := make([]api.Unit, 0)
-	for _, u := range spec {
-		_, exists := addUnits[u.Name]
-		if exists {
-			addList = append(addList, u)
-		}
-	}
-	for _, u := range status {
-		_, exists := deleteUnits[u.Name]
-		if exists {
-			deleteList = append(deleteList, u)
+
+func DiffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
+	newUnitsImages := getUnitsImages(spec)
+	oldUnitsImages := getUnitsImages(status)
+
+	toDelete := make([]api.Unit, 0)
+	// to delete
+	for image, unit := range oldUnitsImages {
+		_, exists := newUnitsImages[image]
+		if !exists{
+			toDelete = append(toDelete, unit)
 		}
 	}
 
-	glog.Infof("Added units: %v deleted units: %v", addList, deleteList)
-	return addList, deleteList
+	toAdd := make([]api.Unit, 0)
+	// to add
+	for image, unit := range newUnitsImages {
+		_, exists := oldUnitsImages[image]
+		if !exists {
+			toAdd = append(toAdd, unit)
+		}
+	}
+
+	glog.Infof("Added units: %v deleted units: %v", toAdd, toDelete)
+	return toAdd, toDelete
+}
+
+func podSpecsEqual(spec *api.PodSpec, status *api.PodSpec) bool {
+	return cmp.Equal(spec.Units, status.Units) &&
+		cmp.Equal(spec.InitUnits, status.InitUnits)
+}
+
+
+func (pc *PodController) destroyUnit(unit api.Unit) error {
+	unitName := unit.Name
+	glog.Infoln("Stopping unit", unitName)
+	//
+	// There's a few things here that need to happen in order:
+	//   * Stop the unit (kill its main process).
+	//   * Detach all its mounts.
+	//   * Remove its files/directories.
+	//
+	err := pc.unitMgr.StopUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error stopping unit %s: %v; trying to continue",
+			unitName, err)
+	}
+	for _, mount := range unit.VolumeMounts {
+		err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
+		if err != nil {
+			glog.Errorf(
+				"Error detaching mount %s from %s: %v; trying to continue",
+				mount.Name, unitName, err)
+		}
+	}
+	err = pc.unitMgr.RemoveUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error removing unit %s; trying to continue",
+			unitName)
+	}
+	return err
 }
 
 func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
+	// TODO - only check if new volumes are added [x]
+	// TODO - only check if new containers (units) are added
+	// TODO - spec is new, status is old
+
+
 	// By this point, spec must have had the secrets merged into the env vars
 	//fmt.Printf("%#v\n", *spec)
 	//fmt.Printf("%#v\n", *status)
-	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
-	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
-	// TODO: according to the K8s specs, if "A user updates the PodSpec causing
-	// the Init Container image to change" then the entire pod is restarted.
-	addInits, deleteInits := DiffUnits(spec.InitUnits, status.InitUnits, allModifiedVolumes)
+	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
+		// restart the pod
+	}
+	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
 
 	// do deletes
-	for _, unit := range append(deleteUnits, deleteInits...) {
-		unitName := unit.Name
-		glog.Infoln("Stopping unit", unitName)
-		//
-		// There's a few things here that need to happen in order:
-		//   * Stop the unit (kill its main process).
-		//   * Detach all its mounts.
-		//   * Remove its files/directories.
-		//
-		err := pc.unitMgr.StopUnit(unitName)
+	for _, unit := range deleteUnits {
+		err := pc.destroyUnit(unit)
 		if err != nil {
-			glog.Errorf("Error stopping unit %s: %v; trying to continue",
-				unitName, err)
-		}
-		for _, mount := range unit.VolumeMounts {
-			err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
-			if err != nil {
-				glog.Errorf(
-					"Error detaching mount %s from %s: %v; trying to continue",
-					mount.Name, unitName, err)
-			}
-		}
-		err = pc.unitMgr.RemoveUnit(unitName)
-		if err != nil {
-			glog.Errorf("Error removing unit %s; trying to continue",
-				unitName)
+			glog.Errorf("Error during unit: %s destroy: %v", unit.Name, err)
 		}
 	}
-	for _, volume := range deleteVolumes {
-		err := pc.mountCtl.DeleteMount(&volume)
-		if err != nil {
-			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
-		}
-	}
-	// do adds
-	for _, volume := range addVolumes {
-		err := pc.mountCtl.CreateMount(&volume)
-		if err != nil {
-			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
-		}
-	}
-	if len(addInits) > 0 || len(addUnits) > 0 {
+	//// do adds - TODO: consider if it's needed
+	//for _, volume := range addVolumes {
+	//	err := pc.mountCtl.CreateMount(&volume)
+	//	if err != nil {
+	//		glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+	//	}
+	//}
+	if len(addUnits) > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		if pc.cancelFunc != nil {
 			glog.Infof("Canceling previous pod update")
@@ -376,7 +380,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		pc.waitGroup = sync.WaitGroup{}
 		pc.waitGroup.Add(1)
 		go func() {
-			pc.startAllUnits(ctx, allCreds, addInits, addUnits, spec.RestartPolicy, spec.SecurityContext)
+			pc.startAllUnits(ctx, allCreds, []api.Unit{}, addUnits, spec.RestartPolicy, spec.SecurityContext)
 			pc.waitGroup.Done()
 		}()
 	}
