@@ -18,7 +18,6 @@ package server
 
 import (
 	"fmt"
-	"github.com/jandre/procfs/status"
 	"reflect"
 	"strings"
 	"sync"
@@ -26,7 +25,6 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/util"
-	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -220,39 +218,6 @@ func makeFailedUpdateStatus(unit *api.Unit, msg string) api.UnitStatus {
 	}
 }
 
-func volumesToMap(volumes []api.Volume) map[string]interface{} {
-	m := make(map[string]interface{})
-	for _, v := range volumes {
-		m[v.Name] = v
-	}
-	return m
-}
-
-func DiffVolumes(spec []api.Volume, status []api.Volume) (map[string]api.Volume, sets.String) {
-	//A Kubernetes volume, on the other hand, has an explicit lifetime - the same as the Pod that encloses it.
-	//Consequently, a volume outlives any Containers that run within the Pod,
-	//and data is preserved across Container restarts.
-	//Of course, when a Pod ceases to exist, the volume will cease to exist, too.
-	//Perhaps more importantly than this, Kubernetes supports many types of volumes,
-	//and a Pod can use any number of them simultaneously.
-	// https://kubernetes.io/docs/concepts/storage/volumes/#background
-	allModifiedVolumes := sets.NewString()
-
-	specMap := volumesToMap(spec)
-	statusMap := volumesToMap(status)
-	add, update, _ := util.MapDiff(specMap, statusMap)
-	glog.Infof("Added volumes: %v updated volumes: %v", add, update)
-
-	add = append(add, update...)
-
-	addVolumes := make(map[string]api.Volume)
-	for _, volName := range add {
-		addVolumes[volName] = specMap[volName].(api.Volume)
-		allModifiedVolumes.Insert(volName)
-	}
-	return addVolumes, allModifiedVolumes
-}
-
 func getUnitsImages(spec []api.Unit) map[string]api.Unit {
 	imageNames := make(map[string]api.Unit, len(spec))
 	for _, unit := range spec {
@@ -305,11 +270,6 @@ func DiffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 	return toAdd, toDelete
 }
 
-func podSpecsEqual(spec *api.PodSpec, status *api.PodSpec) bool {
-	return cmp.Equal(spec.Units, status.Units) &&
-		cmp.Equal(spec.InitUnits, status.InitUnits)
-}
-
 
 func (pc *PodController) destroyUnit(unit api.Unit) error {
 	unitName := unit.Name
@@ -341,17 +301,38 @@ func (pc *PodController) destroyUnit(unit api.Unit) error {
 	return err
 }
 
+func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
+	// removing existing one
+	for _, unit := range append(status.InitUnits, status.Units...) {
+		err := pc.destroyUnit(unit)
+		if err != nil {
+			glog.Errorf("error while destroing unit: %v", unit)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	if pc.cancelFunc != nil {
+		glog.Infof("Canceling previous pod update")
+		pc.cancelFunc()
+	}
+	pc.cancelFunc = cancel
+	pc.waitGroup.Wait() // Wait for previous update to finish.
+	pc.waitGroup = sync.WaitGroup{}
+	pc.waitGroup.Add(1)
+	go func() {
+		pc.startAllUnits(ctx, allCreds, spec.InitUnits, spec.Units, spec.RestartPolicy, spec.SecurityContext)
+		pc.waitGroup.Done()
+	}()
+}
+
 func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
-	// TODO - only check if new volumes are added [x]
-	// TODO - only check if new containers (units) are added
-	// TODO - spec is new, status is old
-
-
 	// By this point, spec must have had the secrets merged into the env vars
 	//fmt.Printf("%#v\n", *spec)
 	//fmt.Printf("%#v\n", *status)
 	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
-		// restart the pod
+		// if there is a change in any of init containers, we have to restart whole pod
+		pc.restartPod(spec, status, allCreds)
+		return
 	}
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
 
@@ -362,13 +343,6 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			glog.Errorf("Error during unit: %s destroy: %v", unit.Name, err)
 		}
 	}
-	//// do adds - TODO: consider if it's needed
-	//for _, volume := range addVolumes {
-	//	err := pc.mountCtl.CreateMount(&volume)
-	//	if err != nil {
-	//		glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
-	//	}
-	//}
 	if len(addUnits) > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		if pc.cancelFunc != nil {

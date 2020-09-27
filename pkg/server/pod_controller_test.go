@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
-	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -72,164 +71,206 @@ func TestMergeSecretsIntoSpec(t *testing.T) {
 	assert.Equal(t, api.EnvVar{"bar", "secret1", nil}, spec.Units[0].Env[1])
 }
 
-// test diff volumes
-func TestDiffVolumes(t *testing.T) {
-	status := []api.Volume{
+func TestInitUnitsEqual(t *testing.T)  {
+	testCases := []struct{
+		name string
+		specUnits []api.Unit
+		statusUnits []api.Unit
+		expectedResult bool
+	}{
 		{
-			Name: "v1",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 10,
+			"image version changed",
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v2",
 				},
 			},
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v1",
+				},
+			},
+			false,
 		},
 		{
-			Name: "v2",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumDefault, // changed to Default
-					SizeLimit: 20,
+			name: "unit removed",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
 				},
 			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			expectedResult: false,
 		},
 		{
-			Name: "v3",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 100,
+			name: "unit added",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
 				},
 			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "no changes",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: true,
+		},
+		{
+			name: "different order",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img2",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img2",
+				},
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: false,
 		},
 	}
-	spec := []api.Volume{
-		{
-			Name: "v1",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 10,
-				},
-			},
-		},
-		{
-			Name: "v2",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 20,
-				},
-			},
-		},
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := initUnitsEqual(testCase.specUnits, testCase.statusUnits)
+			assert.Equal(t, testCase.expectedResult, result)
+		})
 	}
-	a, d, allMod := DiffVolumes(spec, status)
-	expecedMod := sets.NewString("v2", "v3")
-	assert.Equal(t, expecedMod, allMod)
-	expectedAdd := map[string]api.Volume{
-		"v2": spec[1],
-	}
-	expectedDelete := map[string]api.Volume{
-		"v2": status[1],
-		"v3": status[2],
-	}
-	assert.Equal(t, expectedAdd, a)
-	assert.Equal(t, expectedDelete, d)
+
 }
 
 func TestDiffUnits(t *testing.T) {
-	status := []api.Unit{
+	testCases := []struct {
+		name         string
+		specUnits        []api.Unit
+		statusUnits      []api.Unit
+		expectedToAdd    []api.Unit
+		expectedToDelete []api.Unit
+	}{
 		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
+			"image version changed",
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v2",
+				},
+			},
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v1",
+				},
+			},
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v2",
+				},
+			},
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v1",
+				},
+			},
 		},
 		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.4",
-			Command: []string{"haproxy"},
+			name: "unit removed",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			expectedToAdd: []api.Unit{},
+			expectedToDelete: []api.Unit{
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
 		},
 		{
-			Name:    "u3",
-			Image:   "elotl/useless",
-			Command: []string{"deleteme"},
+			name: "unit added",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedToAdd: []api.Unit{
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			expectedToDelete: []api.Unit{},
+		},
+		{
+			name: "no changes",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedToAdd:    []api.Unit{},
+			expectedToDelete: []api.Unit{},
 		},
 	}
-	spec := []api.Unit{
-		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
-		},
-		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.5",
-			Command: []string{"haproxy"},
-		},
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			toAdd, toDelete := DiffUnits(testCase.specUnits, testCase.statusUnits)
+			assert.Equal(t, testCase.expectedToAdd, toAdd)
+			assert.Equal(t, testCase.expectedToDelete, toDelete)
+
+		})
 	}
-	a, d := DiffUnits(spec, status, sets.NewString())
-	expectedAdd := []api.Unit{
-		spec[1],
-	}
-	assert.Equal(t, expectedAdd, a)
-	expectedDelete := []api.Unit{
-		status[1],
-		status[2],
-	}
-	assert.Equal(t, expectedDelete, d)
 }
 
-func TestDiffUnitsWithVolumeChange(t *testing.T) {
-	status := []api.Unit{
-		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
-		},
-		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.4",
-			Command: []string{"haproxy"},
-			VolumeMounts: []api.VolumeMount{
-				{
-					Name: "v1",
-				},
-				{
-					Name: "v2",
-				},
-			},
-		},
-	}
-	spec := []api.Unit{
-		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
-		},
-		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.4",
-			Command: []string{"haproxy"},
-			VolumeMounts: []api.VolumeMount{
-				{
-					Name: "v1",
-				},
-				{
-					Name: "v2",
-				},
-			},
-		},
-	}
-	a, d := DiffUnits(spec, status, sets.NewString("v2"))
-	expectedAdd := []api.Unit{
-		spec[1],
-	}
-	assert.Equal(t, expectedAdd, a)
-	expectedDelete := []api.Unit{
-		status[1],
-	}
-	assert.Equal(t, expectedDelete, d)
-}
 
 type MountMock struct {
 	Create func(*api.Volume) error
