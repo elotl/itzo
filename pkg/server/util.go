@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 )
 
@@ -128,24 +129,38 @@ func resizeVolume() error {
 		if err != nil {
 			return err
 		}
-		out, err = exec.Command("growpart", rootDevice, partitionNumber).CombinedOutput()
-		if err != nil {
+
+		var result error
+		for count := 0; count < 30; count++ {
+			out, err = exec.Command("growpart", rootDevice, partitionNumber).CombinedOutput()
+			if err == nil {
+				result = nil
+				break
+			}
 			if strings.Contains(string(out), "NOCHANGE") &&
 				strings.Contains(string(out), "cannot be grown") {
-				glog.Warningf("partition already resized: %s: %s", out, err.Error())
-			} else {
-				err = fmt.Errorf("could not grow root partition: %v, %s", err, string(out))
-				glog.Error(err)
-				return err
+				err = fmt.Errorf("partition cannot be grown: %v; output: %q", err, out)
+				result = multierror.Append(result, err)
+				glog.Warningf("%v", err)
+				time.Sleep(1)
+				continue
 			}
+			err = fmt.Errorf("could not grow root partition: %v; output: %q", err, out)
+			glog.Error(err)
+			return err
+		}
+		if result != nil {
+			return result
 		}
 	}
 
-	for count := 0; count < 10; count++ {
+	var result error
+	for count := 0; count < 15; count++ {
 		// It might take a bit of time for Xen and/or the kernel to detect
 		// capacity changes on block devices. The output of resize2fs will
-		// contain if it did not need to do anything ("Nothing to do!") vs when
-		// it resized the device ("resizing required").
+		// contain if it did not need to do anything ("The filesystem is
+		// already 4980475 (4k) blocks long. Nothing to do!") vs when it
+		// resized the device ("resizing required").
 		cmd := exec.Command("resize2fs", rootPartition)
 		var outbuf bytes.Buffer
 		var errbuf bytes.Buffer
@@ -158,7 +173,7 @@ func resizeVolume() error {
 			return err
 		}
 		if err := cmd.Wait(); err != nil {
-			err = errors.Wrapf(err, "resize2fs %s: stdout: %s stderr: %s", rootPartition, outbuf.String(), errbuf.String())
+			err = errors.Wrapf(err, "resize2fs %s: stdout: %q stderr: %q", rootPartition, outbuf.String(), errbuf.String())
 			glog.Error(err)
 			return err
 		}
@@ -167,11 +182,12 @@ func resizeVolume() error {
 			glog.Infof("%s has been successfully resized", rootPartition)
 			return nil
 		}
+		err := fmt.Errorf("resize2fs %s: stdout: %q stderr: %q", rootPartition, outbuf.String(), errbuf.String())
+		result = multierror.Append(result, err)
 		time.Sleep(1 * time.Second)
 	}
-	glog.Errorf("resizing %s failed", rootPartition)
-	return fmt.Errorf("no resizing performed; does %s have new capacity?",
-		rootPartition)
+	glog.Errorf("resizing %s failed: %v", rootPartition, result)
+	return fmt.Errorf("no resizing performed; does %s have new capacity? %v", rootPartition, result)
 }
 
 func isEmptyDir(name string) (bool, error) {
