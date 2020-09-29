@@ -18,6 +18,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -301,12 +302,15 @@ func (pc *PodController) destroyUnit(unit api.Unit) error {
 	return err
 }
 
-func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
+func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) error {
 	// removing existing one
 	for _, unit := range append(status.InitUnits, status.Units...) {
 		err := pc.destroyUnit(unit)
 		if err != nil {
-			glog.Errorf("error while destroing unit: %v", unit)
+			erroMsg := "error while destroying unit: " + unit.Name
+			glog.Errorf(erroMsg)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, erroMsg)
+			return errors.Wrap(err, erroMsg)
 		}
 	}
 
@@ -323,16 +327,21 @@ func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allC
 		pc.startAllUnits(ctx, allCreds, spec.InitUnits, spec.Units, spec.RestartPolicy, spec.SecurityContext)
 		pc.waitGroup.Done()
 	}()
+	return nil
 }
 
-func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
+func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) error {
 	// By this point, spec must have had the secrets merged into the env vars
 	//fmt.Printf("%#v\n", *spec)
 	//fmt.Printf("%#v\n", *status)
 	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
 		// if there is a change in any of init containers, we have to restart whole pod
-		pc.restartPod(spec, status, allCreds)
-		return
+		glog.Info("init units not equal, trying to restart pod")
+		err := pc.restartPod(spec, status, allCreds)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
 
@@ -358,6 +367,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			pc.waitGroup.Done()
 		}()
 	}
+	return nil
 }
 
 func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.PodSecurityContext) error {
