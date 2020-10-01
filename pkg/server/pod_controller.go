@@ -327,12 +327,12 @@ func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allC
 		pc.cancelFunc()
 	}
 	pc.cancelFunc = cancel
-	pc.waitGroup.Wait() // Wait for previous update to finish.
-	pc.waitGroup = sync.WaitGroup{}
-	pc.waitGroup.Add(1)
+	//pc.waitGroup.Wait() // Wait for previous update to finish.
+	//pc.waitGroup = sync.WaitGroup{}
+	//pc.waitGroup.Add(1)
 	go func() {
 		pc.startAllUnits(ctx, allCreds, spec.InitUnits, spec.Units, spec.RestartPolicy, spec.SecurityContext)
-		pc.waitGroup.Done()
+		//pc.waitGroup.Done()
 	}()
 	return nil
 }
@@ -344,6 +344,15 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	glog.Info("syncing pod units...")
 	glog.Infof("spec: %#v", *spec)
 	glog.Infof("status: %#v", *status)
+	if len(status.Units) == 0 && len(status.InitUnits) == 0 {
+		// start pod
+		glog.Info("status units are nil, trying to create pod from scratch")
+		err := pc.restartPod(spec, status, allCreds)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 
 	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
 		// if there is a change in any of init containers, we have to restart whole pod
