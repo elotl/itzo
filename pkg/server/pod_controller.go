@@ -314,6 +314,13 @@ func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allC
 		}
 	}
 
+	for _, volume := range spec.Volumes {
+		err := pc.mountCtl.CreateMount(&volume)
+		if err != nil {
+			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	if pc.cancelFunc != nil {
 		glog.Infof("Canceling previous pod update")
