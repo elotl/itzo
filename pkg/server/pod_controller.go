@@ -267,7 +267,7 @@ func DiffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 		}
 	}
 
-	glog.Infof("Added units: %v deleted units: %v", toAdd, toDelete)
+	glog.Infof("Units to add: %v units to delete: %v", toAdd, toDelete)
 	return toAdd, toDelete
 }
 
@@ -341,6 +341,10 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	// By this point, spec must have had the secrets merged into the env vars
 	//fmt.Printf("%#v\n", *spec)
 	//fmt.Printf("%#v\n", *status)
+	glog.Info("syncing pod units...")
+	glog.Infof("spec: %#v", *spec)
+	glog.Infof("status: %#v", *status)
+
 	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
 		// if there is a change in any of init containers, we have to restart whole pod
 		glog.Info("init units not equal, trying to restart pod")
