@@ -18,15 +18,14 @@ package server
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-	"testing"
-	"time"
-
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
+	"io/ioutil"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"os"
+	"testing"
+	"time"
 )
 
 func TestMergeSecretsIntoSpec(t *testing.T) {
@@ -266,6 +265,51 @@ func TestDiffUnits(t *testing.T) {
 			expectedToAdd:    []api.Unit{},
 			expectedToDelete: []api.Unit{},
 		},
+		// TODO - handle this case
+		//{
+		//	name: "edge case name-image switch",
+		//	specUnits: []api.Unit{
+		//		api.Unit{
+		//			Name: "unit1",
+		//			Image: "elotl-img1",
+		//		},
+		//		api.Unit{
+		//			Name: "unit2",
+		//			Image: "elotl-img2",
+		//		},
+		//	},
+		//	statusUnits: []api.Unit{
+		//		api.Unit{
+		//			Name: "unit2",
+		//			Image: "elotl-img1",
+		//		},
+		//		api.Unit{
+		//			Name: "unit1",
+		//			Image: "elotl-img2",
+		//		},
+		//	},
+		//	expectedDiffCount: 2,
+		//	expectedToAdd:    []api.Unit{
+		//		api.Unit{
+		//			Name: "unit1",
+		//			Image: "elotl-img1",
+		//		},
+		//		api.Unit{
+		//			Name: "unit2",
+		//			Image: "elotl-img2",
+		//		},
+		//	},
+		//	expectedToDelete: []api.Unit{
+		//		api.Unit{
+		//			Name: "unit2",
+		//			Image: "elotl-img1",
+		//		},
+		//		api.Unit{
+		//			Name: "unit1",
+		//			Image: "elotl-img2",
+		//		},
+		//	},
+		//},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -533,7 +577,6 @@ func TestFullSyncErrors(t *testing.T) {
 func TestPodController_SyncPodUnits(t *testing.T) {
 	testCases := []struct{
 		name string
-		podController PodController
 		spec *api.PodSpec
 		status *api.PodSpec
 		expectedRestartCount int32
@@ -541,13 +584,6 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 	}{
 		{
 			"init units changed",
-			PodController{
-				rootdir:     DEFAULT_ROOTDIR,
-				mountCtl:    NewMountMock(),
-				unitMgr:     NewUnitMock(),
-				imagePuller: NewImagePullMock(),
-				syncErrors:  make(map[string]api.UnitStatus),
-			},
 			&api.PodSpec{
 				InitUnits:        []api.Unit{
 					api.Unit{
@@ -573,13 +609,6 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 		},
 		{
 			"nothing changed",
-			PodController{
-				rootdir:     DEFAULT_ROOTDIR,
-				mountCtl:    NewMountMock(),
-				unitMgr:     NewUnitMock(),
-				imagePuller: NewImagePullMock(),
-				syncErrors:  make(map[string]api.UnitStatus),
-			},
 			&api.PodSpec{
 				InitUnits: []api.Unit{},
 			},
@@ -591,13 +620,6 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 		},
 		{
 			"unit image changed",
-			PodController{
-				rootdir:     DEFAULT_ROOTDIR,
-				mountCtl:    NewMountMock(),
-				unitMgr:     NewUnitMock(),
-				imagePuller: NewImagePullMock(),
-				syncErrors:  make(map[string]api.UnitStatus),
-			},
 			&api.PodSpec{
 				InitUnits: []api.Unit{},
 				Units: []api.Unit{
@@ -619,13 +641,6 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 		},
 		{
 			"pod created",
-			PodController{
-				rootdir: DEFAULT_ROOTDIR,
-				mountCtl: NewMountMock(),
-				unitMgr: NewUnitMock(),
-				imagePuller: NewImagePullMock(),
-				syncErrors: make(map[string]api.UnitStatus),
-			},
 			&api.PodSpec{
 				InitUnits: []api.Unit{},
 				Units: []api.Unit{
@@ -646,9 +661,16 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 	creds := make(map[string]api.RegistryCredentials)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			event := testCase.podController.SyncPodUnits(testCase.spec, testCase.status, creds)
+			pc := PodController{
+				rootdir:     DEFAULT_ROOTDIR,
+				mountCtl:    NewMountMock(),
+				unitMgr:     NewUnitMock(),
+				imagePuller: NewImagePullMock(),
+				syncErrors:  make(map[string]api.UnitStatus),
+			}
+			event := pc.SyncPodUnits(testCase.spec, testCase.status, creds)
 			assert.Equal(t, testCase.expectedEvent, event)
-			assert.Equal(t, testCase.expectedRestartCount, testCase.podController.podRestartCount)
+			assert.Equal(t, testCase.expectedRestartCount, pc.podRestartCount)
 		})
 	}
 }

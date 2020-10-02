@@ -312,7 +312,8 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	//fmt.Printf("%#v\n", *status)
 	glog.Info("syncing pod units...")
 	event := detectChangeType(spec, status)
-	initsToStart, unitsToStart := []api.Unit{}, []api.Unit{}
+	var initsToStart []api.Unit
+	var unitsToStart []api.Unit
 	switch event {
 	case UPDATE_TYPE_UNITS_CHANGE:
 		_, addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
@@ -362,7 +363,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		pc.cancelFunc()
 	}
 	pc.cancelFunc = cancel
-	pc.waitGroup.Wait()
+	pc.waitGroup.Wait() // Wait for previous update to finish.
 	pc.waitGroup = sync.WaitGroup{}
 	pc.waitGroup.Add(1)
 	go func() {
