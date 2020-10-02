@@ -517,6 +517,10 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 func (pc *PodController) useImageOverlayRootfs() bool {
 	imageOverlayRootfsKey := "pod.elotl.co/image-overlay-rootfs"
 	if val, ok := pc.annotations[imageOverlayRootfsKey]; ok {
+		if val == "" {
+			// value of annotation is blank return default val
+			return true
+		}
 		parsed, err := strconv.ParseBool(val)
 		if err != nil {
 			glog.Errorf("error parsing boolean for image overlay: %s", err)
@@ -525,10 +529,9 @@ func (pc *PodController) useImageOverlayRootfs() bool {
 			return true
 		}
 		return parsed
-	} else {
-		// key does not exist fallback to default
-		return true
 	}
+	// key does not exist fallback to default
+	return true
 }
 
 // Our probes can reference unit ports by the name given to them in
