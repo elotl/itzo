@@ -81,48 +81,6 @@ type PodController struct {
 	podRestartCount int32
 }
 
-func (pc *PodController) destroyUnit(unit *api.Unit) error {
-	unitName := unit.Name
-	glog.Infoln("Stopping unit", unitName)
-	//
-	// There's a few things here that need to happen in order:
-	//   * Stop the unit (kill its main process).
-	//   * Detach all its mounts.
-	//   * Remove its files/directories.
-	//
-	err := pc.unitMgr.StopUnit(unitName)
-	if err != nil {
-		glog.Errorf("Error stopping unit %s: %v; trying to continue",
-			unitName, err)
-	}
-	for _, mount := range unit.VolumeMounts {
-		err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
-		if err != nil {
-			glog.Errorf(
-				"Error detaching mount %s from %s: %v; trying to continue",
-				mount.Name, unitName, err)
-		}
-	}
-	err = pc.unitMgr.RemoveUnit(unitName)
-	if err != nil {
-		glog.Errorf("Error removing unit %s; trying to continue",
-			unitName)
-	}
-	return err
-}
-
-func (pc *PodController) DestroyPod(spec *api.PodSpec) {
-	for _, unit := range append(spec.InitUnits, spec.Units...) {
-		err := pc.destroyUnit(&unit)
-		if err != nil {
-			erroMsg := "error while destroying unit: " + unit.Name
-			glog.Errorf(erroMsg)
-			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, erroMsg)
-		}
-	}
-
-}
-
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
 	return &PodController{
 		rootdir:     rootdir,
@@ -230,6 +188,51 @@ func makeFailedUpdateStatus(unit *api.Unit, msg string) api.UnitStatus {
 			},
 		},
 		Image: unit.Image,
+	}
+}
+
+func (pc *PodController) destroyUnit(unit *api.Unit) error {
+	unitName := unit.Name
+	glog.Infoln("Stopping unit", unitName)
+	//
+	// There's a few things here that need to happen in order:
+	//   * Stop the unit (kill its main process).
+	//   * Detach all its mounts.
+	//   * Remove its files/directories.
+	//
+	err := pc.unitMgr.StopUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error stopping unit %s: %v; trying to continue",
+			unitName, err)
+	}
+	for _, mount := range unit.VolumeMounts {
+		err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
+		if err != nil {
+			glog.Errorf(
+				"Error detaching mount %s from %s: %v; trying to continue",
+				mount.Name, unitName, err)
+		}
+	}
+	err = pc.unitMgr.RemoveUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error removing unit %s; trying to continue",
+			unitName)
+	}
+	return err
+}
+
+func (pc *PodController) DestroyPod(spec *api.PodSpec) {
+	for _, unit := range append(spec.InitUnits, spec.Units...) {
+		err := pc.destroyUnit(&unit)
+		if err != nil {
+			glog.Errorf("error while destroying unit: %s: %v", unit.Name, err)
+		}
+	}
+	for _, volume := range spec.Volumes {
+		err := pc.mountCtl.DeleteMount(&volume)
+		if err != nil {
+			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
+		}
 	}
 }
 
@@ -347,10 +350,12 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	default:
 		//
 	}
-	// there are some units to restart
-	if len(initsToStart) == 0 || len(unitsToStart) == 0 {
+
+	if len(initsToStart) == 0 &&  len(unitsToStart) == 0 {
+		// there aren't any units to restart
 		return event
 	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	if pc.cancelFunc != nil {
 		glog.Infof("Canceling previous pod update")
@@ -361,7 +366,6 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	pc.waitGroup = sync.WaitGroup{}
 	pc.waitGroup.Add(1)
 	go func() {
-		// if there is a change in any of init containers, we have to restart whole pod
 		pc.startAllUnits(ctx, allCreds, initsToStart, unitsToStart, spec.RestartPolicy, spec.SecurityContext)
 		pc.waitGroup.Done()
 	}()

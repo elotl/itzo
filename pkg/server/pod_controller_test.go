@@ -561,10 +561,10 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			&api.PodSpec{
 				InitUnits: []api.Unit{
 					api.Unit{
-						Image: "img-2",
+						Image: "img-1",
 					},
 					api.Unit{
-						Image: "img-1",
+						Image: "img-4",
 					},
 				},
 			},
