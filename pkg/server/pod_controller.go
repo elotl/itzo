@@ -18,7 +18,6 @@ package server
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -72,6 +71,7 @@ type PodController struct {
 	waitGroup  sync.WaitGroup
 	netNS      string
 	podIP      string
+	restartCount int32
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -87,6 +87,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 			RestartPolicy: api.RestartPolicyAlways,
 		},
 		cancelFunc: nil,
+		restartCount: 0,
 	}
 }
 
@@ -302,7 +303,7 @@ func (pc *PodController) destroyUnit(unit api.Unit) error {
 	return err
 }
 
-func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) error {
+func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
 	// removing existing one
 	for _, unit := range append(status.InitUnits, status.Units...) {
 		err := pc.destroyUnit(unit)
@@ -310,7 +311,6 @@ func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allC
 			erroMsg := "error while destroying unit: " + unit.Name
 			glog.Errorf(erroMsg)
 			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, erroMsg)
-			return errors.Wrap(err, erroMsg)
 		}
 	}
 
@@ -327,14 +327,14 @@ func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allC
 		pc.cancelFunc()
 	}
 	pc.cancelFunc = cancel
-	//pc.waitGroup.Wait() // Wait for previous update to finish.
-	//pc.waitGroup = sync.WaitGroup{}
-	//pc.waitGroup.Add(1)
+	pc.waitGroup.Wait() // Wait for previous update to finish.
+	pc.waitGroup = sync.WaitGroup{}
+	pc.waitGroup.Add(1)
 	go func() {
 		pc.startAllUnits(ctx, allCreds, spec.InitUnits, spec.Units, spec.RestartPolicy, spec.SecurityContext)
-		//pc.waitGroup.Done()
+		pc.waitGroup.Done()
 	}()
-	return nil
+	pc.restartCount += 1
 }
 
 func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) error {
@@ -344,24 +344,19 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	glog.Info("syncing pod units...")
 	glog.Infof("spec: %#v", *spec)
 	glog.Infof("status: %#v", *status)
-	if len(status.Units) == 0 && len(status.InitUnits) == 0 {
+	if reflect.DeepEqual(status, &api.PodSpec{
+		Phase:         api.PodRunning,
+		RestartPolicy: api.RestartPolicyAlways,
+	}){
 		// start pod
 		glog.Info("status units are nil, trying to create pod from scratch")
-		err := pc.restartPod(spec, status, allCreds)
-		if err != nil {
-			return err
-		}
-		return nil
+		pc.restartPod(spec, status, allCreds)
 	}
 
 	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
 		// if there is a change in any of init containers, we have to restart whole pod
 		glog.Info("init units not equal, trying to restart pod")
-		err := pc.restartPod(spec, status, allCreds)
-		if err != nil {
-			return err
-		}
-		return nil
+		pc.restartPod(spec, status, allCreds)
 	}
 	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
 
@@ -379,12 +374,12 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			pc.cancelFunc()
 		}
 		pc.cancelFunc = cancel
-		pc.waitGroup.Wait() // Wait for previous update to finish.
-		pc.waitGroup = sync.WaitGroup{}
-		pc.waitGroup.Add(1)
+		//pc.waitGroup.Wait() // Wait for previous update to finish.
+		//pc.waitGroup = sync.WaitGroup{}
+		//pc.waitGroup.Add(1)
 		go func() {
 			pc.startAllUnits(ctx, allCreds, []api.Unit{}, addUnits, spec.RestartPolicy, spec.SecurityContext)
-			pc.waitGroup.Done()
+			//pc.waitGroup.Done()
 		}()
 	}
 	return nil

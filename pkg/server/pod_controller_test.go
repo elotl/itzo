@@ -518,6 +518,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 		podController PodController
 		spec *api.PodSpec
 		status *api.PodSpec
+		expectedRestartCount int32
 	}{
 		{
 			"init units changed",
@@ -548,6 +549,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 					},
 				},
 			},
+			1,
 		},
 		{
 			"nothing changed",
@@ -564,6 +566,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			&api.PodSpec{
 				InitUnits: []api.Unit{},
 			},
+			0,
 		},
 		{
 			"unit image changed",
@@ -590,6 +593,30 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 					},
 				},
 			},
+			0,
+		},
+		{
+			"pod created",
+			PodController{
+				rootdir: DEFAULT_ROOTDIR,
+				mountCtl: NewMountMock(),
+				unitMgr: NewUnitMock(),
+				imagePuller: NewImagePullMock(),
+				syncErrors: make(map[string]api.UnitStatus),
+			},
+			&api.PodSpec{
+				InitUnits: []api.Unit{},
+				Units: []api.Unit{
+					api.Unit{
+						Image: "img:1",
+					},
+				},
+			},
+			&api.PodSpec{
+				Phase:         api.PodRunning,
+				RestartPolicy: api.RestartPolicyAlways,
+			},
+			1,
 		},
 
 	}
@@ -597,7 +624,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			testCase.podController.SyncPodUnits(testCase.spec, testCase.status, creds)
-			assert.Equal(t, 0, len(testCase.podController.syncErrors))
+			assert.Equal(t, testCase.expectedRestartCount, testCase.podController.restartCount)
 		})
 	}
 }
