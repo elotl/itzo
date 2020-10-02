@@ -368,7 +368,7 @@ func (u *Unit) GetRootfs() string {
 	return filepath.Join(u.Directory, "ROOTFS")
 }
 
-func (u *Unit) PullAndExtractImage(image, server, username, password string) error {
+func (u *Unit) PullAndExtractImage(image, server, username, password string, overlayRootfs bool) error {
 	if u.Image != "" {
 		glog.Warningf("unit %s has already pulled image %s", u.Name, u.Image)
 	}
@@ -386,6 +386,8 @@ func (u *Unit) PullAndExtractImage(image, server, username, password string) err
 			return err
 		}
 	}
+	// Set the extraction type for tosi, overlay fs or a direct extraction
+	cli.SetUseOverlayRootfs(overlayRootfs)
 	err = cli.Pull(server, image)
 	if err != nil {
 		return err

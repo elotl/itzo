@@ -18,6 +18,7 @@ package server
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,7 @@ var (
 )
 
 type Puller interface {
-	PullImage(rootdir, name, image, server, username, password string) error
+	PullImage(rootdir, name, image, server, username, password string, overlayRootfs bool) error
 }
 
 type Mounter interface {
@@ -71,6 +72,9 @@ type PodController struct {
 	waitGroup  sync.WaitGroup
 	netNS      string
 	podIP      string
+	// these are annotations with prefix of "pod.elotl.co/"
+	// which are passed from kip
+	annotations map[string]string
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -111,6 +115,7 @@ func (pc *PodController) runUpdateLoop() {
 		MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
 		pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
 		pc.podStatus = spec
+		pc.annotations = podParams.Annotations
 	}
 }
 
@@ -443,8 +448,16 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
 	}
+	useOverlayRootfs := pc.useImageOverlayRootfs()
 	username, password := getRepoCreds(server, allCreds)
-	err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, username, password)
+	err = pc.imagePuller.PullImage(
+		pc.rootdir,
+		unit.Name,
+		imageRepo,
+		server,
+		username,
+		password,
+		useOverlayRootfs)
 	if err != nil {
 		msg := fmt.Sprintf("Error pulling image for unit %s: %v",
 			unit.Name, err)
@@ -495,6 +508,27 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		return
 	}
 	delete(pc.syncErrors, unit.Name)
+}
+
+// we want to tell tosi whether to use an overlay rootfs for containers
+// if the value returned by this function is truthy or missing we instruct
+// tosi to use the "-mount" option otherwise if value is falsy we inform
+// tosi to use the "-extractto" option
+func (pc *PodController) useImageOverlayRootfs() bool {
+	imageOverlayRootfsKey := "pod.elotl.co/image-overlay-rootfs"
+	if val, ok := pc.annotations[imageOverlayRootfsKey]; ok {
+		parsed, err := strconv.ParseBool(val)
+		if err != nil {
+			glog.Errorf("error parsing boolean for image overlay: %s", err)
+			// TODO how should we return if bool is parsed wrong?
+			// use default overlay?
+			return true
+		}
+		return parsed
+	} else {
+		// key does not exist fallback to default
+		return true
+	}
 }
 
 // Our probes can reference unit ports by the name given to them in
@@ -602,7 +636,7 @@ func makeAppEnv(unit *api.Unit) []string {
 type ImagePuller struct {
 }
 
-func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string) error {
+func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string, overlayRootfs bool) error {
 	if server == "docker.io" {
 		// K8s and Helm might set this for images, but the actual official
 		// registry is registry-1.docker.io.
@@ -616,7 +650,7 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
-	err = u.PullAndExtractImage(image, server, username, password)
+	err = u.PullAndExtractImage(image, server, username, password, overlayRootfs)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)
 	}

@@ -20,28 +20,36 @@ import (
 	"fmt"
 
 	"github.com/elotl/itzo/pkg/util"
+	"github.com/golang/glog"
 )
 
 const (
-	TosiMaxRetries     = 3
-	TosiOutputLimit    = 4096
-	TosiExe            = "tosi"
-	TosiMinimumVersion = "v0.0.7"
-	TosiURL            = "https://github.com/elotl/tosi/releases/download/v0.0.7/tosi-amd64"
+	TosiMaxRetries       = 3
+	TosiOutputLimit      = 4096
+	TosiExe              = "tosi"
+	TosiMinimumVersion   = "v0.0.7"
+	TosiURL              = "https://github.com/elotl/tosi/releases/download/v0.0.7/tosi-amd64"
+	TosiUseOverlayRootfs = true
 )
 
 type Tosi struct {
-	server   string
-	username string
-	password string
-	image    string
-	exe      string
+	server           string
+	username         string
+	password         string
+	image            string
+	exe              string
+	useOverlayRootfs bool
 }
 
 func NewTosi() *Tosi {
 	return &Tosi{
-		exe: TosiExe,
+		exe:              TosiExe,
+		useOverlayRootfs: TosiUseOverlayRootfs,
 	}
+}
+
+func (t *Tosi) SetUseOverlayRootfs(overlayRootfs bool) {
+	t.useOverlayRootfs = overlayRootfs
 }
 
 func (t *Tosi) Login(server, username, password string) error {
@@ -72,14 +80,19 @@ func (t *Tosi) run(server, image, dest, configPath, username, password string) e
 	if t.exe != tp {
 		t.exe = tp
 	}
+	imageExtractFlag := "-mount"
+	if !t.useOverlayRootfs {
+		imageExtractFlag = "-extractto"
+	}
 	args := []string{
 		"-image",
 		image,
-		"-mount",
+		imageExtractFlag,
 		dest,
 		"-saveconfig",
 		configPath,
 	}
+	glog.Infof("TOSI EXEC ARGUMENTS: %s", args)
 	if username != "" {
 		args = append(args, []string{"-username", username}...)
 	}
