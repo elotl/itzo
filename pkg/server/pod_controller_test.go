@@ -176,6 +176,7 @@ func TestDiffUnits(t *testing.T) {
 		name         string
 		specUnits        []api.Unit
 		statusUnits      []api.Unit
+		expectedDiffCount int
 		expectedToAdd    []api.Unit
 		expectedToDelete []api.Unit
 	}{
@@ -191,6 +192,7 @@ func TestDiffUnits(t *testing.T) {
 					Image: "elotl-img:v1",
 				},
 			},
+			2,
 			[]api.Unit{
 				api.Unit{
 					Image: "elotl-img:v2",
@@ -217,6 +219,7 @@ func TestDiffUnits(t *testing.T) {
 					Image: "elotl-img-2",
 				},
 			},
+			expectedDiffCount: 1,
 			expectedToAdd: []api.Unit{},
 			expectedToDelete: []api.Unit{
 				api.Unit{
@@ -239,6 +242,7 @@ func TestDiffUnits(t *testing.T) {
 					Image: "elotl-img1",
 				},
 			},
+			expectedDiffCount: 1,
 			expectedToAdd: []api.Unit{
 				api.Unit{
 					Image: "elotl-img-2",
@@ -258,13 +262,15 @@ func TestDiffUnits(t *testing.T) {
 					Image: "elotl-img1",
 				},
 			},
+			expectedDiffCount: 0,
 			expectedToAdd:    []api.Unit{},
 			expectedToDelete: []api.Unit{},
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			toAdd, toDelete := DiffUnits(testCase.specUnits, testCase.statusUnits)
+			diffCount, toAdd, toDelete := DiffUnits(testCase.specUnits, testCase.statusUnits)
+			assert.Equal(t, testCase.expectedDiffCount, diffCount)
 			assert.Equal(t, testCase.expectedToAdd, toAdd)
 			assert.Equal(t, testCase.expectedToDelete, toDelete)
 
@@ -364,153 +370,165 @@ func NewUnitMock() *UnitMock {
 // Here we're testing 1. that we do the diffs somewhat correctly
 // and that we generate the correct number of errors when things
 // fail.
-//func TestFullSyncErrors(t *testing.T) {
-//	// Only the volume size has chagned
-//	spec := api.PodSpec{
-//		Units: []api.Unit{{
-//			Name:    "u",
-//			Image:   "elotl/hello",
-//			Command: []string{"hello"},
-//			VolumeMounts: []api.VolumeMount{
-//				{
-//					Name: "v1",
-//				},
-//			},
-//		}},
-//		Volumes: []api.Volume{{
-//			Name: "v1",
-//			VolumeSource: api.VolumeSource{
-//				EmptyDir: &api.EmptyDir{
-//					Medium:    api.StorageMediumMemory,
-//					SizeLimit: 20,
-//				},
-//			},
-//		}},
-//	}
-//
-//	status := api.PodSpec{
-//		Units: []api.Unit{{
-//			Name:    "u",
-//			Image:   "elotl/hello",
-//			Command: []string{"hello"},
-//			VolumeMounts: []api.VolumeMount{
-//				{
-//					Name: "v1",
-//				},
-//			},
-//		}},
-//		Volumes: []api.Volume{{
-//			Name: "v1",
-//			VolumeSource: api.VolumeSource{
-//				EmptyDir: &api.EmptyDir{
-//					Medium:    api.StorageMediumMemory,
-//					SizeLimit: 10, // HERE'S OUR CHANGE
-//				},
-//			},
-//		}},
-//	}
-//	creds := make(map[string]api.RegistryCredentials)
-//
-//	testCases := []struct {
-//		mod func(pc *PodController)
-//		// This isn't the most interesting assertion but we can't
-//		// easily do a deep equal without recreating the exact errors
-//		numFailures int
-//	}{
-//		{
-//			mod:         func(pc *PodController) {},
-//			numFailures: 0,
-//		},
-//		{
-//			mod: func(pc *PodController) {
-//				m := pc.mountCtl.(*MountMock)
-//				m.Delete = func(vol *api.Volume) error {
-//					return fmt.Errorf("mounter failed")
-//				}
-//			},
-//			numFailures: 0,
-//		},
-//		{
-//			mod: func(pc *PodController) {
-//				m := pc.mountCtl.(*MountMock)
-//				m.Create = func(vol *api.Volume) error {
-//					return fmt.Errorf("mounter failed")
-//				}
-//			},
-//			numFailures: 0,
-//		},
-//		{
-//			mod: func(pc *PodController) {
-//				m := pc.unitMgr.(*UnitMock)
-//				m.Stop = func(name string) error {
-//					return fmt.Errorf("unit stop failed")
-//				}
-//			},
-//			numFailures: 0,
-//		},
-//		{
-//			mod: func(pc *PodController) {
-//				m := pc.mountCtl.(*MountMock)
-//				m.Detach = func(name, dst string) error {
-//					return fmt.Errorf("mounter detach failed")
-//				}
-//			},
-//			numFailures: 0,
-//		},
-//		{
-//			mod: func(pc *PodController) {
-//				m := pc.unitMgr.(*UnitMock)
-//				m.Remove = func(name string) error {
-//					return fmt.Errorf("unit removal failed")
-//				}
-//			},
-//			numFailures: 0,
-//		},
-//
-//		// Expects failure
-//		{
-//			mod: func(pc *PodController) {
-//				puller := pc.imagePuller.(*ImagePullMock)
-//				puller.Pull = func(rootdir, name, image, server, username, password string) error {
-//					return fmt.Errorf("Pull Failed")
-//				}
-//			},
-//			numFailures: 1,
-//		},
-//		{
-//			mod: func(pc *PodController) {
-//				m := pc.mountCtl.(*MountMock)
-//				m.Attach = func(unitname, src, dst string) error {
-//					return fmt.Errorf("mounter failed")
-//				}
-//			},
-//			numFailures: 1,
-//		},
-//		{
-//			mod: func(pc *PodController) {
-//				m := pc.unitMgr.(*UnitMock)
-//				m.Start = func(pod, hostname, name, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
-//					return fmt.Errorf("unit add failed")
-//				}
-//			},
-//			numFailures: 1,
-//		},
-//	}
-//
-//	for _, testCase := range testCases {
-//		podCtl := PodController{
-//			rootdir:     DEFAULT_ROOTDIR,
-//			mountCtl:    NewMountMock(),
-//			unitMgr:     NewUnitMock(),
-//			imagePuller: NewImagePullMock(),
-//			syncErrors:  make(map[string]api.UnitStatus),
-//		}
-//		testCase.mod(&podCtl)
-//		podCtl.SyncPodUnits(&spec, &status, creds)
-//		podCtl.waitGroup.Wait()
-//		assert.Len(t, podCtl.syncErrors, testCase.numFailures)
-//	}
-//}
+func TestFullSyncErrors(t *testing.T) {
+	// Only the unit image has chagned
+	spec := api.PodSpec{
+		Units: []api.Unit{{
+			Name:    "u",
+			Image:   "elotl/hello",
+			Command: []string{"hello"},
+			VolumeMounts: []api.VolumeMount{
+				{
+					Name: "v1",
+				},
+			},
+		}},
+		Volumes: []api.Volume{{
+			Name: "v1",
+			VolumeSource: api.VolumeSource{
+				EmptyDir: &api.EmptyDir{
+					Medium:    api.StorageMediumMemory,
+					SizeLimit: 20,
+				},
+			},
+		}},
+	}
+
+	status := api.PodSpec{
+		Units: []api.Unit{{
+			Name:    "u",
+			Image:   "elotl/goodbye", // HERE'S OUR CHANGE
+			Command: []string{"hello"},
+			VolumeMounts: []api.VolumeMount{
+				{
+					Name: "v1",
+				},
+			},
+		}},
+		Volumes: []api.Volume{{
+			Name: "v1",
+			VolumeSource: api.VolumeSource{
+				EmptyDir: &api.EmptyDir{
+					Medium:    api.StorageMediumMemory,
+					SizeLimit: 20,
+				},
+			},
+		}},
+	}
+	creds := make(map[string]api.RegistryCredentials)
+
+	testCases := []struct {
+		name string
+		mod func(pc *PodController)
+		// This isn't the most interesting assertion but we can't
+		// easily do a deep equal without recreating the exact errors
+		numFailures int
+	}{
+		{
+			name: "happy_path",
+			mod:         func(pc *PodController) {},
+			numFailures: 0,
+		},
+		{
+			name: "mount_delete_failed",
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
+				m.Delete = func(vol *api.Volume) error {
+					return fmt.Errorf("mounter failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			name: "mount_create_failed",
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
+				m.Create = func(vol *api.Volume) error {
+					return fmt.Errorf("mounter failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			name: "unit_stop_failed",
+			mod: func(pc *PodController) {
+				m := pc.unitMgr.(*UnitMock)
+				m.Stop = func(name string) error {
+					return fmt.Errorf("unit stop failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			name: "mount_detach_failed",
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
+				m.Detach = func(name, dst string) error {
+					return fmt.Errorf("mounter detach failed")
+				}
+			},
+			numFailures: 0,
+		},
+		{
+			name: "unit_remove_failed",
+			mod: func(pc *PodController) {
+				m := pc.unitMgr.(*UnitMock)
+				m.Remove = func(name string) error {
+					return fmt.Errorf("unit removal failed")
+				}
+			},
+			numFailures: 0,
+		},
+
+		// Expects failure
+		{
+			name: "pull_failed",
+			mod: func(pc *PodController) {
+				puller := pc.imagePuller.(*ImagePullMock)
+				puller.Pull = func(rootdir, name, image, server, username, password string) error {
+					return fmt.Errorf("Pull Failed")
+				}
+			},
+			numFailures: 1,
+		},
+		{
+			name: "attach_failed",
+			mod: func(pc *PodController) {
+				m := pc.mountCtl.(*MountMock)
+				m.Attach = func(unitname, src, dst string) error {
+					return fmt.Errorf("mounter failed")
+				}
+			},
+			numFailures: 1,
+		},
+		{
+			name: "unit_start_failed",
+			mod: func(pc *PodController) {
+				m := pc.unitMgr.(*UnitMock)
+				m.Start = func(pod, hostname, name, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
+					return fmt.Errorf("unit add failed")
+				}
+			},
+			numFailures: 1,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			podCtl := PodController{
+				rootdir:     DEFAULT_ROOTDIR,
+				mountCtl:    NewMountMock(),
+				unitMgr:     NewUnitMock(),
+				imagePuller: NewImagePullMock(),
+				syncErrors:  make(map[string]api.UnitStatus),
+			}
+			testCase.mod(&podCtl)
+			podCtl.SyncPodUnits(&spec, &status, creds)
+			podCtl.waitGroup.Wait()
+			assert.Len(t, podCtl.syncErrors, testCase.numFailures)
+		})
+	}
+}
 
 func TestPodController_SyncPodUnits(t *testing.T) {
 	testCases := []struct{
@@ -519,6 +537,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 		spec *api.PodSpec
 		status *api.PodSpec
 		expectedRestartCount int32
+		expectedEvent string
 	}{
 		{
 			"init units changed",
@@ -550,6 +569,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 				},
 			},
 			1,
+			"pod_restart",
 		},
 		{
 			"nothing changed",
@@ -567,6 +587,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 				InitUnits: []api.Unit{},
 			},
 			0,
+			"no_changes",
 		},
 		{
 			"unit image changed",
@@ -594,6 +615,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 				},
 			},
 			0,
+			"units_changed",
 		},
 		{
 			"pod created",
@@ -616,15 +638,17 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 				Phase:         api.PodRunning,
 				RestartPolicy: api.RestartPolicyAlways,
 			},
-			1,
+			0,
+			"pod_created",
 		},
 
 	}
 	creds := make(map[string]api.RegistryCredentials)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			testCase.podController.SyncPodUnits(testCase.spec, testCase.status, creds)
-			assert.Equal(t, testCase.expectedRestartCount, testCase.podController.restartCount)
+			event := testCase.podController.SyncPodUnits(testCase.spec, testCase.status, creds)
+			assert.Equal(t, testCase.expectedEvent, event)
+			assert.Equal(t, testCase.expectedRestartCount, testCase.podController.podRestartCount)
 		})
 	}
 }

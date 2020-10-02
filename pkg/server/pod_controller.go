@@ -30,6 +30,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+const (
+	UPDATE_TYPE_NO_CHANGES = "no_changes"
+	UPDATE_TYPE_POD_RESTART = "pod_restart"
+	UPDATE_TYPE_POD_CREATE = "pod_created"
+	UPDATE_TYPE_UNITS_CHANGE = "units_changed"
+)
+
 var (
 	specChanSize                = 100
 	waitForInitUnitPollInterval = 1 * time.Second
@@ -71,7 +78,49 @@ type PodController struct {
 	waitGroup  sync.WaitGroup
 	netNS      string
 	podIP      string
-	restartCount int32
+	podRestartCount int32
+}
+
+func (pc *PodController) destroyUnit(unit *api.Unit) error {
+	unitName := unit.Name
+	glog.Infoln("Stopping unit", unitName)
+	//
+	// There's a few things here that need to happen in order:
+	//   * Stop the unit (kill its main process).
+	//   * Detach all its mounts.
+	//   * Remove its files/directories.
+	//
+	err := pc.unitMgr.StopUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error stopping unit %s: %v; trying to continue",
+			unitName, err)
+	}
+	for _, mount := range unit.VolumeMounts {
+		err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
+		if err != nil {
+			glog.Errorf(
+				"Error detaching mount %s from %s: %v; trying to continue",
+				mount.Name, unitName, err)
+		}
+	}
+	err = pc.unitMgr.RemoveUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error removing unit %s; trying to continue",
+			unitName)
+	}
+	return err
+}
+
+func (pc *PodController) DestroyPod(spec *api.PodSpec) {
+	for _, unit := range append(spec.InitUnits, spec.Units...) {
+		err := pc.destroyUnit(&unit)
+		if err != nil {
+			erroMsg := "error while destroying unit: " + unit.Name
+			glog.Errorf(erroMsg)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, erroMsg)
+		}
+	}
+
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -87,7 +136,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 			RestartPolicy: api.RestartPolicyAlways,
 		},
 		cancelFunc: nil,
-		restartCount: 0,
+		podRestartCount: 0,
 	}
 }
 
@@ -140,42 +189,6 @@ func (pc *PodController) UpdatePod(params *api.PodParameters) error {
 	}
 	pc.updateChan <- params
 	return nil
-}
-
-// Only diff the parts of the unit we care about
-type MiniUnit struct {
-	Name         string
-	Image        string
-	Command      []string
-	Args         []string
-	VolumeMounts []api.VolumeMount
-	Env          []api.EnvVar
-}
-
-func makeMiniUnit(u *api.Unit) MiniUnit {
-	return MiniUnit{
-		Name:         u.Name,
-		Image:        u.Image,
-		Command:      u.Command,
-		Args:         u.Args,
-		VolumeMounts: u.VolumeMounts,
-	}
-}
-
-func unitToMiniUnitMap(units []api.Unit) map[string]interface{} {
-	m := make(map[string]interface{})
-	for _, u := range units {
-		m[u.Name] = makeMiniUnit(&u)
-	}
-	return m
-}
-
-func unitToUnitMap(units []api.Unit) map[string]api.Unit {
-	m := make(map[string]api.Unit)
-	for _, u := range units {
-		m[u.Name] = u
-	}
-	return m
 }
 
 // Modifies the PodSpec and inserts secrets into the spec
@@ -246,7 +259,7 @@ func initUnitsEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 }
 
 
-func DiffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
+func DiffUnits(spec []api.Unit, status []api.Unit) (int, []api.Unit, []api.Unit) {
 	newUnitsImages := getUnitsImages(spec)
 	oldUnitsImages := getUnitsImages(status)
 
@@ -269,120 +282,90 @@ func DiffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 	}
 
 	glog.Infof("Units to add: %v units to delete: %v", toAdd, toDelete)
-	return toAdd, toDelete
+	changesDetected := len(toAdd) + len(toDelete)
+	return changesDetected, toAdd, toDelete
 }
 
-
-func (pc *PodController) destroyUnit(unit api.Unit) error {
-	unitName := unit.Name
-	glog.Infoln("Stopping unit", unitName)
-	//
-	// There's a few things here that need to happen in order:
-	//   * Stop the unit (kill its main process).
-	//   * Detach all its mounts.
-	//   * Remove its files/directories.
-	//
-	err := pc.unitMgr.StopUnit(unitName)
-	if err != nil {
-		glog.Errorf("Error stopping unit %s: %v; trying to continue",
-			unitName, err)
+func detectChangeType(spec *api.PodSpec, status *api.PodSpec) string {
+	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
+		return UPDATE_TYPE_POD_RESTART
 	}
-	for _, mount := range unit.VolumeMounts {
-		err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
-		if err != nil {
-			glog.Errorf(
-				"Error detaching mount %s from %s: %v; trying to continue",
-				mount.Name, unitName, err)
-		}
+	if reflect.DeepEqual(status, &api.PodSpec{
+		Phase:         api.PodRunning,
+		RestartPolicy: api.RestartPolicyAlways,
+	}){
+		return UPDATE_TYPE_POD_CREATE
 	}
-	err = pc.unitMgr.RemoveUnit(unitName)
-	if err != nil {
-		glog.Errorf("Error removing unit %s; trying to continue",
-			unitName)
+	diffSize, _, _ := DiffUnits(spec.Units, status.Units)
+	if diffSize > 0 {
+		return UPDATE_TYPE_UNITS_CHANGE
 	}
-	return err
+	return UPDATE_TYPE_NO_CHANGES
 }
 
-func (pc *PodController) restartPod(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
-	// removing existing one
-	for _, unit := range append(status.InitUnits, status.Units...) {
-		err := pc.destroyUnit(unit)
-		if err != nil {
-			erroMsg := "error while destroying unit: " + unit.Name
-			glog.Errorf(erroMsg)
-			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, erroMsg)
+func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) string {
+	// By this point, spec must have had the secrets merged into the env vars
+	//fmt.Printf("%#v\n", *spec)
+	//fmt.Printf("%#v\n", *status)
+	glog.Info("syncing pod units...")
+	event := detectChangeType(spec, status)
+	initsToStart, unitsToStart := []api.Unit{}, []api.Unit{}
+	switch event {
+	case UPDATE_TYPE_UNITS_CHANGE:
+		_, addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
+		// do deletes
+		for _, unit := range deleteUnits {
+			// there are some units to delete
+			err := pc.destroyUnit(&unit)
+			if err != nil {
+				glog.Errorf("Error during unit: %s destroy: %v", unit.Name, err)
+			}
 		}
-	}
-
-	for _, volume := range spec.Volumes {
-		err := pc.mountCtl.CreateMount(&volume)
-		if err != nil {
-			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+		initsToStart, unitsToStart = []api.Unit{}, addUnits
+	case UPDATE_TYPE_POD_CREATE:
+		// start pod
+		glog.Info("status units are nil, trying to create pod from scratch")
+		for _, volume := range spec.Volumes {
+			err := pc.mountCtl.CreateMount(&volume)
+			if err != nil {
+				glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+			}
 		}
+		initsToStart, unitsToStart = spec.InitUnits, spec.Units
+	case UPDATE_TYPE_POD_RESTART:
+		glog.Info("init units not equal, trying to restart pod")
+		pc.DestroyPod(status)
+		for _, volume := range spec.Volumes {
+			err := pc.mountCtl.CreateMount(&volume)
+			if err != nil {
+				glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+			}
+		}
+		// if there is a change in any of init containers, we have to restart whole pod
+		initsToStart, unitsToStart = spec.InitUnits, spec.Units
+		pc.podRestartCount += 1
+	default:
+		//
 	}
-
+	// there are some units to restart
+	if len(initsToStart) == 0 || len(unitsToStart) == 0 {
+		return event
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	if pc.cancelFunc != nil {
 		glog.Infof("Canceling previous pod update")
 		pc.cancelFunc()
 	}
 	pc.cancelFunc = cancel
-	pc.waitGroup.Wait() // Wait for previous update to finish.
+	pc.waitGroup.Wait()
 	pc.waitGroup = sync.WaitGroup{}
 	pc.waitGroup.Add(1)
 	go func() {
-		pc.startAllUnits(ctx, allCreds, spec.InitUnits, spec.Units, spec.RestartPolicy, spec.SecurityContext)
+		// if there is a change in any of init containers, we have to restart whole pod
+		pc.startAllUnits(ctx, allCreds, initsToStart, unitsToStart, spec.RestartPolicy, spec.SecurityContext)
 		pc.waitGroup.Done()
 	}()
-	pc.restartCount += 1
-}
-
-func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) error {
-	// By this point, spec must have had the secrets merged into the env vars
-	//fmt.Printf("%#v\n", *spec)
-	//fmt.Printf("%#v\n", *status)
-	glog.Info("syncing pod units...")
-	glog.Infof("spec: %#v", *spec)
-	glog.Infof("status: %#v", *status)
-	if reflect.DeepEqual(status, &api.PodSpec{
-		Phase:         api.PodRunning,
-		RestartPolicy: api.RestartPolicyAlways,
-	}){
-		// start pod
-		glog.Info("status units are nil, trying to create pod from scratch")
-		pc.restartPod(spec, status, allCreds)
-	}
-
-	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
-		// if there is a change in any of init containers, we have to restart whole pod
-		glog.Info("init units not equal, trying to restart pod")
-		pc.restartPod(spec, status, allCreds)
-	}
-	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
-
-	// do deletes
-	for _, unit := range deleteUnits {
-		err := pc.destroyUnit(unit)
-		if err != nil {
-			glog.Errorf("Error during unit: %s destroy: %v", unit.Name, err)
-		}
-	}
-	if len(addUnits) > 0 {
-		ctx, cancel := context.WithCancel(context.Background())
-		if pc.cancelFunc != nil {
-			glog.Infof("Canceling previous pod update")
-			pc.cancelFunc()
-		}
-		pc.cancelFunc = cancel
-		//pc.waitGroup.Wait() // Wait for previous update to finish.
-		//pc.waitGroup = sync.WaitGroup{}
-		//pc.waitGroup.Add(1)
-		go func() {
-			pc.startAllUnits(ctx, allCreds, []api.Unit{}, addUnits, spec.RestartPolicy, spec.SecurityContext)
-			//pc.waitGroup.Done()
-		}()
-	}
-	return nil
+	return event
 }
 
 func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.PodSecurityContext) error {
@@ -462,7 +445,6 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
 	}
-
 	// attach mounts
 	mountFailure := false
 	for _, mount := range unit.VolumeMounts {
