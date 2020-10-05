@@ -243,7 +243,14 @@ func getUnitsImages(spec []api.Unit) map[string]api.Unit {
 	return imageNames
 }
 
-func unitsEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
+func unitsEqual(specUnit, statusUnit api.Unit) bool {
+	if specUnit.Image == statusUnit.Image && specUnit.Name == statusUnit.Name {
+		return true
+	}
+	return false
+}
+
+func unitsSlicesEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 	// Changes to the init container spec are limited to the container image field.
 	// Altering an init container image field is equivalent to restarting the Pod.
 	// https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#detailed-behavior
@@ -251,10 +258,7 @@ func unitsEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 		return false
 	}
 	for i := range specUnits {
-		if specUnits[i].Image != statusUnits[i].Image {
-			return false
-		}
-		if specUnits[i].Name != statusUnits[i].Name {
+		if !unitsEqual(specUnits[i], statusUnits[i]) {
 			return false
 		}
 	}
@@ -263,33 +267,37 @@ func unitsEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 
 
 func diffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
-	newUnitsImages := getUnitsImages(spec)
-	oldUnitsImages := getUnitsImages(status)
-
-	toDelete := make([]api.Unit, 0)
-	// to delete
-	for image, unit := range oldUnitsImages {
-		_, exists := newUnitsImages[image]
-		if !exists{
-			toDelete = append(toDelete, unit)
-		}
-	}
-
 	toAdd := make([]api.Unit, 0)
-	// to add
-	for image, unit := range newUnitsImages {
-		_, exists := oldUnitsImages[image]
-		if !exists {
-			toAdd = append(toAdd, unit)
+	toDelete := make([]api.Unit, 0)
+	if len(spec) >= len(status) {
+		for i, unit := range spec {
+			if i >= len(status) {
+				toAdd = append(toAdd, unit)
+				continue
+			}
+			if !unitsEqual(unit, status[i]) {
+				toDelete = append(toDelete, status[i])
+				toAdd = append(toAdd, unit)
+			}
+		}
+
+	} else {
+		for i, unit := range status {
+			if i >= len(spec) {
+				toDelete = append(toDelete, unit)
+				continue
+			}
+			if !unitsEqual(unit, spec[i]) {
+				toDelete = append(toDelete, unit)
+				toAdd = append(toAdd, spec[i])
+			}
 		}
 	}
-
-	glog.Infof("Units to add: %v units to delete: %v", toAdd, toDelete)
 	return toAdd, toDelete
 }
 
 func detectChangeType(spec *api.PodSpec, status *api.PodSpec) string {
-	if !unitsEqual(spec.InitUnits, status.InitUnits) {
+	if !unitsSlicesEqual(spec.InitUnits, status.InitUnits) {
 		return UPDATE_TYPE_POD_RESTART
 	}
 	if len(status.Units) == 0 && len(status.InitUnits) == 0 {

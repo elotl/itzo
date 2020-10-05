@@ -70,7 +70,7 @@ func TestMergeSecretsIntoSpec(t *testing.T) {
 	assert.Equal(t, api.EnvVar{"bar", "secret1", nil}, spec.Units[0].Env[1])
 }
 
-func TestUnitsEqual(t *testing.T)  {
+func TestUnitsSlicesEqual(t *testing.T)  {
 	testCases := []struct{
 		name string
 		specUnits []api.Unit
@@ -186,7 +186,7 @@ func TestUnitsEqual(t *testing.T)  {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			result := unitsEqual(testCase.specUnits, testCase.statusUnits)
+			result := unitsSlicesEqual(testCase.specUnits, testCase.statusUnits)
 			assert.Equal(t, testCase.expectedResult, result)
 		})
 	}
@@ -611,9 +611,11 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			&api.PodSpec{
 				InitUnits:        []api.Unit{
 					api.Unit{
+						Name: "unit1",
 						Image: "img-1",
 					},
 					api.Unit{
+						Name: "unit2",
 						Image: "img-2",
 					},
 				},
@@ -621,9 +623,11 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			&api.PodSpec{
 				InitUnits: []api.Unit{
 					api.Unit{
+						Name: "unit1",
 						Image: "img-1",
 					},
 					api.Unit{
+						Name: "unit2",
 						Image: "img-4",
 					},
 				},
