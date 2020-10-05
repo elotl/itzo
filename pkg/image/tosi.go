@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"github.com/elotl/itzo/pkg/util"
-	"github.com/golang/glog"
 )
 
 const (
@@ -92,7 +91,6 @@ func (t *Tosi) run(server, image, dest, configPath, username, password string) e
 		"-saveconfig",
 		configPath,
 	}
-	glog.Infof("TOSI EXEC ARGUMENTS: %s", args)
 	if username != "" {
 		args = append(args, []string{"-username", username}...)
 	}
