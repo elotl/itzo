@@ -235,14 +235,6 @@ func (pc *PodController) DestroyPod(spec *api.PodSpec) {
 	}
 }
 
-func getUnitsImages(spec []api.Unit) map[string]api.Unit {
-	imageNames := make(map[string]api.Unit, len(spec))
-	for _, unit := range spec {
-		imageNames[unit.Image] = unit
-	}
-	return imageNames
-}
-
 func unitsEqual(specUnit, statusUnit api.Unit) bool {
 	if specUnit.Image == statusUnit.Image && specUnit.Name == statusUnit.Name {
 		return true
