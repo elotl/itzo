@@ -70,7 +70,7 @@ func TestMergeSecretsIntoSpec(t *testing.T) {
 	assert.Equal(t, api.EnvVar{"bar", "secret1", nil}, spec.Units[0].Env[1])
 }
 
-func TestInitUnitsEqual(t *testing.T)  {
+func TestUnitsEqual(t *testing.T)  {
 	testCases := []struct{
 		name string
 		specUnits []api.Unit
@@ -139,31 +139,54 @@ func TestInitUnitsEqual(t *testing.T)  {
 			},
 			expectedResult: true,
 		},
-		// todo: investigate, this seems to be flaky
-		//{
-		//	name: "different order",
-		//	specUnits: []api.Unit{
-		//		api.Unit{
-		//			Image: "elotl-img1",
-		//		},
-		//		api.Unit{
-		//			Image: "elotl-img2",
-		//		},
-		//	},
-		//	statusUnits: []api.Unit{
-		//		api.Unit{
-		//			Image: "elotl-img2",
-		//		},
-		//		api.Unit{
-		//			Image: "elotl-img1",
-		//		},
-		//	},
-		//	expectedResult: false,
-		//},
+		{
+			name: "different order",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img2",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img2",
+				},
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "different order, same images",
+			specUnits: []api.Unit{
+				api.Unit{
+					Name: "unit1",
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Name: "unit2",
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Name: "unit2",
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Name: "unit1",
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: false,
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			result := initUnitsEqual(testCase.specUnits, testCase.statusUnits)
+			result := unitsEqual(testCase.specUnits, testCase.statusUnits)
 			assert.Equal(t, testCase.expectedResult, result)
 		})
 	}
@@ -313,7 +336,8 @@ func TestDiffUnits(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			diffCount, toAdd, toDelete := DiffUnits(testCase.specUnits, testCase.statusUnits)
+			toAdd, toDelete := diffUnits(testCase.specUnits, testCase.statusUnits)
+			diffCount := len(toAdd) + len(toDelete)
 			assert.Equal(t, testCase.expectedDiffCount, diffCount)
 			assert.Equal(t, testCase.expectedToAdd, toAdd)
 			assert.Equal(t, testCase.expectedToDelete, toDelete)
@@ -610,10 +634,20 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 		{
 			"nothing changed",
 			&api.PodSpec{
-				InitUnits: []api.Unit{},
+				Units: []api.Unit{
+					api.Unit{
+						Name: "unit1",
+						Image: "img",
+					},
+				},
 			},
 			&api.PodSpec{
-				InitUnits: []api.Unit{},
+				Units: []api.Unit{
+					api.Unit{
+						Name: "unit1",
+						Image: "img",
+					},
+				},
 			},
 			0,
 			"no_changes",

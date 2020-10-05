@@ -18,7 +18,6 @@ package server
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -244,25 +243,26 @@ func getUnitsImages(spec []api.Unit) map[string]api.Unit {
 	return imageNames
 }
 
-func initUnitsEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
+func unitsEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 	// Changes to the init container spec are limited to the container image field.
 	// Altering an init container image field is equivalent to restarting the Pod.
 	// https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#detailed-behavior
-	specInitImages := getUnitsImages(specUnits)
-	specInitImageNames := make([]string, len(specInitImages))
-	for imageName := range specInitImages {
-		specInitImageNames = append(specInitImageNames, imageName)
+	if len(specUnits) != len(statusUnits) {
+		return false
 	}
-	statusInitImages := getUnitsImages(statusUnits)
-	statusImageNames := make([]string, len(statusUnits))
-	for imageName := range statusInitImages {
-		statusImageNames = append(statusImageNames, imageName)
+	for i := range specUnits {
+		if specUnits[i].Image != statusUnits[i].Image {
+			return false
+		}
+		if specUnits[i].Name != statusUnits[i].Name {
+			return false
+		}
 	}
-	return reflect.DeepEqual(specInitImageNames, statusImageNames)
+	return true
 }
 
 
-func DiffUnits(spec []api.Unit, status []api.Unit) (int, []api.Unit, []api.Unit) {
+func diffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 	newUnitsImages := getUnitsImages(spec)
 	oldUnitsImages := getUnitsImages(status)
 
@@ -285,21 +285,19 @@ func DiffUnits(spec []api.Unit, status []api.Unit) (int, []api.Unit, []api.Unit)
 	}
 
 	glog.Infof("Units to add: %v units to delete: %v", toAdd, toDelete)
-	changesDetected := len(toAdd) + len(toDelete)
-	return changesDetected, toAdd, toDelete
+	return toAdd, toDelete
 }
 
 func detectChangeType(spec *api.PodSpec, status *api.PodSpec) string {
-	if !initUnitsEqual(spec.InitUnits, status.InitUnits) {
+	if !unitsEqual(spec.InitUnits, status.InitUnits) {
 		return UPDATE_TYPE_POD_RESTART
 	}
-	if reflect.DeepEqual(status, &api.PodSpec{
-		Phase:         api.PodRunning,
-		RestartPolicy: api.RestartPolicyAlways,
-	}){
+	if len(status.Units) == 0 && len(status.InitUnits) == 0 {
 		return UPDATE_TYPE_POD_CREATE
 	}
-	diffSize, _, _ := DiffUnits(spec.Units, status.Units)
+	toAdd, toDelete := diffUnits(spec.Units, status.Units)
+	diffSize := len(toAdd) + len(toDelete)
+
 	if diffSize > 0 {
 		return UPDATE_TYPE_UNITS_CHANGE
 	}
@@ -315,8 +313,11 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	var initsToStart []api.Unit
 	var unitsToStart []api.Unit
 	switch event {
+	case UPDATE_TYPE_NO_CHANGES:
+		// there aren't any units to restart
+		return event
 	case UPDATE_TYPE_UNITS_CHANGE:
-		_, addUnits, deleteUnits := DiffUnits(spec.Units, status.Units)
+		addUnits, deleteUnits := diffUnits(spec.Units, status.Units)
 		// do deletes
 		for _, unit := range deleteUnits {
 			// there are some units to delete
@@ -348,15 +349,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		// if there is a change in any of init containers, we have to restart whole pod
 		initsToStart, unitsToStart = spec.InitUnits, spec.Units
 		pc.podRestartCount += 1
-	default:
-		//
 	}
-
-	if len(initsToStart) == 0 &&  len(unitsToStart) == 0 {
-		// there aren't any units to restart
-		return event
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	if pc.cancelFunc != nil {
 		glog.Infof("Canceling previous pod update")
