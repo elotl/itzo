@@ -288,51 +288,6 @@ func TestDiffUnits(t *testing.T) {
 			expectedToAdd:    []api.Unit{},
 			expectedToDelete: []api.Unit{},
 		},
-		// TODO - handle this case
-		//{
-		//	name: "edge case name-image switch",
-		//	specUnits: []api.Unit{
-		//		api.Unit{
-		//			Name: "unit1",
-		//			Image: "elotl-img1",
-		//		},
-		//		api.Unit{
-		//			Name: "unit2",
-		//			Image: "elotl-img2",
-		//		},
-		//	},
-		//	statusUnits: []api.Unit{
-		//		api.Unit{
-		//			Name: "unit2",
-		//			Image: "elotl-img1",
-		//		},
-		//		api.Unit{
-		//			Name: "unit1",
-		//			Image: "elotl-img2",
-		//		},
-		//	},
-		//	expectedDiffCount: 2,
-		//	expectedToAdd:    []api.Unit{
-		//		api.Unit{
-		//			Name: "unit1",
-		//			Image: "elotl-img1",
-		//		},
-		//		api.Unit{
-		//			Name: "unit2",
-		//			Image: "elotl-img2",
-		//		},
-		//	},
-		//	expectedToDelete: []api.Unit{
-		//		api.Unit{
-		//			Name: "unit2",
-		//			Image: "elotl-img1",
-		//		},
-		//		api.Unit{
-		//			Name: "unit1",
-		//			Image: "elotl-img2",
-		//		},
-		//	},
-		//},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
