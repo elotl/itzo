@@ -361,6 +361,7 @@ func (u *Unit) Destroy() error {
 	// You'll need to kill the child process before.
 	u.LogPipe.Remove()
 	u.closeStdin()
+	glog.Infof("removing everything from dir: %s", u.Directory)
 	return os.RemoveAll(u.Directory)
 }
 
