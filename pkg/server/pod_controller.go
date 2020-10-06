@@ -218,7 +218,6 @@ func (pc *PodController) destroyUnit(unit *api.Unit) error {
 		glog.Errorf("Error stopping unit %s: %v; trying to continue",
 			unitName, err)
 	}
-	volumesNames := make([]string, 0)
 	for _, mount := range unit.VolumeMounts {
 		err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
 		if err != nil {
@@ -226,7 +225,6 @@ func (pc *PodController) destroyUnit(unit *api.Unit) error {
 				"Error detaching mount %s from %s: %v; trying to continue",
 				mount.Name, unitName, err)
 		}
-		volumesNames = append(volumesNames, mount.Name)
 	}
 	err = pc.unitMgr.RemoveUnit(unitName)
 	if err != nil {
