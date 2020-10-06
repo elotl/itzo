@@ -338,6 +338,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			volumesToDelete := pc.getVolumesAttachedToUnit(&unit, status.Volumes)
 			err := pc.destroyUnit(&unit)
 			if err != nil {
+				makeFailedUpdateStatus(&unit, err.Error())
 				glog.Errorf("Error during unit: %s destroy: %v", unit.Name, err)
 			}
 			for _, volume := range volumesToDelete {
