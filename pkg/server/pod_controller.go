@@ -345,6 +345,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 				pc.mountCtl.DeleteMount(&volume)
 			}
 		}
+		spec.Phase = api.PodWaiting
 		initsToStart, unitsToStart = []api.Unit{}, addUnits
 	case UPDATE_TYPE_POD_CREATE:
 		// start pod
@@ -355,6 +356,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 				glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
 			}
 		}
+		spec.Phase = api.PodDispatching
 		initsToStart, unitsToStart = spec.InitUnits, spec.Units
 	case UPDATE_TYPE_POD_RESTART:
 		glog.Info("init units not equal, trying to restart pod")
@@ -367,6 +369,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		}
 		// if there is a change in any of init containers, we have to restart whole pod
 		initsToStart, unitsToStart = spec.InitUnits, spec.Units
+		spec.Phase = api.PodDispatching
 		pc.podRestartCount += 1
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -382,6 +385,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		pc.startAllUnits(ctx, allCreds, initsToStart, unitsToStart, spec.RestartPolicy, spec.SecurityContext)
 		pc.waitGroup.Done()
 	}()
+	spec.Phase = api.PodRunning
 	return event
 }
 
@@ -556,6 +560,7 @@ func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]
 	for _, unit := range addUnits {
 		pc.startUnit(ctx, unit, allCreds, policy, podSecurityContext)
 	}
+
 }
 
 func (pc *PodController) waitForInitUnit(ctx context.Context, name string, policy api.RestartPolicy) bool {
