@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"github.com/containerd/cgroups"
+	statsv1 "github.com/containerd/cgroups/stats/v1"
 	"github.com/elotl/itzo/pkg/api"
 	itzonet "github.com/elotl/itzo/pkg/net"
 	"github.com/golang/glog"
@@ -148,7 +149,7 @@ func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 	return metrics
 }
 
-func getWorkingSet(memory *cgroups.MemoryStat) uint64 {
+func getWorkingSet(memory *statsv1.MemoryStat) uint64 {
 	workingSet := memory.Usage.Usage
 	if memory.TotalInactiveFile < memory.Usage.Usage {
 		workingSet = memory.Usage.Usage - memory.TotalInactiveFile

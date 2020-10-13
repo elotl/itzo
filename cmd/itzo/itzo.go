@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/podman"
 	"github.com/elotl/itzo/pkg/server"
 	"github.com/elotl/itzo/pkg/util"
 
@@ -73,6 +74,11 @@ func main() {
 	if *version {
 		fmt.Println("itzo version:", util.Version())
 		os.Exit(0)
+	}
+
+	_, err := podman.NewPodman()
+	if err != nil {
+		glog.Fatalf("creating podman: %v", err)
 	}
 
 	glog.Info("Starting up agent")
