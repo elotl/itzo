@@ -145,7 +145,7 @@ func (um *UnitManager) RemoveUnit(name string) error {
 	}
 	err = unit.Destroy()
 	if err != nil {
-		return err//fmt.Errorf("Error removing unit %s : directory: %s  um.RootDir: %s, thrown: %v", name, unit.Directory, um.rootDir, err)
+		return fmt.Errorf("Error removing unit %s : directory: %s  um.RootDir: %s, thrown: %v", name, unit.Directory, um.rootDir, err)
 	}
 	return nil
 }
