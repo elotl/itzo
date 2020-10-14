@@ -359,6 +359,8 @@ func (u *Unit) SetImage(image string) error {
 
 func (u *Unit) Destroy() error {
 	// You'll need to kill the child process before.
+	mounter := mount.NewOSMounter(u.GetRootfs())
+	mounter.Unmount(u.GetRootfs())
 	u.LogPipe.Remove()
 	u.closeStdin()
 	glog.Infof("removing everything from dir: %s", u.Directory)
