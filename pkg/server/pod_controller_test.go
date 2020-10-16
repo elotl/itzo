@@ -18,16 +18,14 @@ package server
 
 import (
 	"fmt"
+	"github.com/elotl/itzo/pkg/api"
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/net/context"
 	"io/ioutil"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"os"
 	"testing"
 	"time"
-
-	"github.com/elotl/itzo/pkg/api"
-	"github.com/elotl/itzo/pkg/util/sets"
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestMergeSecretsIntoSpec(t *testing.T) {
@@ -72,164 +70,237 @@ func TestMergeSecretsIntoSpec(t *testing.T) {
 	assert.Equal(t, api.EnvVar{"bar", "secret1", nil}, spec.Units[0].Env[1])
 }
 
-// test diff volumes
-func TestDiffVolumes(t *testing.T) {
-	status := []api.Volume{
+func TestUnitsSlicesEqual(t *testing.T)  {
+	testCases := []struct{
+		name string
+		specUnits []api.Unit
+		statusUnits []api.Unit
+		expectedResult bool
+	}{
 		{
-			Name: "v1",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 10,
+			"image version changed",
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v2",
 				},
 			},
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v1",
+				},
+			},
+			false,
 		},
 		{
-			Name: "v2",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumDefault, // changed to Default
-					SizeLimit: 20,
+			name: "unit removed",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
 				},
 			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			expectedResult: false,
 		},
 		{
-			Name: "v3",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 100,
+			name: "unit added",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
 				},
 			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "no changes",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: true,
+		},
+		{
+			name: "different order",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img2",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img2",
+				},
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "different order, same images",
+			specUnits: []api.Unit{
+				api.Unit{
+					Name: "unit1",
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Name: "unit2",
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Name: "unit2",
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Name: "unit1",
+					Image: "elotl-img1",
+				},
+			},
+			expectedResult: false,
 		},
 	}
-	spec := []api.Volume{
-		{
-			Name: "v1",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 10,
-				},
-			},
-		},
-		{
-			Name: "v2",
-			VolumeSource: api.VolumeSource{
-				EmptyDir: &api.EmptyDir{
-					Medium:    api.StorageMediumMemory,
-					SizeLimit: 20,
-				},
-			},
-		},
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := unitsSlicesEqual(testCase.specUnits, testCase.statusUnits)
+			assert.Equal(t, testCase.expectedResult, result)
+		})
 	}
-	a, d, allMod := DiffVolumes(spec, status)
-	expecedMod := sets.NewString("v2", "v3")
-	assert.Equal(t, expecedMod, allMod)
-	expectedAdd := map[string]api.Volume{
-		"v2": spec[1],
-	}
-	expectedDelete := map[string]api.Volume{
-		"v2": status[1],
-		"v3": status[2],
-	}
-	assert.Equal(t, expectedAdd, a)
-	assert.Equal(t, expectedDelete, d)
+
 }
 
 func TestDiffUnits(t *testing.T) {
-	status := []api.Unit{
+	testCases := []struct {
+		name         string
+		specUnits        []api.Unit
+		statusUnits      []api.Unit
+		expectedDiffCount int
+		expectedToAdd    []api.Unit
+		expectedToDelete []api.Unit
+	}{
 		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
+			"image version changed",
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v2",
+				},
+			},
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v1",
+				},
+			},
+			2,
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v2",
+				},
+			},
+			[]api.Unit{
+				api.Unit{
+					Image: "elotl-img:v1",
+				},
+			},
 		},
 		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.4",
-			Command: []string{"haproxy"},
+			name: "unit removed",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			expectedDiffCount: 1,
+			expectedToAdd: []api.Unit{},
+			expectedToDelete: []api.Unit{
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
 		},
 		{
-			Name:    "u3",
-			Image:   "elotl/useless",
-			Command: []string{"deleteme"},
+			name: "unit added",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedDiffCount: 1,
+			expectedToAdd: []api.Unit{
+				api.Unit{
+					Image: "elotl-img-2",
+				},
+			},
+			expectedToDelete: []api.Unit{},
+		},
+		{
+			name: "no changes",
+			specUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			statusUnits: []api.Unit{
+				api.Unit{
+					Image: "elotl-img1",
+				},
+			},
+			expectedDiffCount: 0,
+			expectedToAdd:    []api.Unit{},
+			expectedToDelete: []api.Unit{},
 		},
 	}
-	spec := []api.Unit{
-		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
-		},
-		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.5",
-			Command: []string{"haproxy"},
-		},
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			toAdd, toDelete := diffUnits(testCase.specUnits, testCase.statusUnits)
+			diffCount := len(toAdd) + len(toDelete)
+			assert.Equal(t, testCase.expectedDiffCount, diffCount)
+			assert.Equal(t, testCase.expectedToAdd, toAdd)
+			assert.Equal(t, testCase.expectedToDelete, toDelete)
+
+		})
 	}
-	a, d := DiffUnits(spec, status, sets.NewString())
-	expectedAdd := []api.Unit{
-		spec[1],
-	}
-	assert.Equal(t, expectedAdd, a)
-	expectedDelete := []api.Unit{
-		status[1],
-		status[2],
-	}
-	assert.Equal(t, expectedDelete, d)
 }
 
-func TestDiffUnitsWithVolumeChange(t *testing.T) {
-	status := []api.Unit{
-		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
-		},
-		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.4",
-			Command: []string{"haproxy"},
-			VolumeMounts: []api.VolumeMount{
-				{
-					Name: "v1",
-				},
-				{
-					Name: "v2",
-				},
-			},
-		},
-	}
-	spec := []api.Unit{
-		{
-			Name:    "u1",
-			Image:   "elotl/nginx",
-			Command: []string{"nginx"},
-		},
-		{
-			Name:    "u2",
-			Image:   "elotl/haproxy:1.4",
-			Command: []string{"haproxy"},
-			VolumeMounts: []api.VolumeMount{
-				{
-					Name: "v1",
-				},
-				{
-					Name: "v2",
-				},
-			},
-		},
-	}
-	a, d := DiffUnits(spec, status, sets.NewString("v2"))
-	expectedAdd := []api.Unit{
-		spec[1],
-	}
-	assert.Equal(t, expectedAdd, a)
-	expectedDelete := []api.Unit{
-		status[1],
-	}
-	assert.Equal(t, expectedDelete, d)
-}
 
 type MountMock struct {
 	Create func(*api.Volume) error
@@ -323,7 +394,7 @@ func NewUnitMock() *UnitMock {
 // and that we generate the correct number of errors when things
 // fail.
 func TestFullSyncErrors(t *testing.T) {
-	// Only the volume size has chagned
+	// Only the unit image has chagned
 	spec := api.PodSpec{
 		Units: []api.Unit{{
 			Name:    "u",
@@ -349,7 +420,7 @@ func TestFullSyncErrors(t *testing.T) {
 	status := api.PodSpec{
 		Units: []api.Unit{{
 			Name:    "u",
-			Image:   "elotl/hello",
+			Image:   "elotl/goodbye", // HERE'S OUR CHANGE
 			Command: []string{"hello"},
 			VolumeMounts: []api.VolumeMount{
 				{
@@ -362,7 +433,7 @@ func TestFullSyncErrors(t *testing.T) {
 			VolumeSource: api.VolumeSource{
 				EmptyDir: &api.EmptyDir{
 					Medium:    api.StorageMediumMemory,
-					SizeLimit: 10, // HERE'S OUR CHANGE
+					SizeLimit: 20,
 				},
 			},
 		}},
@@ -370,16 +441,19 @@ func TestFullSyncErrors(t *testing.T) {
 	creds := make(map[string]api.RegistryCredentials)
 
 	testCases := []struct {
+		name string
 		mod func(pc *PodController)
 		// This isn't the most interesting assertion but we can't
 		// easily do a deep equal without recreating the exact errors
 		numFailures int
 	}{
 		{
+			name: "happy_path",
 			mod:         func(pc *PodController) {},
 			numFailures: 0,
 		},
 		{
+			name: "mount_delete_failed",
 			mod: func(pc *PodController) {
 				m := pc.mountCtl.(*MountMock)
 				m.Delete = func(vol *api.Volume) error {
@@ -389,6 +463,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
+			name: "mount_create_failed",
 			mod: func(pc *PodController) {
 				m := pc.mountCtl.(*MountMock)
 				m.Create = func(vol *api.Volume) error {
@@ -398,6 +473,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
+			name: "unit_stop_failed",
 			mod: func(pc *PodController) {
 				m := pc.unitMgr.(*UnitMock)
 				m.Stop = func(name string) error {
@@ -407,6 +483,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
+			name: "mount_detach_failed",
 			mod: func(pc *PodController) {
 				m := pc.mountCtl.(*MountMock)
 				m.Detach = func(name, dst string) error {
@@ -416,6 +493,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 0,
 		},
 		{
+			name: "unit_remove_failed",
 			mod: func(pc *PodController) {
 				m := pc.unitMgr.(*UnitMock)
 				m.Remove = func(name string) error {
@@ -427,6 +505,7 @@ func TestFullSyncErrors(t *testing.T) {
 
 		// Expects failure
 		{
+			name: "pull_failed",
 			mod: func(pc *PodController) {
 				puller := pc.imagePuller.(*ImagePullMock)
 				puller.Pull = func(rootdir, name, image, server, username, password string, overlayRootfs bool) error {
@@ -436,6 +515,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 1,
 		},
 		{
+			name: "attach_failed",
 			mod: func(pc *PodController) {
 				m := pc.mountCtl.(*MountMock)
 				m.Attach = func(unitname, src, dst string) error {
@@ -445,6 +525,7 @@ func TestFullSyncErrors(t *testing.T) {
 			numFailures: 1,
 		},
 		{
+			name: "unit_start_failed",
 			mod: func(pc *PodController) {
 				m := pc.unitMgr.(*UnitMock)
 				m.Start = func(pod, hostname, name, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
@@ -456,17 +537,134 @@ func TestFullSyncErrors(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		podCtl := PodController{
-			rootdir:     DEFAULT_ROOTDIR,
-			mountCtl:    NewMountMock(),
-			unitMgr:     NewUnitMock(),
-			imagePuller: NewImagePullMock(),
-			syncErrors:  make(map[string]api.UnitStatus),
-		}
-		testCase.mod(&podCtl)
-		podCtl.SyncPodUnits(&spec, &status, creds)
-		podCtl.waitGroup.Wait()
-		assert.Len(t, podCtl.syncErrors, testCase.numFailures)
+		t.Run(testCase.name, func(t *testing.T) {
+			podCtl := PodController{
+				rootdir:     DEFAULT_ROOTDIR,
+				mountCtl:    NewMountMock(),
+				unitMgr:     NewUnitMock(),
+				imagePuller: NewImagePullMock(),
+				syncErrors:  make(map[string]api.UnitStatus),
+			}
+			testCase.mod(&podCtl)
+			podCtl.SyncPodUnits(&spec, &status, creds)
+			podCtl.waitGroup.Wait()
+			assert.Len(t, podCtl.syncErrors, testCase.numFailures)
+		})
+	}
+}
+
+func TestPodController_SyncPodUnits(t *testing.T) {
+	testCases := []struct{
+		name string
+		spec *api.PodSpec
+		status *api.PodSpec
+		expectedRestartCount int32
+		expectedEvent string
+	}{
+		{
+			"init units changed",
+			&api.PodSpec{
+				InitUnits:        []api.Unit{
+					api.Unit{
+						Name: "unit1",
+						Image: "img-1",
+					},
+					api.Unit{
+						Name: "unit2",
+						Image: "img-2",
+					},
+				},
+			},
+			&api.PodSpec{
+				InitUnits: []api.Unit{
+					api.Unit{
+						Name: "unit1",
+						Image: "img-1",
+					},
+					api.Unit{
+						Name: "unit2",
+						Image: "img-4",
+					},
+				},
+			},
+			1,
+			"pod_restart",
+		},
+		{
+			"nothing changed",
+			&api.PodSpec{
+				Units: []api.Unit{
+					api.Unit{
+						Name: "unit1",
+						Image: "img",
+					},
+				},
+			},
+			&api.PodSpec{
+				Units: []api.Unit{
+					api.Unit{
+						Name: "unit1",
+						Image: "img",
+					},
+				},
+			},
+			0,
+			"no_changes",
+		},
+		{
+			"unit image changed",
+			&api.PodSpec{
+				InitUnits: []api.Unit{},
+				Units: []api.Unit{
+					api.Unit{
+						Image: "img:1",
+					},
+				},
+			},
+			&api.PodSpec{
+				InitUnits: []api.Unit{},
+				Units: []api.Unit{
+					api.Unit{
+						Image: "img:2",
+					},
+				},
+			},
+			0,
+			"units_changed",
+		},
+		{
+			"pod created",
+			&api.PodSpec{
+				InitUnits: []api.Unit{},
+				Units: []api.Unit{
+					api.Unit{
+						Image: "img:1",
+					},
+				},
+			},
+			&api.PodSpec{
+				Phase:         api.PodRunning,
+				RestartPolicy: api.RestartPolicyAlways,
+			},
+			0,
+			"pod_created",
+		},
+
+	}
+	creds := make(map[string]api.RegistryCredentials)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			pc := PodController{
+				rootdir:     DEFAULT_ROOTDIR,
+				mountCtl:    NewMountMock(),
+				unitMgr:     NewUnitMock(),
+				imagePuller: NewImagePullMock(),
+				syncErrors:  make(map[string]api.UnitStatus),
+			}
+			event := pc.SyncPodUnits(testCase.spec, testCase.status, creds)
+			assert.Equal(t, testCase.expectedEvent, event)
+			assert.Equal(t, testCase.expectedRestartCount, pc.podRestartCount)
+		})
 	}
 }
 
