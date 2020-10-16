@@ -30,10 +30,10 @@ import (
 )
 
 const (
-	UPDATE_TYPE_NO_CHANGES = "no_changes"
-	UPDATE_TYPE_POD_RESTART = "pod_restart"
-	UPDATE_TYPE_POD_CREATE = "pod_created"
-	UPDATE_TYPE_UNITS_CHANGE = "units_changed"
+	UpdateTypeNoChanges   = "no_changes"
+	UpdateTypePodRestart  = "pod_restart"
+	UpdateTypePodCreate   = "pod_created"
+	UpdateTypeUnitsChange = "units_changed"
 )
 
 var (
@@ -290,18 +290,18 @@ func diffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 
 func detectChangeType(spec *api.PodSpec, status *api.PodSpec) string {
 	if !unitsSlicesEqual(spec.InitUnits, status.InitUnits) {
-		return UPDATE_TYPE_POD_RESTART
+		return UpdateTypePodRestart
 	}
 	if len(status.Units) == 0 && len(status.InitUnits) == 0 {
-		return UPDATE_TYPE_POD_CREATE
+		return UpdateTypePodCreate
 	}
 	toAdd, toDelete := diffUnits(spec.Units, status.Units)
 	diffSize := len(toAdd) + len(toDelete)
 
 	if diffSize > 0 {
-		return UPDATE_TYPE_UNITS_CHANGE
+		return UpdateTypeUnitsChange
 	}
-	return UPDATE_TYPE_NO_CHANGES
+	return UpdateTypeNoChanges
 }
 
 func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) string {
@@ -310,13 +310,14 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	//fmt.Printf("%#v\n", *status)
 	glog.Info("syncing pod units...")
 	event := detectChangeType(spec, status)
+	glog.Infof("detected change: %s", event)
 	var initsToStart []api.Unit
 	var unitsToStart []api.Unit
 	switch event {
-	case UPDATE_TYPE_NO_CHANGES:
+	case UpdateTypeNoChanges:
 		// there aren't any units to restart
 		return event
-	case UPDATE_TYPE_UNITS_CHANGE:
+	case UpdateTypeUnitsChange:
 		addUnits, deleteUnits := diffUnits(spec.Units, status.Units)
 		// do deletes
 		for _, unit := range deleteUnits {
@@ -329,7 +330,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		}
 		spec.Phase = api.PodWaiting
 		initsToStart, unitsToStart = []api.Unit{}, addUnits
-	case UPDATE_TYPE_POD_CREATE:
+	case UpdateTypePodCreate:
 		// start pod
 		glog.Info("status units are nil, trying to create pod from scratch")
 		for _, volume := range spec.Volumes {
@@ -340,7 +341,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		}
 		spec.Phase = api.PodDispatching
 		initsToStart, unitsToStart = spec.InitUnits, spec.Units
-	case UPDATE_TYPE_POD_RESTART:
+	case UpdateTypePodRestart:
 		glog.Info("init units not equal, trying to restart pod")
 		pc.DestroyPod(status)
 		for _, volume := range spec.Volumes {
