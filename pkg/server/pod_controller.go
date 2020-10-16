@@ -24,10 +24,16 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/util"
-	"github.com/elotl/itzo/pkg/util/sets"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"k8s.io/apimachinery/pkg/util/intstr"
+)
+
+const (
+	UpdateTypeNoChanges   = "no_changes"
+	UpdateTypePodRestart  = "pod_restart"
+	UpdateTypePodCreate   = "pod_created"
+	UpdateTypeUnitsChange = "units_changed"
 )
 
 var (
@@ -71,6 +77,7 @@ type PodController struct {
 	waitGroup  sync.WaitGroup
 	netNS      string
 	podIP      string
+	podRestartCount int32
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -86,6 +93,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 			RestartPolicy: api.RestartPolicyAlways,
 		},
 		cancelFunc: nil,
+		podRestartCount: 0,
 	}
 }
 
@@ -140,42 +148,6 @@ func (pc *PodController) UpdatePod(params *api.PodParameters) error {
 	return nil
 }
 
-// Only diff the parts of the unit we care about
-type MiniUnit struct {
-	Name         string
-	Image        string
-	Command      []string
-	Args         []string
-	VolumeMounts []api.VolumeMount
-	Env          []api.EnvVar
-}
-
-func makeMiniUnit(u *api.Unit) MiniUnit {
-	return MiniUnit{
-		Name:         u.Name,
-		Image:        u.Image,
-		Command:      u.Command,
-		Args:         u.Args,
-		VolumeMounts: u.VolumeMounts,
-	}
-}
-
-func unitToMiniUnitMap(units []api.Unit) map[string]interface{} {
-	m := make(map[string]interface{})
-	for _, u := range units {
-		m[u.Name] = makeMiniUnit(&u)
-	}
-	return m
-}
-
-func unitToUnitMap(units []api.Unit) map[string]api.Unit {
-	m := make(map[string]api.Unit)
-	for _, u := range units {
-		m[u.Name] = u
-	}
-	return m
-}
-
 // Modifies the PodSpec and inserts secrets into the spec
 func MergeSecretsIntoSpec(secrets map[string]map[string][]byte, units []api.Unit) {
 	for i := 0; i < len(units); i++ {
@@ -218,168 +190,186 @@ func makeFailedUpdateStatus(unit *api.Unit, msg string) api.UnitStatus {
 	}
 }
 
-func volumesToMap(volumes []api.Volume) map[string]interface{} {
-	m := make(map[string]interface{})
-	for _, v := range volumes {
-		m[v.Name] = v
+func (pc *PodController) destroyUnit(unit *api.Unit) error {
+	unitName := unit.Name
+	glog.Infoln("Stopping unit", unitName)
+	//
+	// There's a few things here that need to happen in order:
+	//   * Stop the unit (kill its main process).
+	//   * Detach all its mounts.
+	//   * Remove its files/directories.
+	//
+	err := pc.unitMgr.StopUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error stopping unit %s: %v; trying to continue",
+			unitName, err)
 	}
-	return m
-}
-
-func DiffVolumes(spec []api.Volume, status []api.Volume) (map[string]api.Volume, map[string]api.Volume, sets.String) {
-	allModifiedVolumes := sets.NewString()
-
-	specMap := volumesToMap(spec)
-	statusMap := volumesToMap(status)
-	add, update, delete := util.MapDiff(specMap, statusMap)
-	glog.Infof("Added volumes: %v updated volumes: %v deleted volumes: %v",
-		add, update, delete)
-
-	// Updates need to be deleted and then added
-	delete = append(delete, update...)
-	add = append(add, update...)
-
-	addVolumes := make(map[string]api.Volume)
-	for _, volName := range add {
-		addVolumes[volName] = specMap[volName].(api.Volume)
-		allModifiedVolumes.Insert(volName)
-	}
-	deleteVolumes := make(map[string]api.Volume)
-	for _, volName := range delete {
-		deleteVolumes[volName] = statusMap[volName].(api.Volume)
-		allModifiedVolumes.Insert(volName)
-	}
-	return addVolumes, deleteVolumes, allModifiedVolumes
-}
-
-func DiffUnits(spec []api.Unit, status []api.Unit, allModifiedVolumes sets.String) ([]api.Unit, []api.Unit) {
-	miniSpecMap := unitToMiniUnitMap(spec)
-	specMap := unitToUnitMap(spec)
-	miniStatusMap := unitToMiniUnitMap(status)
-	statusMap := unitToUnitMap(status)
-
-	add, update, delete := util.MapDiff(miniSpecMap, miniStatusMap)
-
-	// Updates need to be deleted and then added
-	delete = append(delete, update...)
-	add = append(add, update...)
-
-	addUnits := make(map[string]api.Unit)
-	for _, unitName := range add {
-		addUnits[unitName] = specMap[unitName]
-	}
-	deleteUnits := make(map[string]api.Unit)
-	for _, unitName := range delete {
-		deleteUnits[unitName] = statusMap[unitName]
-	}
-
-	// Go through all modified volume names, find any running units that
-	// depend on those volumes.  Those units need to be deleted.
-	// go through any speced units, if any of those depend on the
-	// volumes, those need to be added
-	for _, u := range status {
-		for _, vol := range u.VolumeMounts {
-			if allModifiedVolumes.Has(vol.Name) {
-				deleteUnits[u.Name] = statusMap[u.Name]
-			}
-		}
-	}
-	for _, u := range spec {
-		for _, vol := range u.VolumeMounts {
-			if allModifiedVolumes.Has(vol.Name) {
-				addUnits[u.Name] = specMap[u.Name]
-			}
-		}
-	}
-
-	// Order does matter for initunits, so let's convert the map back to a
-	// list, preserving original order.
-	addList := make([]api.Unit, 0)
-	deleteList := make([]api.Unit, 0)
-	for _, u := range spec {
-		_, exists := addUnits[u.Name]
-		if exists {
-			addList = append(addList, u)
-		}
-	}
-	for _, u := range status {
-		_, exists := deleteUnits[u.Name]
-		if exists {
-			deleteList = append(deleteList, u)
-		}
-	}
-
-	glog.Infof("Added units: %v deleted units: %v", addList, deleteList)
-	return addList, deleteList
-}
-
-func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) {
-	// By this point, spec must have had the secrets merged into the env vars
-	//fmt.Printf("%#v\n", *spec)
-	//fmt.Printf("%#v\n", *status)
-	addVolumes, deleteVolumes, allModifiedVolumes := DiffVolumes(spec.Volumes, status.Volumes)
-	addUnits, deleteUnits := DiffUnits(spec.Units, status.Units, allModifiedVolumes)
-	// TODO: according to the K8s specs, if "A user updates the PodSpec causing
-	// the Init Container image to change" then the entire pod is restarted.
-	addInits, deleteInits := DiffUnits(spec.InitUnits, status.InitUnits, allModifiedVolumes)
-
-	// do deletes
-	for _, unit := range append(deleteUnits, deleteInits...) {
-		unitName := unit.Name
-		glog.Infoln("Stopping unit", unitName)
-		//
-		// There's a few things here that need to happen in order:
-		//   * Stop the unit (kill its main process).
-		//   * Detach all its mounts.
-		//   * Remove its files/directories.
-		//
-		err := pc.unitMgr.StopUnit(unitName)
+	for _, mount := range unit.VolumeMounts {
+		err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
 		if err != nil {
-			glog.Errorf("Error stopping unit %s: %v; trying to continue",
-				unitName, err)
-		}
-		for _, mount := range unit.VolumeMounts {
-			err = pc.mountCtl.DetachMount(unitName, mount.MountPath)
-			if err != nil {
-				glog.Errorf(
-					"Error detaching mount %s from %s: %v; trying to continue",
-					mount.Name, unitName, err)
-			}
-		}
-		err = pc.unitMgr.RemoveUnit(unitName)
-		if err != nil {
-			glog.Errorf("Error removing unit %s; trying to continue",
-				unitName)
+			glog.Errorf(
+				"Error detaching mount %s from %s: %v; trying to continue",
+				mount.Name, unitName, err)
 		}
 	}
-	for _, volume := range deleteVolumes {
+	err = pc.unitMgr.RemoveUnit(unitName)
+	if err != nil {
+		glog.Errorf("Error removing unit %s; trying to continue",
+			unitName)
+	}
+	return err
+}
+
+func (pc *PodController) DestroyPod(spec *api.PodSpec) {
+	for _, unit := range append(spec.InitUnits, spec.Units...) {
+		err := pc.destroyUnit(&unit)
+		if err != nil {
+			glog.Errorf("error while destroying unit: %s: %v", unit.Name, err)
+		}
+	}
+	for _, volume := range spec.Volumes {
 		err := pc.mountCtl.DeleteMount(&volume)
 		if err != nil {
 			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
 		}
 	}
-	// do adds
-	for _, volume := range addVolumes {
-		err := pc.mountCtl.CreateMount(&volume)
-		if err != nil {
-			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+}
+
+func unitsEqual(specUnit, statusUnit api.Unit) bool {
+	if specUnit.Image == statusUnit.Image && specUnit.Name == statusUnit.Name {
+		return true
+	}
+	return false
+}
+
+func unitsSlicesEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
+	// Changes to the init container spec are limited to the container image field.
+	// Altering an init container image field is equivalent to restarting the Pod.
+	// https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#detailed-behavior
+	if len(specUnits) != len(statusUnits) {
+		return false
+	}
+	for i := range specUnits {
+		if !unitsEqual(specUnits[i], statusUnits[i]) {
+			return false
 		}
 	}
-	if len(addInits) > 0 || len(addUnits) > 0 {
-		ctx, cancel := context.WithCancel(context.Background())
-		if pc.cancelFunc != nil {
-			glog.Infof("Canceling previous pod update")
-			pc.cancelFunc()
+	return true
+}
+
+
+func diffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
+	toAdd := make([]api.Unit, 0)
+	toDelete := make([]api.Unit, 0)
+	if len(spec) >= len(status) {
+		for i, unit := range spec {
+			if i >= len(status) {
+				toAdd = append(toAdd, unit)
+				continue
+			}
+			if !unitsEqual(unit, status[i]) {
+				toDelete = append(toDelete, status[i])
+				toAdd = append(toAdd, unit)
+			}
 		}
-		pc.cancelFunc = cancel
-		pc.waitGroup.Wait() // Wait for previous update to finish.
-		pc.waitGroup = sync.WaitGroup{}
-		pc.waitGroup.Add(1)
-		go func() {
-			pc.startAllUnits(ctx, allCreds, addInits, addUnits, spec.RestartPolicy, spec.SecurityContext)
-			pc.waitGroup.Done()
-		}()
+
+	} else {
+		for i, unit := range status {
+			if i >= len(spec) {
+				toDelete = append(toDelete, unit)
+				continue
+			}
+			if !unitsEqual(unit, spec[i]) {
+				toDelete = append(toDelete, unit)
+				toAdd = append(toAdd, spec[i])
+			}
+		}
 	}
+	return toAdd, toDelete
+}
+
+func detectChangeType(spec *api.PodSpec, status *api.PodSpec) string {
+	if !unitsSlicesEqual(spec.InitUnits, status.InitUnits) {
+		return UpdateTypePodRestart
+	}
+	if len(status.Units) == 0 && len(status.InitUnits) == 0 {
+		return UpdateTypePodCreate
+	}
+	toAdd, toDelete := diffUnits(spec.Units, status.Units)
+	diffSize := len(toAdd) + len(toDelete)
+
+	if diffSize > 0 {
+		return UpdateTypeUnitsChange
+	}
+	return UpdateTypeNoChanges
+}
+
+func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, allCreds map[string]api.RegistryCredentials) string {
+	// By this point, spec must have had the secrets merged into the env vars
+	//fmt.Printf("%#v\n", *spec)
+	//fmt.Printf("%#v\n", *status)
+	glog.Info("syncing pod units...")
+	event := detectChangeType(spec, status)
+	glog.Infof("detected change: %s", event)
+	var initsToStart []api.Unit
+	var unitsToStart []api.Unit
+	switch event {
+	case UpdateTypeNoChanges:
+		// there aren't any units to restart
+		return event
+	case UpdateTypeUnitsChange:
+		addUnits, deleteUnits := diffUnits(spec.Units, status.Units)
+		// do deletes
+		for _, unit := range deleteUnits {
+			// there are some units to delete
+			err := pc.destroyUnit(&unit)
+			if err != nil {
+				makeFailedUpdateStatus(&unit, err.Error())
+				glog.Errorf("Error during unit: %s destroy: %v", unit.Name, err)
+			}
+		}
+		spec.Phase = api.PodWaiting
+		initsToStart, unitsToStart = []api.Unit{}, addUnits
+	case UpdateTypePodCreate:
+		// start pod
+		glog.Info("status units are nil, trying to create pod from scratch")
+		for _, volume := range spec.Volumes {
+			err := pc.mountCtl.CreateMount(&volume)
+			if err != nil {
+				glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+			}
+		}
+		spec.Phase = api.PodDispatching
+		initsToStart, unitsToStart = spec.InitUnits, spec.Units
+	case UpdateTypePodRestart:
+		glog.Info("init units not equal, trying to restart pod")
+		pc.DestroyPod(status)
+		for _, volume := range spec.Volumes {
+			err := pc.mountCtl.CreateMount(&volume)
+			if err != nil {
+				glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
+			}
+		}
+		// if there is a change in any of init containers, we have to restart whole pod
+		initsToStart, unitsToStart = spec.InitUnits, spec.Units
+		spec.Phase = api.PodDispatching
+		pc.podRestartCount += 1
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if pc.cancelFunc != nil {
+		glog.Infof("Canceling previous pod update")
+		pc.cancelFunc()
+	}
+	pc.cancelFunc = cancel
+	pc.waitGroup.Wait() // Wait for previous update to finish.
+	pc.waitGroup = sync.WaitGroup{}
+	pc.waitGroup.Add(1)
+	go func() {
+		pc.startAllUnits(ctx, allCreds, initsToStart, unitsToStart, spec.RestartPolicy, spec.SecurityContext)
+		pc.waitGroup.Done()
+	}()
+	spec.Phase = api.PodRunning
+	return event
 }
 
 func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.PodSecurityContext) error {
@@ -459,7 +449,6 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
 	}
-
 	// attach mounts
 	mountFailure := false
 	for _, mount := range unit.VolumeMounts {
@@ -554,6 +543,7 @@ func (pc *PodController) startAllUnits(ctx context.Context, allCreds map[string]
 	for _, unit := range addUnits {
 		pc.startUnit(ctx, unit, allCreds, policy, podSecurityContext)
 	}
+
 }
 
 func (pc *PodController) waitForInitUnit(ctx context.Context, name string, policy api.RestartPolicy) bool {
