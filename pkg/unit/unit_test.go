@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package server
+package unit
 
 import (
 	"bytes"
@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/helper"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/syndtr/gocapability/capability"
@@ -59,7 +60,7 @@ func TestGetRootfs(t *testing.T) {
 	u, err := OpenUnit(tmpdir, "foobar")
 	assert.Nil(t, err)
 	defer u.Destroy()
-	isEmpty, err := isEmptyDir(u.GetRootfs())
+	isEmpty, err := util.IsEmptyDir(u.GetRootfs())
 	assert.Nil(t, err)
 	assert.True(t, isEmpty)
 }
@@ -147,13 +148,13 @@ func TestUnitStdin(t *testing.T) {
 	assert.NoError(t, err)
 	defer unit.Destroy()
 	ch := make(chan error)
-	inr, err := unit.openStdinReader()
+	inr, err := unit.OpenStdinReader()
 	assert.NoError(t, err)
 	inw, err := unit.OpenStdinWriter()
 	assert.NoError(t, err)
 	var stdout bytes.Buffer
 	go func() {
-		err = unit.runUnitLoop(
+		err = unit.RunUnitLoop(
 			[]string{"cat", "-"},
 			nil, 0, 0, nil, inr, &stdout, nil, api.RestartPolicyNever)
 		ch <- err
@@ -197,7 +198,7 @@ func TestUnitRestartPolicyAlways(t *testing.T) {
 	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
-		err = unit.runUnitLoop(
+		err = unit.RunUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
 			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyAlways)
 		ch <- err
@@ -206,7 +207,7 @@ func TestUnitRestartPolicyAlways(t *testing.T) {
 	tries := 0
 	select {
 	case err = <-ch:
-		// Error, runUnitLoop() should not return.
+		// Error, RunUnitLoop() should not return.
 		assert.True(t, false)
 	case <-time.After(50 * time.Millisecond):
 		tries++
@@ -246,7 +247,7 @@ func TestUnitRestartPolicyNever(t *testing.T) {
 	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
-		err = unit.runUnitLoop(
+		err = unit.RunUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
 			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyNever)
 		ch <- err
@@ -279,7 +280,7 @@ func TestUnitRestartPolicyOnFailureHappy(t *testing.T) {
 	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
-		err = unit.runUnitLoop(
+		err = unit.RunUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 0", tmpfile.Name())},
 			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
@@ -309,7 +310,7 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 	defer unit.Destroy()
 	ch := make(chan error)
 	go func() {
-		err = unit.runUnitLoop(
+		err = unit.RunUnitLoop(
 			[]string{"sh", "-c", fmt.Sprintf("echo $$ > %s; exit 1", tmpfile.Name())},
 			nil, 0, 0, nil, nil, nil, nil, api.RestartPolicyOnFailure)
 		ch <- err
@@ -318,7 +319,7 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 	tries := 0
 	select {
 	case err = <-ch:
-		// Error, runUnitLoop() should not return.
+		// Error, RunUnitLoop() should not return.
 		assert.True(t, false)
 	case <-time.After(50 * time.Millisecond):
 		tries++
@@ -339,7 +340,7 @@ func TestUnitRestartPolicyOnFailureSad(t *testing.T) {
 }
 
 func TestIsUnitExist(t *testing.T) {
-	name := randStr(t, 32)
+	name := util.RandStr(t, 32)
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	assert.Nil(t, err)
 	defer os.RemoveAll(tmpdir)
@@ -559,7 +560,7 @@ func TestMakeHostname(t *testing.T) {
 		{"foobarreallyreallyreallyreallyreallyreallyreallyreallyreallyreallyreallylongname", "foobarreallyreallyreallyreallyreallyreallyreallyreallyreallyrea"},
 	}
 	for i, tc := range cases {
-		result := makeHostname(tc[0])
+		result := helper.MakeHostname(tc[0])
 		assert.Equal(t, tc[1], result, "failed test case %d: %s -> %s", i, tc[0], result)
 	}
 }

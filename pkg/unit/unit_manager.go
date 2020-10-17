@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package server
+package unit
 
 import (
 	"fmt"
@@ -68,21 +68,21 @@ func StartUnit(rootdir, podname, hostname, unitname, workingdir, netns string, c
 
 type UnitManager struct {
 	rootDir      string
-	runningUnits *conmap.StringOsProcess
-	logbuf       *conmap.StringLogbufLogBuffer
+	RunningUnits *conmap.StringOsProcess
+	LogBuf       *conmap.StringLogbufLogBuffer
 }
 
 func NewUnitManager(rootDir string) *UnitManager {
 	os.MkdirAll(ContainerLogDir, 0755)
 	return &UnitManager{
 		rootDir:      rootDir,
-		runningUnits: conmap.NewStringOsProcess(),
-		logbuf:       conmap.NewStringLogbufLogBuffer(),
+		RunningUnits: conmap.NewStringOsProcess(),
+		LogBuf:       conmap.NewStringLogbufLogBuffer(),
 	}
 }
 
 func (um *UnitManager) GetLogBuffer(unit string) (*logbuf.LogBuffer, error) {
-	lb, exists := um.logbuf.GetOK(unit)
+	lb, exists := um.LogBuf.GetOK(unit)
 	if !exists || lb == nil {
 		return nil, fmt.Errorf("Could not find logs for unit named %s", unit)
 	}
@@ -90,7 +90,7 @@ func (um *UnitManager) GetLogBuffer(unit string) (*logbuf.LogBuffer, error) {
 }
 
 func (um *UnitManager) GetPid(unitName string) (int, bool) {
-	proc, exists := um.runningUnits.GetOK(unitName)
+	proc, exists := um.RunningUnits.GetOK(unitName)
 	if !exists {
 		return 0, false
 	}
@@ -101,7 +101,7 @@ func (um *UnitManager) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, err
 	if unit == "" {
 		return nil, fmt.Errorf("Could not find unit")
 	}
-	lb, exists := um.logbuf.GetOK(unit)
+	lb, exists := um.LogBuf.GetOK(unit)
 	if !exists {
 		return nil, fmt.Errorf("Could not find logs for unit named %s", unit)
 	}
@@ -109,7 +109,7 @@ func (um *UnitManager) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, err
 }
 
 func (um *UnitManager) UnitRunning(unit string) bool {
-	_, exists := um.runningUnits.GetOK(unit)
+	_, exists := um.RunningUnits.GetOK(unit)
 	return exists
 }
 
@@ -117,7 +117,7 @@ func (um *UnitManager) UnitRunning(unit string) bool {
 // process that it doesn't need to clean up everything.  Lets see how
 // the logging works out...
 func (um *UnitManager) StopUnit(name string) error {
-	proc, exists := um.runningUnits.GetOK(name)
+	proc, exists := um.RunningUnits.GetOK(name)
 	if !exists {
 		return fmt.Errorf("Could not stop unit %s: Unit does not exist", name)
 	}
@@ -133,7 +133,7 @@ func (um *UnitManager) StopUnit(name string) error {
 		glog.Warningf("Couldn't kill %s pid %d: %v (process terminated?)",
 			name, proc.Pid, err)
 	}
-	um.runningUnits.Delete(name)
+	um.RunningUnits.Delete(name)
 	return nil
 }
 
@@ -204,7 +204,7 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 	// Check if a chroot exists for the unit. If it does, a package has been
 	// deployed there with a complete root filesystem, and we need to run our
 	// command after chrooting into that rootfs.
-	isUnitRootfsMissing, err := isEmptyDir(unitrootfs)
+	isUnitRootfsMissing, err := util.IsEmptyDir(unitrootfs)
 	if err != nil {
 		glog.Errorf("Error checking if rootdir %s is an empty directory: %v",
 			um.rootDir, err)
@@ -228,7 +228,7 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 		unit.LogPipe.Remove()
 		return err
 	}
-	um.runningUnits.Set(unitname, cmd.Process)
+	um.RunningUnits.Set(unitname, cmd.Process)
 	pid := cmd.Process.Pid
 	go func() {
 		err = cmd.Wait()
@@ -237,7 +237,7 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 		} else {
 			glog.Errorf("unit %s/%s (helper pid %d) exited with error %v", podname, unitname, pid, err)
 		}
-		um.runningUnits.Delete(unitname)
+		um.RunningUnits.Delete(unitname)
 		// sleep momentarily before removing the pipe to allow it to drain
 		time.Sleep(LOG_PIPE_FINISH_READ_SLEEP)
 		unit.LogPipe.Remove()
@@ -251,13 +251,13 @@ func (um *UnitManager) CaptureLogs(podName, unitName string, lp *LogPipe) {
 	logFileName := fmt.Sprintf(
 		"%s/%s_%s_%s-%s.log", ContainerLogDir, name, namespace, unitName, cid)
 	writer := containerlog.NewLogger(logFileName, 100, 1, 7, nil)
-	um.logbuf.Set(unitName, logbuf.NewLogBuffer(logBuffSize))
+	um.LogBuf.Set(unitName, logbuf.NewLogBuffer(logBuffSize))
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		um.logbuf.Get(unitName).Write(logbuf.StdoutLogSource, line)
+		um.LogBuf.Get(unitName).Write(logbuf.StdoutLogSource, line)
 		writer.Write(containerlog.Stdout, line)
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		um.logbuf.Get(unitName).Write(logbuf.StderrLogSource, line)
+		um.LogBuf.Get(unitName).Write(logbuf.StderrLogSource, line)
 		writer.Write(containerlog.Stderr, line)
 	})
 }

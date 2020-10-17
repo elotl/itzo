@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package server
+package unit
 
 import (
 	"encoding/json"
@@ -31,6 +31,7 @@ import (
 	"github.com/containerd/cgroups"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/caps"
+	"github.com/elotl/itzo/pkg/helper"
 	"github.com/elotl/itzo/pkg/host"
 	imagecli "github.com/elotl/itzo/pkg/image"
 	"github.com/elotl/itzo/pkg/mount"
@@ -48,11 +49,8 @@ const (
 	MAX_BACKOFF_TIME                     = 5 * time.Minute
 	BACKOFF_RESET_TIME                   = 10 * time.Minute
 	CHILD_OOM_SCORE                      = 15 // chosen arbitrarily... kernel will adjust this value
-	MAX_HOSTNAME_LEN                     = 63
 	MaxContainerTerminationMessageLength = 1024 * 4
 )
-
-const defaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 var (
 	// List of capabilities granted to units by default. We use the same set as
@@ -127,19 +125,6 @@ type UnitConfig struct {
 	TerminationMessagePolicy api.TerminationMessagePolicy
 	TerminationMessagePath   string
 	PodIP                    string
-}
-
-func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
-	return &api.UnitStatus{
-		Name: name,
-		State: api.UnitState{
-			Waiting: &api.UnitStateWaiting{
-				Reason: reason,
-			},
-		},
-		RestartCount: 0,
-		Image:        image,
-	}
 }
 
 type Unit struct {
@@ -223,7 +208,7 @@ func (u *Unit) createStdin() error {
 // This is only used internally to pass in an io.Reader to the process as its
 // stdin. We also start a writer so that opening the pipe for reading won't
 // block. This writer will be stopped via closeStdin().
-func (u *Unit) openStdinReader() (io.ReadCloser, error) {
+func (u *Unit) OpenStdinReader() (io.ReadCloser, error) {
 	go func() {
 		wfp, err := os.OpenFile(u.stdinPath, os.O_WRONLY, 0200)
 		if err != nil {
@@ -448,7 +433,7 @@ func (u *Unit) copyFileFromHost(hostpath string, overwrite bool) error {
 	fpath := filepath.Join(u.GetRootfs(), hostpath)
 	if _, err := os.Stat(fpath); os.IsNotExist(err) || overwrite {
 		glog.Infof("copying %s from host to %s", hostpath, fpath)
-		if err := copyFile(hostpath, fpath); err != nil {
+		if err := util.CopyFile(hostpath, fpath); err != nil {
 			glog.Errorf("copyFile() %s to %s: %v", hostpath, fpath, err)
 			return err
 		}
@@ -488,7 +473,7 @@ func (u *Unit) GetStatus() (*api.UnitStatus, error) {
 	buf, err := ioutil.ReadFile(u.statusPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return makeStillCreatingStatus(u.Name, u.Image, "PodInitializing"), nil
+			return api.MakeStillCreatingStatus(u.Name, u.Image, "PodInitializing"), nil
 		}
 		glog.Errorf("reading statusfile for %s\n", u.Name)
 		return nil, err
@@ -532,7 +517,7 @@ func maybeBackOff(err error, command []string, backoff *time.Duration, runningTi
 	sleep(*backoff)
 }
 
-func (u *Unit) runUnitLoop(command, caplist []string, uid, gid uint32, groups []uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
+func (u *Unit) RunUnitLoop(command, caplist []string, uid, gid uint32, groups []uint32, unitin io.Reader, unitout, uniterr io.Writer, policy api.RestartPolicy) (err error) {
 	falseval := false
 	backoff := 1 * time.Second
 	restarts := -1
@@ -737,7 +722,7 @@ func (u *Unit) getTerminationLog() string {
 		return ""
 	}
 
-	data, err := tailFile(u.unitConfig.TerminationMessagePath, 0, MaxContainerTerminationMessageLength)
+	data, err := util.TailFile(u.unitConfig.TerminationMessagePath, 0, MaxContainerTerminationMessageLength)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ""
@@ -912,7 +897,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		return err
 	}
 	defer uniterr.Close()
-	unitin, err := u.openStdinReader()
+	unitin, err := u.OpenStdinReader()
 	if err != nil {
 		glog.Errorf("opening pipe: %v", err)
 		u.setStateToStartFailure(err)
@@ -940,12 +925,12 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		// Bind mount statusfile into the chroot. Note: both the source and the
 		// destination files need to exist, otherwise the bind mount will fail.
 		statussrc := filepath.Join(u.statusPath)
-		err := ensureFileExists(statussrc)
+		err := util.EnsureFileExists(statussrc)
 		if err != nil {
 			glog.Errorln("error creating status file #1")
 		}
 		statusdst := filepath.Join(u.GetRootfs(), "status")
-		err = ensureFileExists(statusdst)
+		err = util.EnsureFileExists(statusdst)
 		if err != nil {
 			glog.Errorln("error creating status file #2")
 		}
@@ -1012,7 +997,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	}
 
 	if hostname == "" {
-		hostname = makeHostname(podname)
+		hostname = helper.MakeHostname(podname)
 	}
 	err = syscall.Sethostname([]byte(hostname))
 	if err != nil {
@@ -1034,7 +1019,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		}
 	}
 
-	env := ensureDefaultEnviron(os.Environ(), podname, homedir)
+	env := helper.EnsureDefaultEnviron(os.Environ(), podname, homedir)
 	for _, e := range env {
 		items := strings.SplitN(e, "=", 2)
 		err = os.Setenv(items[0], items[1])
@@ -1090,28 +1075,7 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		return err
 	}
 
-	return u.runUnitLoop(command, caplist, uid, gid, groups, unitin, unitout, uniterr, policy)
-}
-
-func ensureDefaultEnviron(env []string, podname, homedir string) []string {
-	// Make user HOME, HOSTNAME, PATH and TERM are set (same variables Docker
-	// ensures are set). See
-	// https://docs.docker.com/v17.09/engine/reference/run/#env-environment-variables
-	// for more information.
-	hostname := makeHostname(podname)
-	env = util.AddToEnvList(env, "HOSTNAME", hostname, true)
-	env = util.AddToEnvList(env, "TERM", "xterm", false)
-	env = util.AddToEnvList(env, "HOME", homedir, false)
-	env = util.AddToEnvList(env, "PATH", defaultPath, false)
-	return env
-}
-
-func makeHostname(podname string) string {
-	noNSName := util.GetNameFromString(podname)
-	if len(noNSName) > MAX_HOSTNAME_LEN {
-		return noNSName[:MAX_HOSTNAME_LEN]
-	}
-	return noNSName
+	return u.RunUnitLoop(command, caplist, uid, gid, groups, unitin, unitout, uniterr, policy)
 }
 
 func createEmptyFile(path string, mode os.FileMode) error {
