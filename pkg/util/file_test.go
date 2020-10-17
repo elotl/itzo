@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package server
+package util
 
 import (
 	"io/ioutil"
@@ -40,7 +40,7 @@ func TestCopyFile(t *testing.T) {
 	n, err = infile.Write(buf)
 	assert.Nil(t, err)
 	assert.Equal(t, len(buf), n)
-	err = copyFile(infile.Name(), outfile.Name())
+	err = CopyFile(infile.Name(), outfile.Name())
 	assert.Nil(t, err)
 	copiedBuf, err := ioutil.ReadFile(outfile.Name())
 	assert.Nil(t, err)
@@ -51,7 +51,7 @@ func TestIsEmptyDirMissing(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	assert.Nil(t, err)
 	os.RemoveAll(tmpdir)
-	empty, err := isEmptyDir(tmpdir)
+	empty, err := IsEmptyDir(tmpdir)
 	assert.Nil(t, err)
 	assert.True(t, empty)
 }
@@ -60,7 +60,7 @@ func TestIsEmptyDirEmpty(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	assert.Nil(t, err)
 	defer os.RemoveAll(tmpdir)
-	empty, err := isEmptyDir(tmpdir)
+	empty, err := IsEmptyDir(tmpdir)
 	assert.Nil(t, err)
 	assert.True(t, empty)
 }
@@ -69,14 +69,14 @@ func TestIsEmptyDirContainsFile(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	assert.Nil(t, err)
 	defer os.RemoveAll(tmpdir)
-	empty, err := isEmptyDir(tmpdir)
+	empty, err := IsEmptyDir(tmpdir)
 	assert.Nil(t, err)
 	assert.True(t, empty)
 	f, err := os.Create(filepath.Join(tmpdir, "foo"))
 	assert.Nil(t, err)
 	defer f.Close()
 	f.Write([]byte("bar"))
-	empty, err = isEmptyDir(tmpdir)
+	empty, err = IsEmptyDir(tmpdir)
 	assert.Nil(t, err)
 	assert.False(t, empty)
 }
@@ -85,12 +85,12 @@ func TestIsEmptyDirContainsDir(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	assert.Nil(t, err)
 	defer os.RemoveAll(tmpdir)
-	empty, err := isEmptyDir(tmpdir)
+	empty, err := IsEmptyDir(tmpdir)
 	assert.Nil(t, err)
 	assert.True(t, empty)
 	err = os.Mkdir(filepath.Join(tmpdir, "foo"), 0700)
 	assert.Nil(t, err)
-	empty, err = isEmptyDir(tmpdir)
+	empty, err = IsEmptyDir(tmpdir)
 	assert.Nil(t, err)
 	assert.False(t, empty)
 }
@@ -101,7 +101,7 @@ func TestEnsureFileExists(t *testing.T) {
 	name := f.Name()
 	defer os.Remove(name)
 	defer f.Close()
-	err = ensureFileExists(name)
+	err = EnsureFileExists(name)
 	assert.Nil(t, err)
 }
 
@@ -113,7 +113,7 @@ func TestEnsureFileExistsCreate(t *testing.T) {
 	os.Remove(name)
 	_, err = os.Open(name)
 	assert.True(t, os.IsNotExist(err))
-	err = ensureFileExists(name)
+	err = EnsureFileExists(name)
 	assert.Nil(t, err)
 	_, err = os.Open(name)
 	assert.False(t, os.IsNotExist(err))
@@ -124,7 +124,7 @@ func TestEnsureFileExistsFail(t *testing.T) {
 	assert.Nil(t, err)
 	os.RemoveAll(tmpdir)
 	name := filepath.Join(tmpdir, "foobar")
-	err = ensureFileExists(name)
+	err = EnsureFileExists(name)
 	assert.NotNil(t, err)
 	_, err = os.Open(name)
 	assert.True(t, os.IsNotExist(err))
@@ -148,16 +148,16 @@ func TestTailFile(t *testing.T) {
 	_, err = f.Write([]byte(data))
 	assert.NoError(t, err)
 	// Get the last 3 lines
-	vals, err := tailFile(f.Name(), 3, 999)
+	vals, err := TailFile(f.Name(), 3, 999)
 	assert.NoError(t, err)
 	expected := "8\n9\n0\n"
 	assert.Equal(t, expected, vals)
 	// Last three lines are also the last 6 bytes, get those
-	vals, err = tailFile(f.Name(), 0, 6)
+	vals, err = TailFile(f.Name(), 0, 6)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, vals)
 	// make sure we can get the whole thing
-	vals, err = tailFile(f.Name(), 0, int64(len(data)))
+	vals, err = TailFile(f.Name(), 0, int64(len(data)))
 	assert.NoError(t, err)
 	assert.Equal(t, data, vals)
 }

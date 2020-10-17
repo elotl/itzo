@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package server
+package unit
 
 import (
 	"bytes"
@@ -24,6 +24,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -87,7 +88,7 @@ func TestRemoveInactive(t *testing.T) {
 	for _, name := range UNIT_PIPES {
 		assert.Nil(t, lp.Pipes[name])
 	}
-	empty, err := isEmptyDir(dir)
+	empty, err := util.IsEmptyDir(dir)
 	assert.True(t, empty)
 }
 
@@ -115,6 +116,6 @@ func TestRemoveActive(t *testing.T) {
 		_, err := pipe.Write([]byte("foobar"))
 		assert.NotNil(t, err)
 	}
-	empty, err := isEmptyDir(dir)
+	empty, err := util.IsEmptyDir(dir)
 	assert.True(t, empty)
 }
