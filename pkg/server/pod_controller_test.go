@@ -70,11 +70,11 @@ func TestMergeSecretsIntoSpec(t *testing.T) {
 	assert.Equal(t, api.EnvVar{"bar", "secret1", nil}, spec.Units[0].Env[1])
 }
 
-func TestUnitsSlicesEqual(t *testing.T)  {
-	testCases := []struct{
-		name string
-		specUnits []api.Unit
-		statusUnits []api.Unit
+func TestUnitsSlicesEqual(t *testing.T) {
+	testCases := []struct {
+		name           string
+		specUnits      []api.Unit
+		statusUnits    []api.Unit
 		expectedResult bool
 	}{
 		{
@@ -163,21 +163,21 @@ func TestUnitsSlicesEqual(t *testing.T)  {
 			name: "different order, same images",
 			specUnits: []api.Unit{
 				api.Unit{
-					Name: "unit1",
+					Name:  "unit1",
 					Image: "elotl-img1",
 				},
 				api.Unit{
-					Name: "unit2",
+					Name:  "unit2",
 					Image: "elotl-img1",
 				},
 			},
 			statusUnits: []api.Unit{
 				api.Unit{
-					Name: "unit2",
+					Name:  "unit2",
 					Image: "elotl-img1",
 				},
 				api.Unit{
-					Name: "unit1",
+					Name:  "unit1",
 					Image: "elotl-img1",
 				},
 			},
@@ -195,12 +195,12 @@ func TestUnitsSlicesEqual(t *testing.T)  {
 
 func TestDiffUnits(t *testing.T) {
 	testCases := []struct {
-		name         string
-		specUnits        []api.Unit
-		statusUnits      []api.Unit
+		name              string
+		specUnits         []api.Unit
+		statusUnits       []api.Unit
 		expectedDiffCount int
-		expectedToAdd    []api.Unit
-		expectedToDelete []api.Unit
+		expectedToAdd     []api.Unit
+		expectedToDelete  []api.Unit
 	}{
 		{
 			"image version changed",
@@ -242,7 +242,7 @@ func TestDiffUnits(t *testing.T) {
 				},
 			},
 			expectedDiffCount: 1,
-			expectedToAdd: []api.Unit{},
+			expectedToAdd:     []api.Unit{},
 			expectedToDelete: []api.Unit{
 				api.Unit{
 					Image: "elotl-img-2",
@@ -285,8 +285,8 @@ func TestDiffUnits(t *testing.T) {
 				},
 			},
 			expectedDiffCount: 0,
-			expectedToAdd:    []api.Unit{},
-			expectedToDelete: []api.Unit{},
+			expectedToAdd:     []api.Unit{},
+			expectedToDelete:  []api.Unit{},
 		},
 	}
 	for _, testCase := range testCases {
@@ -300,7 +300,6 @@ func TestDiffUnits(t *testing.T) {
 		})
 	}
 }
-
 
 type MountMock struct {
 	Create func(*api.Volume) error
@@ -442,13 +441,13 @@ func TestFullSyncErrors(t *testing.T) {
 
 	testCases := []struct {
 		name string
-		mod func(pc *PodController)
+		mod  func(pc *PodController)
 		// This isn't the most interesting assertion but we can't
 		// easily do a deep equal without recreating the exact errors
 		numFailures int
 	}{
 		{
-			name: "happy_path",
+			name:        "happy_path",
 			mod:         func(pc *PodController) {},
 			numFailures: 0,
 		},
@@ -554,23 +553,23 @@ func TestFullSyncErrors(t *testing.T) {
 }
 
 func TestPodController_SyncPodUnits(t *testing.T) {
-	testCases := []struct{
-		name string
-		spec *api.PodSpec
-		status *api.PodSpec
+	testCases := []struct {
+		name                 string
+		spec                 *api.PodSpec
+		status               *api.PodSpec
 		expectedRestartCount int32
-		expectedEvent string
+		expectedEvent        string
 	}{
 		{
 			"init units changed",
 			&api.PodSpec{
-				InitUnits:        []api.Unit{
+				InitUnits: []api.Unit{
 					api.Unit{
-						Name: "unit1",
+						Name:  "unit1",
 						Image: "img-1",
 					},
 					api.Unit{
-						Name: "unit2",
+						Name:  "unit2",
 						Image: "img-2",
 					},
 				},
@@ -578,11 +577,11 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			&api.PodSpec{
 				InitUnits: []api.Unit{
 					api.Unit{
-						Name: "unit1",
+						Name:  "unit1",
 						Image: "img-1",
 					},
 					api.Unit{
-						Name: "unit2",
+						Name:  "unit2",
 						Image: "img-4",
 					},
 				},
@@ -595,7 +594,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			&api.PodSpec{
 				Units: []api.Unit{
 					api.Unit{
-						Name: "unit1",
+						Name:  "unit1",
 						Image: "img",
 					},
 				},
@@ -603,7 +602,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			&api.PodSpec{
 				Units: []api.Unit{
 					api.Unit{
-						Name: "unit1",
+						Name:  "unit1",
 						Image: "img",
 					},
 				},
@@ -649,7 +648,6 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 			0,
 			"pod_created",
 		},
-
 	}
 	creds := make(map[string]api.RegistryCredentials)
 	for _, testCase := range testCases {

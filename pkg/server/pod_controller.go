@@ -73,11 +73,11 @@ type PodController struct {
 	updateChan  chan *api.PodParameters
 	// We keep syncErrors in the map between syncs until a sync works
 	// and we clear or overwrite the error
-	syncErrors map[string]api.UnitStatus
-	cancelFunc context.CancelFunc
-	waitGroup  sync.WaitGroup
-	netNS      string
-	podIP      string
+	syncErrors      map[string]api.UnitStatus
+	cancelFunc      context.CancelFunc
+	waitGroup       sync.WaitGroup
+	netNS           string
+	podIP           string
 	podRestartCount int32
 	// these are annotations with prefix of "pod.elotl.co/"
 	// which are passed from kip
@@ -96,7 +96,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 			Phase:         api.PodRunning,
 			RestartPolicy: api.RestartPolicyAlways,
 		},
-		cancelFunc: nil,
+		cancelFunc:      nil,
 		podRestartCount: 0,
 	}
 }
@@ -261,7 +261,6 @@ func unitsSlicesEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 	}
 	return true
 }
-
 
 func diffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 	toAdd := make([]api.Unit, 0)
@@ -438,7 +437,9 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
 	}
+	glog.Infof("DEBUG ANNOTATIONS: %s", pc.annotations)
 	useOverlayRootfs := pc.useImageOverlayRootfs()
+	glog.Infof("DEBUG use overLAY: %t", useOverlayRootfs)
 	username, password := getRepoCreds(server, allCreds)
 	err = pc.imagePuller.PullImage(
 		pc.rootdir,
