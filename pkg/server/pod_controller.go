@@ -43,7 +43,7 @@ var (
 )
 
 type Puller interface {
-	PullImage(rootdir, name, image, server, username, password string, overlayRootfs bool) error
+	PullImage(rootdir, name, image, server, username, password string, useOverlayfs bool) error
 }
 
 type Mounter interface {
@@ -384,6 +384,7 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 		TerminationMessagePolicy: unit.TerminationMessagePolicy,
 		TerminationMessagePath:   unit.TerminationMessagePath,
 		PodIP:                    pc.podIP,
+		UseOverlayfs:             pc.useImageOverlayRootfs(),
 	}
 	if podSecurityContext != nil {
 		unitConfig.PodSecurityContext = *podSecurityContext
@@ -437,9 +438,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
 	}
-	glog.Infof("DEBUG ANNOTATIONS: %s", pc.annotations)
-	useOverlayRootfs := pc.useImageOverlayRootfs()
-	glog.Infof("DEBUG use overLAY: %t", useOverlayRootfs)
+
 	username, password := getRepoCreds(server, allCreds)
 	err = pc.imagePuller.PullImage(
 		pc.rootdir,
@@ -448,7 +447,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		server,
 		username,
 		password,
-		useOverlayRootfs)
+		pc.useImageOverlayRootfs())
 	if err != nil {
 		msg := fmt.Sprintf("Error pulling image for unit %s: %v",
 			unit.Name, err)
@@ -630,7 +629,7 @@ func makeAppEnv(unit *api.Unit) []string {
 type ImagePuller struct {
 }
 
-func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string, overlayRootfs bool) error {
+func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string, useOverlayfs bool) error {
 	if server == "docker.io" {
 		// K8s and Helm might set this for images, but the actual official
 		// registry is registry-1.docker.io.
@@ -644,7 +643,8 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
-	err = u.PullAndExtractImage(image, server, username, password, overlayRootfs)
+	u.unitConfig.UseOverlayfs = useOverlayfs
+	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)
 	}

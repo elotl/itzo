@@ -127,6 +127,7 @@ type UnitConfig struct {
 	TerminationMessagePolicy api.TerminationMessagePolicy
 	TerminationMessagePath   string
 	PodIP                    string
+	UseOverlayfs             bool
 }
 
 func makeStillCreatingStatus(name, image, reason string) *api.UnitStatus {
@@ -371,7 +372,7 @@ func (u *Unit) GetRootfs() string {
 	return filepath.Join(u.Directory, "ROOTFS")
 }
 
-func (u *Unit) PullAndExtractImage(image, server, username, password string, overlayRootfs bool) error {
+func (u *Unit) PullAndExtractImage(image, server, username, password string) error {
 	if u.Image != "" {
 		glog.Warningf("unit %s has already pulled image %s", u.Name, u.Image)
 	}
@@ -390,8 +391,8 @@ func (u *Unit) PullAndExtractImage(image, server, username, password string, ove
 		}
 	}
 	// Set the extraction type for tosi, overlay fs or a direct extraction
-	glog.Infof("DEBUG USING OVERLAY: %t", overlayRootfs)
-	cli.SetUseOverlayRootfs(overlayRootfs)
+	glog.Infof("DEBUG USING OVERLAY: %t", u.unitConfig.UseOverlayfs)
+	cli.SetUseOverlayRootfs(u.unitConfig.UseOverlayfs)
 	err = cli.Pull(server, image)
 	if err != nil {
 		return err
@@ -929,13 +930,25 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 	if rootfs != "" {
 		oldrootfs := fmt.Sprintf("%s/.oldrootfs", rootfs)
 
-		// We used to bind mount rootfs so we could change it to private for
-		// pivot_root. Now that the rootfs is an overlayfs mount, this is not
-		// needed, and we can change the overlayfs mount to private directly.
-		if err := mounter.BindMount(rootfs, rootfs); err != nil {
-			glog.Errorf("Mount() %s: %v", rootfs, err)
-			u.setStateToStartFailure(err)
-			return err
+		// Now that we allow both overlayfs and direct extraction we cannot
+		// assume the below mounting permissions. We need to decide whether
+		// we need to use bind mount for the direct layer extraction or
+		// set mount permissions for "/" and "rootfs" if using overlayfs
+		glog.Infof("DEBUG UNIT USING OVERLAY?: %t", u.unitConfig.UseOverlayfs)
+		privFlags := uintptr(syscall.MS_PRIVATE)
+		if !u.unitConfig.UseOverlayfs {
+			if err := mounter.BindMount(rootfs, rootfs); err != nil {
+				glog.Errorf("Mount() %s: %v", rootfs, err)
+				u.setStateToStartFailure(err)
+				return err
+			}
+		} else {
+			glog.Info("IN ELSE ABOVE share mount rootfs")
+			if err := mount.ShareMount(rootfs, privFlags); err != nil {
+				glog.Errorf("ShareMount(%s, private): %v", rootfs, err)
+				u.setStateToStartFailure(err)
+				return err
+			}
 		}
 		// Bind mount statusfile into the chroot. Note: both the source and the
 		// destination files need to exist, otherwise the bind mount will fail.
@@ -974,17 +987,13 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 			u.setStateToStartFailure(err)
 			return err
 		}
-		privFlags := uintptr(syscall.MS_PRIVATE)
-		// Make the parent mount of rootfs private for pivot_root.
-		if err := mount.ShareMount("/", privFlags); err != nil {
-			glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
-			u.setStateToStartFailure(err)
-			return err
-		}
-		if err := mount.ShareMount(rootfs, privFlags); err != nil {
-			glog.Errorf("ShareMount(%s, private): %v", rootfs, err)
-			u.setStateToStartFailure(err)
-			return err
+		if u.unitConfig.UseOverlayfs {
+			// Make the parent mount of rootfs private for pivot_root.
+			if err := mount.ShareMount("/", privFlags); err != nil {
+				glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
+				u.setStateToStartFailure(err)
+				return err
+			}
 		}
 		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
 			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
