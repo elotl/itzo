@@ -31,10 +31,11 @@ import (
 )
 
 const (
-	UpdateTypeNoChanges   = "no_changes"
-	UpdateTypePodRestart  = "pod_restart"
-	UpdateTypePodCreate   = "pod_created"
-	UpdateTypeUnitsChange = "units_changed"
+	UpdateTypeNoChanges       = "no_changes"
+	UpdateTypePodRestart      = "pod_restart"
+	UpdateTypePodCreate       = "pod_created"
+	UpdateTypeUnitsChange     = "units_changed"
+	UseOverlayfsAnnotationKey = "pod.elotl.co/image-overlay-rootfs"
 )
 
 var (
@@ -504,12 +505,7 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 // tosi to use the "-mount" option otherwise if value is falsy we inform
 // tosi to use the "-extractto" option
 func (pc *PodController) useImageOverlayRootfs() bool {
-	imageOverlayRootfsKey := "pod.elotl.co/image-overlay-rootfs"
-	if val, ok := pc.annotations[imageOverlayRootfsKey]; ok {
-		if val == "" {
-			// value of annotation is blank return default val
-			return true
-		}
+	if val, ok := pc.annotations[UseOverlayfsAnnotationKey]; ok {
 		parsed, err := strconv.ParseBool(val)
 		if err != nil {
 			glog.Errorf("error parsing boolean for image overlay: %s", err)
