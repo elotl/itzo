@@ -391,7 +391,6 @@ func (u *Unit) PullAndExtractImage(image, server, username, password string) err
 		}
 	}
 	// Set the extraction type for tosi, overlay fs or a direct extraction
-	glog.Infof("DEBUG USING OVERLAY: %t", u.unitConfig.UseOverlayfs)
 	cli.SetUseOverlayRootfs(u.unitConfig.UseOverlayfs)
 	err = cli.Pull(server, image)
 	if err != nil {
@@ -934,18 +933,23 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		// assume the below mounting permissions. We need to decide whether
 		// we need to use bind mount for the direct layer extraction or
 		// set mount permissions for "/" and "rootfs" if using overlayfs
-		glog.Infof("DEBUG UNIT USING OVERLAY?: %t", u.unitConfig.UseOverlayfs)
-		privFlags := uintptr(syscall.MS_PRIVATE)
-		if !u.unitConfig.UseOverlayfs {
-			if err := mounter.BindMount(rootfs, rootfs); err != nil {
-				glog.Errorf("Mount() %s: %v", rootfs, err)
+		useOverlayfs := u.unitConfig.UseOverlayfs
+		if useOverlayfs {
+			privFlags := uintptr(syscall.MS_PRIVATE)
+			if err := mount.ShareMount(rootfs, privFlags); err != nil {
+				glog.Errorf("ShareMount(%s, private): %v", rootfs, err)
+				u.setStateToStartFailure(err)
+				return err
+			}
+			// Make the parent mount of rootfs private for pivot_root.
+			if err := mount.ShareMount("/", privFlags); err != nil {
+				glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
 				u.setStateToStartFailure(err)
 				return err
 			}
 		} else {
-			glog.Info("IN ELSE ABOVE share mount rootfs")
-			if err := mount.ShareMount(rootfs, privFlags); err != nil {
-				glog.Errorf("ShareMount(%s, private): %v", rootfs, err)
+			if err := mounter.BindMount(rootfs, rootfs); err != nil {
+				glog.Errorf("Mount() %s: %v", rootfs, err)
 				u.setStateToStartFailure(err)
 				return err
 			}
@@ -986,14 +990,6 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 			mounter.UnmountSpecial(u.Name)
 			u.setStateToStartFailure(err)
 			return err
-		}
-		if u.unitConfig.UseOverlayfs {
-			// Make the parent mount of rootfs private for pivot_root.
-			if err := mount.ShareMount("/", privFlags); err != nil {
-				glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
-				u.setStateToStartFailure(err)
-				return err
-			}
 		}
 		if err := mounter.PivotRoot(rootfs, oldrootfs); err != nil {
 			glog.Errorf("PivotRoot() %s %s: %v", rootfs, oldrootfs, err)
