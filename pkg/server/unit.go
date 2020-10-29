@@ -934,7 +934,19 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		// we need to use bind mount for the direct layer extraction or
 		// set mount permissions for "/" and "rootfs" if using overlayfs
 		useOverlayfs := u.unitConfig.UseOverlayfs
+		recPrivFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
 		if useOverlayfs {
+			if err := mounter.BindMount(rootfs, rootfs); err != nil {
+				glog.Errorf("Mount() %s: %v", rootfs, err)
+				u.setStateToStartFailure(err)
+				return err
+			}
+			if err := mount.ShareMount("/", recPrivFlags); err != nil {
+				glog.Errorf("ShareMount(%s, private): %v", "/", err)
+				u.setStateToStartFailure(err)
+				return err
+			}
+		} else {
 			privFlags := uintptr(syscall.MS_PRIVATE)
 			if err := mount.ShareMount(rootfs, privFlags); err != nil {
 				glog.Errorf("ShareMount(%s, private): %v", rootfs, err)
@@ -944,12 +956,6 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 			// Make the parent mount of rootfs private for pivot_root.
 			if err := mount.ShareMount("/", privFlags); err != nil {
 				glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
-				u.setStateToStartFailure(err)
-				return err
-			}
-		} else {
-			if err := mounter.BindMount(rootfs, rootfs); err != nil {
-				glog.Errorf("Mount() %s: %v", rootfs, err)
 				u.setStateToStartFailure(err)
 				return err
 			}
@@ -1007,7 +1013,6 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		// unmount any volumes living in the root that are shared
 		// between namespaces as emptyDirs when we unmount the old
 		// root.
-		recPrivFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
 		if err := mount.ShareMount("/.oldrootfs", recPrivFlags); err != nil {
 			glog.Errorf("ShareMount(%s, private): %v", oldrootfs, err)
 			u.setStateToStartFailure(err)
