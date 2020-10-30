@@ -933,9 +933,8 @@ func (u *Unit) Run(podname, hostname string, command []string, workingdir string
 		// assume the below mounting permissions. We need to decide whether
 		// we need to use bind mount for the direct layer extraction or
 		// set mount permissions for "/" and "rootfs" if using overlayfs
-		useOverlayfs := u.unitConfig.UseOverlayfs
 		recPrivFlags := uintptr(syscall.MS_PRIVATE | syscall.MS_REC)
-		if useOverlayfs {
+		if !u.unitConfig.UseOverlayfs {
 			if err := mounter.BindMount(rootfs, rootfs); err != nil {
 				glog.Errorf("Mount() %s: %v", rootfs, err)
 				u.setStateToStartFailure(err)
