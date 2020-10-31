@@ -17,24 +17,14 @@ limitations under the License.
 package util
 
 import (
-	"crypto/rand"
 	"fmt"
 	"io/ioutil"
-	"math"
-	"math/big"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
-
-func randStr(t *testing.T) string {
-	n, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-	assert.NoError(t, err)
-	return strconv.FormatUint(n.Uint64(), 36)
-}
 
 func createScript(t *testing.T, fname, script string) (string, func()) {
 	dir, err := ioutil.TempDir("", "itzo-test-")
@@ -95,7 +85,7 @@ func TestEnsureProg(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		path, closer := createScript(t, randStr(t), tc.Script)
+		path, closer := createScript(t, RandStr(t, 8), tc.Script)
 		defer closer()
 		foundPath, err := EnsureProg(
 			path,
@@ -143,7 +133,7 @@ func TestRunProg(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		path, closer := createScript(t, randStr(t), tc.Script)
+		path, closer := createScript(t, RandStr(t, 8), tc.Script)
 		defer closer()
 		err := RunProg(path, 64, 1, tc.Args...)
 		if tc.Failure {

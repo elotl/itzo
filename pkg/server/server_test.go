@@ -20,7 +20,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -41,6 +40,8 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/unit"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/wsstream"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -116,7 +117,7 @@ func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
 	var appcmdline = flag.String("exec", "", "Command for starting a unit")
 	var rootdir = flag.String("rootdir", DEFAULT_ROOTDIR, "Base dir for units")
-	var unit = flag.String("unit", "myunit", "Unit name")
+	var unitname = flag.String("unit", "myunit", "Unit name")
 	var hostname = flag.String("hostname", "myHostname", "Hostname")
 	var pod = flag.String("podname", "myPod", "Pod name")
 	var workingdir = flag.String("workingdir", "", "Working directory")
@@ -125,7 +126,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*rp)
-		StartUnit(*rootdir, *pod, *hostname, *unit, *workingdir, *netns, strings.Split(*appcmdline, " "), policy)
+		unit.StartUnit(*rootdir, *pod, *hostname, *unitname, *workingdir, *netns, strings.Split(*appcmdline, " "), policy)
 		os.Exit(0)
 	}
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
@@ -202,29 +203,10 @@ func TestVersionHandler(t *testing.T) {
 	assert.NotEmpty(t, rr.Body.String())
 }
 
-func randStr(t *testing.T, n int) string {
-	s := ""
-	for len(s) < n {
-		buf := make([]byte, 16)
-		m, err := rand.Read(buf)
-		buf = buf[:m]
-		assert.Nil(t, err)
-		for _, b := range buf {
-			if (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') {
-				s = s + string(b)
-				if len(s) == n {
-					break
-				}
-			}
-		}
-	}
-	return s
-}
-
 func createUnit(t *testing.T) *api.PodParameters {
 	units := make([]api.Unit, 1)
 	units[0] = api.Unit{
-		Name:    randStr(t, 16),
+		Name:    util.RandStr(t, 16),
 		Image:   "library/alpine",
 		Command: []string{"echo", "Hello Milpa"},
 	}
@@ -263,7 +245,7 @@ func TestUpdateHandlerAddVolume(t *testing.T) {
 	}
 	params := createUnit(t)
 	volume := api.Volume{
-		Name: randStr(t, 8),
+		Name: util.RandStr(t, 8),
 		VolumeSource: api.VolumeSource{
 			EmptyDir: &api.EmptyDir{},
 		},
@@ -282,7 +264,7 @@ func TestUpdateHandlerAddUnit(t *testing.T) {
 	}
 	params := createUnit(t)
 	unit := api.Unit{
-		Name:    randStr(t, 8),
+		Name:    util.RandStr(t, 8),
 		Image:   "library/alpine",
 		Command: []string{"echo", "Hello World"},
 	}
@@ -578,10 +560,10 @@ func TestDeployInvalidPackage(t *testing.T) {
 
 func TestGetLogs(t *testing.T) {
 	unitName := "testunit"
-	um := NewUnitManager(DEFAULT_ROOTDIR)
+	um := unit.NewUnitManager(DEFAULT_ROOTDIR)
 	s.unitMgr = um
 	lb := logbuf.NewLogBuffer(1000)
-	um.logbuf.Set(unitName, lb)
+	um.LogBuf.Set(unitName, lb)
 	for i := 0; i < 10; i++ {
 		lb.Write("somesource", fmt.Sprintf("%d\n", i))
 	}
@@ -606,7 +588,7 @@ func runServer() (*Server, func(), int) {
 	closer := func() { os.RemoveAll(tmpdir) }
 	s := &Server{
 		installRootdir: tmpdir,
-		unitMgr:        NewUnitManager(tmpdir),
+		unitMgr:        unit.NewUnitManager(tmpdir),
 		podController:  NewPodController(tmpdir, nil, nil),
 	}
 	s.getHandlers()
@@ -731,23 +713,23 @@ func TestAttach(t *testing.T) {
 	}}
 
 	// Open the unit
-	u, err := OpenUnit(ss.installRootdir, unitName)
+	u, err := unit.OpenUnit(ss.installRootdir, unitName)
 	assert.NoError(t, err)
 	defer u.Destroy()
 
 	ss.unitMgr.CaptureLogs("mypod", unitName, u.LogPipe)
 	// silly hack that allows us to get the output from the unit
-	ss.unitMgr.runningUnits.Set(unitName, &os.Process{})
-	unitin, err := u.openStdinReader()
+	ss.unitMgr.RunningUnits.Set(unitName, &os.Process{})
+	unitin, err := u.OpenStdinReader()
 	assert.NoError(t, err)
 	lp := u.LogPipe
-	unitout, err := lp.OpenWriter(PIPE_UNIT_STDOUT)
+	unitout, err := lp.OpenWriter(unit.PIPE_UNIT_STDOUT)
 	defer unitout.Close()
 
 	// start a unit that we can get stdin and stdout from
 	ch := make(chan error)
 	go func() {
-		err = u.runUnitLoop(
+		err = u.RunUnitLoop(
 			[]string{"/bin/cat", "-"},
 			nil, 0, 0, nil, unitin, unitout, nil, api.RestartPolicyNever)
 		ch <- err

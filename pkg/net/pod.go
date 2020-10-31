@@ -22,7 +22,6 @@ import (
 	"github.com/elotl/itzo/pkg/cloud"
 
 	"github.com/golang/glog"
-	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilexec "k8s.io/utils/exec"
 )
@@ -34,9 +33,8 @@ const (
 func setupPodNetwork(podIP string) error {
 	nser := NewOSNetNamespacer(PodNetNamespaceName)
 	execer := utilexec.New()
-	dbus := utildbus.New()
 	protocol := utiliptables.ProtocolIpv4
-	iptInterface := utiliptables.New(execer, dbus, protocol)
+	iptInterface := utiliptables.New(execer, protocol)
 	netIf, err := GetPrimaryNetworkInterface()
 	if err != nil {
 		glog.Errorf("retrieving pod IP address: %v", err)

@@ -26,6 +26,8 @@ import (
 	"syscall"
 
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/helper"
+	"github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
@@ -57,7 +59,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 
 	// allow us to skip entering namespace for testing
 	if !params.SkipNSEnter {
-		unit, err := OpenUnit(s.installRootdir, unitName)
+		unit, err := unit.OpenUnit(s.installRootdir, unitName)
 		if err != nil {
 			errmsg := fmt.Errorf("Error opening unit %s for exec: %v",
 				unitName, err)
@@ -97,7 +99,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		for k, v := range proc.Environ {
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
-		env = ensureDefaultEnviron(env, params.PodName, homedir)
+		env = helper.EnsureDefaultEnviron(env, params.PodName, homedir)
 		nsenterCmd := []string{
 			"/usr/bin/nsenter",
 			"-t",
