@@ -9,7 +9,7 @@ LDFLAGS=-ldflags "-X github.com/elotl/itzo/pkg/util.VERSION=$(VERSION) -X github
 
 all: itzo
 
-itzo: $(PKG_SRC) $(ITZO_SRC)
+itzo: $(PKG_SRC) $(ITZO_SRC) go.mod go.sum
 	go build $(LDFLAGS) -o $(TOP_DIR)$@ $(TOP_DIR)cmd/itzo
 
 clean:
