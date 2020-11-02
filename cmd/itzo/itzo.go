@@ -47,6 +47,7 @@ func main() {
 	var workingdir = flag.String("workingdir", "", "Working directory for unit")
 	var netns = flag.String("netns", "", "Pod network namespace name")
 	// todo, ability to log to a file instead of stdout
+	var usePodman = flag.Bool("use-podman", false, "use podman.io as container runtime")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
@@ -77,7 +78,7 @@ func main() {
 	}
 
 	glog.Info("Starting up agent")
-	server := server.New(*rootdir)
+	server := server.New(*rootdir, *usePodman)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
 }

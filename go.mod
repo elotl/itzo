@@ -6,19 +6,18 @@ require (
 	cloud.google.com/go v0.56.0
 	github.com/aws/aws-sdk-go v1.28.2
 	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
+	github.com/containers/libpod/v2 v2.0.4 // indirect
 	github.com/elotl/wsstream v0.0.0-20180531183345-a88a26dd5a78
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/gorilla/websocket v1.4.0
 	github.com/hashicorp/go-multierror v1.1.0
 	github.com/jandre/procfs v0.0.0-20150609131925-f645421657bb
-	github.com/json-iterator/go v1.1.10 // indirect
 	github.com/justnoise/genny v0.0.0-20170328200008-9127e812e1e9
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/kr/pty v1.1.5
 	github.com/lorenzosaino/go-sysctl v0.1.0
 	github.com/mitchellh/go-ps v1.0.0
-	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/opencontainers/runc v1.0.0-rc91.0.20200708210054-ce54a9d4d79b
 	github.com/opencontainers/runtime-spec v1.0.3-0.20200817204227-f9c09b4ea1df
 	github.com/pkg/errors v0.9.1
@@ -31,10 +30,7 @@ require (
 	golang.org/x/mod v0.2.0
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381
 	golang.org/x/sys v0.0.0-20200909081042-eff7692f9009
-	golang.org/x/text v0.3.3 // indirect
-	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
-	gopkg.in/yaml.v2 v2.3.0 // indirect
 	k8s.io/apimachinery v0.19.2
 	k8s.io/kubernetes v1.18.4
 	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89

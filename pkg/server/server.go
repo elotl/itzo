@@ -77,13 +77,25 @@ func (pe *ParameterError) Error() string {
 	return ""
 }
 
+type ServerUnitMgr interface {
+	GetLogBuffer(unit string) (*logbuf.LogBuffer, error)
+	ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error)
+	UnitRunning(unit string) bool
+	GetPid(unitName string) (int, bool)
+}
+
+type UnitManager interface {
+	ServerUnitMgr
+	unit.UnitRunner
+}
+
 type Server struct {
 	env                 EnvStore
 	httpServer          *http.Server
 	mux                 http.ServeMux
 	startTime           time.Time
 	podController       *PodController
-	unitMgr             *unit.UnitManager
+	unitMgr             ServerUnitMgr
 	wsUpgrader          websocket.Upgrader
 	installRootdir      string
 	lastMetricTime      time.Time
@@ -95,12 +107,18 @@ type Server struct {
 	networkAgentCmd     *exec.Cmd
 }
 
-func New(rootdir string) *Server {
+func New(rootdir string, usePodman bool) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
 	mounter := mount.NewOSMounter(rootdir)
-	um := unit.NewUnitManager(rootdir)
+
+	var um UnitManager
+	if usePodman {
+		um = unit.NewPodmanManager()
+	} else {
+		um = unit.NewUnitManager(rootdir)
+	}
 	pc := NewPodController(rootdir, mounter, um)
 	pc.Start()
 	return &Server{
