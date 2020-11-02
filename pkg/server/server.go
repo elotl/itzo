@@ -86,7 +86,7 @@ type ServerUnitMgr interface {
 
 type UnitManager interface {
 	ServerUnitMgr
-	unit.UnitRunner
+	UnitRunner
 }
 
 type Server struct {
@@ -119,7 +119,7 @@ func New(rootdir string, usePodman bool) *Server {
 	} else {
 		um = unit.NewUnitManager(rootdir)
 	}
-	pc := NewPodController(rootdir, mounter, um)
+	pc := NewPodController(rootdir, mounter, um, usePodman)
 	pc.Start()
 	return &Server{
 		env:            EnvStore{},

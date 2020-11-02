@@ -79,9 +79,10 @@ type PodController struct {
 	netNS      string
 	podIP      string
 	podRestartCount int32
+	usePodman bool
 }
 
-func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
+func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner, usePodman bool) *PodController {
 	return &PodController{
 		rootdir:     rootdir,
 		unitMgr:     unitMgr,
@@ -95,6 +96,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 		},
 		cancelFunc: nil,
 		podRestartCount: 0,
+		usePodman: usePodman,
 	}
 }
 

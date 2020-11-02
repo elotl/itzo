@@ -56,6 +56,10 @@ func main() {
 
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
+		if *usePodman {
+			podmanManager := unit.NewPodmanManager()
+			podmanManager.StartContainer()
+		}
 		glog.Infof("Starting %s for pod %s unit %s; restart policy is %v",
 			*appcmdline, *podname, *appunit, policy)
 		cmdargs, err := quote.Split(*appcmdline)
