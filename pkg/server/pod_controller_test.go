@@ -344,16 +344,16 @@ func (m *MountMock) DetachMount(unitname, dst string) error {
 }
 
 type ImagePullMock struct {
-	Pull func(rootdir, name, image, server, username, password string) error
+	Pull func(rootdir, name, image, server, username, password string, overlayRootfs bool) error
 }
 
-func (p *ImagePullMock) PullImage(rootdir, name, image, server, username, password string) error {
-	return p.Pull(rootdir, name, image, server, username, password)
+func (p *ImagePullMock) PullImage(rootdir, name, image, server, username, password string, overlayRootfs bool) error {
+	return p.Pull(rootdir, name, image, server, username, password, overlayRootfs)
 }
 
 func NewImagePullMock() *ImagePullMock {
 	return &ImagePullMock{
-		Pull: func(rootdir, name, image, server, username, password string) error {
+		Pull: func(rootdir, name, image, server, username, password string, overlayRootfs bool) error {
 			return nil
 		},
 	}
@@ -509,7 +509,7 @@ func TestFullSyncErrors(t *testing.T) {
 			name: "pull_failed",
 			mod: func(pc *PodController) {
 				puller := pc.imagePuller.(*ImagePullMock)
-				puller.Pull = func(rootdir, name, image, server, username, password string) error {
+				puller.Pull = func(rootdir, name, image, server, username, password string, overlayRootfs bool) error {
 					return fmt.Errorf("Pull Failed")
 				}
 			},

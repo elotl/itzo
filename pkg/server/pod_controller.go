@@ -18,6 +18,7 @@ package server
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,10 +32,11 @@ import (
 )
 
 const (
-	UpdateTypeNoChanges   = "no_changes"
-	UpdateTypePodRestart  = "pod_restart"
-	UpdateTypePodCreate   = "pod_created"
-	UpdateTypeUnitsChange = "units_changed"
+	UpdateTypeNoChanges       = "no_changes"
+	UpdateTypePodRestart      = "pod_restart"
+	UpdateTypePodCreate       = "pod_created"
+	UpdateTypeUnitsChange     = "units_changed"
+	UseOverlayfsAnnotationKey = "pod.elotl.co/image-overlay-rootfs"
 )
 
 var (
@@ -43,7 +45,7 @@ var (
 )
 
 type Puller interface {
-	PullImage(rootdir, name, image, server, username, password string) error
+	PullImage(rootdir, name, image, server, username, password string, useOverlayfs bool) error
 }
 
 type Mounter interface {
@@ -73,12 +75,15 @@ type PodController struct {
 	updateChan  chan *api.PodParameters
 	// We keep syncErrors in the map between syncs until a sync works
 	// and we clear or overwrite the error
-	syncErrors map[string]api.UnitStatus
-	cancelFunc context.CancelFunc
-	waitGroup  sync.WaitGroup
-	netNS      string
-	podIP      string
+	syncErrors      map[string]api.UnitStatus
+	cancelFunc      context.CancelFunc
+	waitGroup       sync.WaitGroup
+	netNS           string
+	podIP           string
 	podRestartCount int32
+	// these are annotations with prefix of "pod.elotl.co/"
+	// which are passed from kip
+	annotations map[string]string
 }
 
 func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodController {
@@ -93,7 +98,7 @@ func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner) *PodC
 			Phase:         api.PodRunning,
 			RestartPolicy: api.RestartPolicyAlways,
 		},
-		cancelFunc: nil,
+		cancelFunc:      nil,
 		podRestartCount: 0,
 	}
 }
@@ -120,6 +125,7 @@ func (pc *PodController) runUpdateLoop() {
 		MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
 		pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
 		pc.podStatus = spec
+		pc.annotations = podParams.Annotations
 	}
 }
 
@@ -258,7 +264,6 @@ func unitsSlicesEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 	return true
 }
 
-
 func diffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 	toAdd := make([]api.Unit, 0)
 	toDelete := make([]api.Unit, 0)
@@ -381,6 +386,7 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 		TerminationMessagePolicy: unit.TerminationMessagePolicy,
 		TerminationMessagePath:   unit.TerminationMessagePath,
 		PodIP:                    pc.podIP,
+		UseOverlayfs:             pc.useImageOverlayRootfs(),
 	}
 	if podSecurityContext != nil {
 		unitConfig.PodSecurityContext = *podSecurityContext
@@ -434,8 +440,16 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
 		return
 	}
+
 	username, password := getRepoCreds(server, allCreds)
-	err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, username, password)
+	err = pc.imagePuller.PullImage(
+		pc.rootdir,
+		unit.Name,
+		imageRepo,
+		server,
+		username,
+		password,
+		pc.useImageOverlayRootfs())
 	if err != nil {
 		msg := fmt.Sprintf("Error pulling image for unit %s: %v",
 			unit.Name, err)
@@ -485,6 +499,25 @@ func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds 
 		return
 	}
 	delete(pc.syncErrors, unit.Name)
+}
+
+// we want to tell tosi whether to use an overlay rootfs for containers
+// if the value returned by this function is truthy or missing we instruct
+// tosi to use the "-mount" option otherwise if value is falsy we inform
+// tosi to use the "-extractto" option
+func (pc *PodController) useImageOverlayRootfs() bool {
+	if val, ok := pc.annotations[UseOverlayfsAnnotationKey]; ok {
+		parsed, err := strconv.ParseBool(val)
+		if err != nil {
+			glog.Errorf("error parsing boolean for image overlay: %s", err)
+			// TODO how should we return if bool is parsed wrong?
+			// use default overlay?
+			return true
+		}
+		return parsed
+	}
+	// key does not exist fallback to default
+	return true
 }
 
 // Our probes can reference unit ports by the name given to them in
@@ -593,7 +626,7 @@ func makeAppEnv(unit *api.Unit) []string {
 type ImagePuller struct {
 }
 
-func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string) error {
+func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, password string, useOverlayfs bool) error {
 	if server == "docker.io" {
 		// K8s and Helm might set this for images, but the actual official
 		// registry is registry-1.docker.io.
@@ -607,6 +640,7 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
+	u.SetUnitConfigOverlayfs(useOverlayfs)
 	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)
