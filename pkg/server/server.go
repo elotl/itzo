@@ -43,6 +43,8 @@ import (
 	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/mount"
 	itzonet "github.com/elotl/itzo/pkg/net"
+	"github.com/elotl/itzo/pkg/unit"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
 	"github.com/gorilla/websocket"
@@ -81,7 +83,7 @@ type Server struct {
 	mux                 http.ServeMux
 	startTime           time.Time
 	podController       *PodController
-	unitMgr             *UnitManager
+	unitMgr             *unit.UnitManager
 	wsUpgrader          websocket.Upgrader
 	installRootdir      string
 	lastMetricTime      time.Time
@@ -98,7 +100,7 @@ func New(rootdir string) *Server {
 		rootdir = DEFAULT_ROOTDIR
 	}
 	mounter := mount.NewOSMounter(rootdir)
-	um := NewUnitManager(rootdir)
+	um := unit.NewUnitManager(rootdir)
 	pc := NewPodController(rootdir, mounter, um)
 	pc.Start()
 	return &Server{
@@ -412,7 +414,7 @@ func (s *Server) fileHandler(w http.ResponseWriter, r *http.Request) {
 		if numBytes == 0 && lines == 0 {
 			numBytes = FILE_BYTES_LIMIT
 		}
-		s, err := tailFile(path, lines, int64(numBytes))
+		s, err := util.TailFile(path, lines, int64(numBytes))
 		if err != nil {
 			badRequest(w, "Error reading file "+err.Error())
 			return
@@ -562,7 +564,7 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 	}
 
 	if params.Interactive {
-		u, err := OpenUnit(s.installRootdir, unitName)
+		u, err := unit.OpenUnit(s.installRootdir, unitName)
 		if err != nil {
 			msg := fmt.Sprintf("Could not open unit %s: %v\n", unitName, err)
 			writeWSError(ws, msg)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
+	"github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
 
 	"github.com/golang/glog"
@@ -61,7 +62,7 @@ func main() {
 			glog.Fatalf("Invalid command '%s' for unit %s: %v",
 				*appcmdline, *appunit, err)
 		}
-		err = server.StartUnit(*rootdir, *podname, *hostname, *appunit, *workingdir, *netns, cmdargs, policy)
+		err = unit.StartUnit(*rootdir, *podname, *hostname, *appunit, *workingdir, *netns, cmdargs, policy)
 		if err != nil {
 			glog.Fatalf("Error starting %s for unit %s: %v",
 				*appcmdline, *appunit, err)

@@ -18,14 +18,16 @@ package server
 
 import (
 	"fmt"
-	"github.com/elotl/itzo/pkg/api"
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
 	"io/ioutil"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/unit"
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/net/context"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestMergeSecretsIntoSpec(t *testing.T) {
@@ -666,14 +668,14 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 	}
 }
 
-func createTestUnits(names ...string) (string, []*Unit, func()) {
+func createTestUnits(names ...string) (string, []*unit.Unit, func()) {
 	tmpdir, err := ioutil.TempDir("", "itzo-test")
 	if err != nil {
 		panic(err)
 	}
-	units := make([]*Unit, len(names))
+	units := make([]*unit.Unit, len(names))
 	for i, name := range names {
-		u, err := OpenUnit(tmpdir, name)
+		u, err := unit.OpenUnit(tmpdir, name)
 		if err != nil {
 			panic(err)
 		}

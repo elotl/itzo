@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/elotl/itzo/pkg/api"
+	itzounit "github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
@@ -378,7 +379,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 }
 
 func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.PodSecurityContext) error {
-	unitConfig := UnitConfig{
+	unitConfig := itzounit.UnitConfig{
 		StartupProbe:             translateProbePorts(unit, unit.StartupProbe),
 		ReadinessProbe:           translateProbePorts(unit, unit.ReadinessProbe),
 		LivenessProbe:            translateProbePorts(unit, unit.LivenessProbe),
@@ -393,7 +394,7 @@ func (pc *PodController) saveUnitConfig(unit *api.Unit, podSecurityContext *api.
 	if unit.SecurityContext != nil {
 		unitConfig.SecurityContext = *unit.SecurityContext
 	}
-	u, err := OpenUnit(pc.rootdir, unit.Name)
+	u, err := itzounit.OpenUnit(pc.rootdir, unit.Name)
 	if err != nil {
 		return fmt.Errorf("opening unit %q for saving unit configuration: %v",
 			unit.Name, err)
@@ -588,7 +589,7 @@ func (pc *PodController) waitForInitUnit(ctx context.Context, name string, polic
 		case <-time.After(waitForInitUnitPollInterval):
 			glog.Infof("Checking status of init unit %s", name)
 		}
-		u, err := OpenUnit(pc.rootdir, name)
+		u, err := itzounit.OpenUnit(pc.rootdir, name)
 		if err != nil {
 			glog.Warningf("Opening init unit %s: %v", name, err)
 			continue
@@ -635,7 +636,7 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 		server = "https://" + server
 	}
 	glog.Infof("Creating new unit '%s' in %s\n", name, rootdir)
-	u, err := OpenUnit(rootdir, name)
+	u, err := itzounit.OpenUnit(rootdir, name)
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
@@ -653,23 +654,23 @@ func (pc *PodController) getUnitStatuses(units []api.Unit) []api.UnitStatus {
 	unitStatusMap := make(map[string]*api.UnitStatus)
 	for _, podUnit := range units {
 		// when errors opening the
-		if !IsUnitExist(pc.rootdir, podUnit.Name) {
+		if !itzounit.IsUnitExist(pc.rootdir, podUnit.Name) {
 			reason := "PodInitializing"
-			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
+			unitStatusMap[podUnit.Name] = api.MakeStillCreatingStatus(
 				podUnit.Name, podUnit.Image, reason)
 			continue
 		}
-		unit, err := OpenUnit(pc.rootdir, podUnit.Name)
+		unit, err := itzounit.OpenUnit(pc.rootdir, podUnit.Name)
 		if err != nil {
 			reason := "PodInitializing"
-			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
+			unitStatusMap[podUnit.Name] = api.MakeStillCreatingStatus(
 				podUnit.Name, podUnit.Image, reason)
 			continue
 		}
 		us, err := unit.GetStatus()
 		if err != nil {
 			reason := "PodInitializing"
-			unitStatusMap[podUnit.Name] = makeStillCreatingStatus(
+			unitStatusMap[podUnit.Name] = api.MakeStillCreatingStatus(
 				podUnit.Name, podUnit.Image, reason)
 			continue
 		}
