@@ -34,23 +34,23 @@ const (
 )
 
 type Tosi struct {
-	server           string
-	username         string
-	password         string
-	image            string
-	exe              string
-	useOverlayRootfs bool
+	server         string
+	username       string
+	password       string
+	image          string
+	exe            string
+	extractionType bool
 }
 
 func NewTosi() *Tosi {
 	return &Tosi{
-		exe:              TosiExe,
-		useOverlayRootfs: TosiUseOverlayRootfs,
+		exe:            TosiExe,
+		extractionType: TosiUseOverlayRootfs,
 	}
 }
 
-func (t *Tosi) SetUseOverlayRootfs(overlayRootfs bool) {
-	t.useOverlayRootfs = overlayRootfs
+func (t *Tosi) SetTosiExtractionType(useOverlayRootfs bool) {
+	t.extractionType = useOverlayRootfs
 }
 
 func (t *Tosi) Login(server, username, password string) error {
@@ -83,7 +83,7 @@ func (t *Tosi) run(server, image, dest, configPath, username, password string) e
 	}
 	imageExtractFlag := TosiDefaultImageExtractFlag
 	// If we are not using an overlayfs have tosi use the extractto flag
-	if !t.useOverlayRootfs {
+	if !t.extractionType {
 		imageExtractFlag = TosiExtracttoFlag
 	}
 	args := []string{

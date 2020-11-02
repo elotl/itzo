@@ -640,7 +640,7 @@ func (ip *ImagePuller) PullImage(rootdir, name, image, server, username, passwor
 	if err != nil {
 		return fmt.Errorf("opening unit %s for package deploy: %v", name, err)
 	}
-	u.unitConfig.UseOverlayfs = useOverlayfs
+	u.SetUnitConfigOverlayfs(useOverlayfs)
 	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return fmt.Errorf("pulling image %s: %v", image, err)

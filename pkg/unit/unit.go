@@ -194,6 +194,10 @@ func OpenUnit(rootdir, name string) (*Unit, error) {
 	return &u, nil
 }
 
+func (u *Unit) SetUnitConfigOverlayfs(useOverlayfs bool) {
+	u.unitConfig.UseOverlayfs = useOverlayfs
+}
+
 func (u *Unit) createStdin() error {
 	pipepath := filepath.Join(u.Directory, "unit-stdin")
 	err := syscall.Mkfifo(pipepath, 0600)
@@ -376,7 +380,7 @@ func (u *Unit) PullAndExtractImage(image, server, username, password string) err
 		}
 	}
 	// Set the extraction type for tosi, overlay fs or a direct extraction
-	cli.SetUseOverlayRootfs(u.unitConfig.UseOverlayfs)
+	cli.SetTosiExtractionType(u.unitConfig.UseOverlayfs)
 	err = cli.Pull(server, image)
 	if err != nil {
 		return err
