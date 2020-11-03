@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go v0.56.0
 	github.com/aws/aws-sdk-go v1.28.2
 	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
-	github.com/containers/libpod/v2 v2.0.4 // indirect
+	github.com/containers/libpod/v2 v2.0.4
 	github.com/elotl/wsstream v0.0.0-20180531183345-a88a26dd5a78
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b

@@ -14,20 +14,31 @@ import (
 	"os"
 )
 
-type PodmanManager struct {}
+type PodmanManager struct {
+	connText context.Context
+}
 
-func NewPodmanManager() *PodmanManager {
+func NewPodmanManager() (*PodmanManager, error) {
+	// Get Podman socket location
+	sock_dir := os.Getenv("XDG_RUNTIME_DIR")
+	socket := "unix:" + sock_dir + "/podman/podman.sock"
 
-	return &PodmanManager{}
+	// Connect to Podman socket
+	connText, err := bindings.NewConnection(context.Background(), socket)
+	if err != nil {
+		glog.Errorf("Error connecting to podman socket: %v", err)
+		return &PodmanManager{}, err
+	}
+	return &PodmanManager{connText: connText}, nil
 }
 
 func (pm *PodmanManager) StartUnit(podname, hostname, unitname, workingdir, netns string, command, args, appenv []string, policy api.RestartPolicy) error {
-
 	return nil
 }
 
 func (pm *PodmanManager) StopUnit(name string) error {
-	return nil
+	err := containers.Stop(pm.connText, name, nil)
+	return err
 }
 
 func (pm *PodmanManager) RemoveUnit(name string) error  {
@@ -43,32 +54,34 @@ func (pm *PodmanManager) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, e
 }
 
 func (pm *PodmanManager) UnitRunning(unit string) bool {
-	return true
+
+	// Container inspect
+	ctrData, err := containers.Inspect(pm.connText, unit, nil)
+	if err != nil {
+		glog.Errorf("error while inspecting %s : %v", unit, err)
+		return false
+	}
+	return ctrData.State.Running
 }
 
 func (pm *PodmanManager) GetPid(unitName string) (int, bool)  {
 	return 0, false
 }
 
-func (pm *PodmanManager) StartContainer(unitSpec api.Unit) error {
-	// Get Podman socket location
-	sock_dir := os.Getenv("XDG_RUNTIME_DIR")
-	socket := "unix:" + sock_dir + "/podman/podman.sock"
-
-	// Connect to Podman socket
-	connText, err := bindings.NewConnection(context.Background(), socket)
+func (pm *PodmanManager) StartContainer(rootdir, name string) error {
+	unitSpec, err := OpenUnit(rootdir, name)
 	if err != nil {
-		glog.Errorf("Error connecting to podman socket: %v", err)
+		glog.Errorf("error opening unit: %v", err)
 		return err
 	}
-	_, err = images.Pull(connText, unitSpec.Image, entities.ImagePullOptions{})
+	_, err = images.Pull(pm.connText, unitSpec.Image, entities.ImagePullOptions{})
 	if err != nil {
 		glog.Errorf("Error pulling unit image: %v", err)
 		return err
 	}
 
 	// List images
-	imageSummary, err := images.List(connText, nil, nil)
+	imageSummary, err := images.List(pm.connText, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -81,14 +94,14 @@ func (pm *PodmanManager) StartContainer(unitSpec api.Unit) error {
 	// Container create
 	s := specgen.NewSpecGenerator(unitSpec.Image, false)
 	s.Terminal = true
-	r, err := containers.CreateWithSpec(connText, s)
+	r, err := containers.CreateWithSpec(pm.connText, s)
 	if err != nil {
 		glog.Errorf("error creating with spec: %v", err)
 		return err
 	}
 
 	// Container start
-	err = containers.Start(connText, r.ID, nil)
+	err = containers.Start(pm.connText, r.ID, nil)
 	if err != nil {
 		glog.Errorf("during starting container %s error occured: %v", r.ID, err)
 		return err
@@ -96,14 +109,14 @@ func (pm *PodmanManager) StartContainer(unitSpec api.Unit) error {
 
 	// Wait for container to run
 	running := define.ContainerStateRunning
-	_, err = containers.Wait(connText, r.ID, &running)
+	_, err = containers.Wait(pm.connText, r.ID, &running)
 	if err != nil {
 		return err
 	}
 
 	// Container list
 	var latestContainers = 1
-	containerLatestList, err := containers.List(connText, nil, nil, &latestContainers, nil, nil, nil)
+	containerLatestList, err := containers.List(pm.connText, nil, nil, &latestContainers, nil, nil, nil)
 	if err != nil {
 		glog.Error(err)
 		return err
@@ -111,7 +124,7 @@ func (pm *PodmanManager) StartContainer(unitSpec api.Unit) error {
 	glog.Infof("Latest container is %s\n", containerLatestList[0].Names[0])
 
 	// Container inspect
-	ctrData, err := containers.Inspect(connText, r.ID, nil)
+	ctrData, err := containers.Inspect(pm.connText, r.ID, nil)
 	if err != nil {
 		glog.Errorf("error while inspecting %s : %v", r.ID, err)
 		return err
