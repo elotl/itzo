@@ -1,16 +1,17 @@
 module github.com/elotl/itzo
 
-go 1.14
+go 1.13
 
 require (
 	cloud.google.com/go v0.56.0
 	github.com/aws/aws-sdk-go v1.28.2
 	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
+	github.com/containers/buildah v1.17.0 // indirect
 	github.com/containers/libpod/v2 v2.0.4
 	github.com/elotl/wsstream v0.0.0-20180531183345-a88a26dd5a78
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
-	github.com/gorilla/websocket v1.4.0
+	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/go-multierror v1.1.0
 	github.com/jandre/procfs v0.0.0-20150609131925-f645421657bb
 	github.com/justnoise/genny v0.0.0-20170328200008-9127e812e1e9
@@ -28,8 +29,8 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
 	golang.org/x/mod v0.2.0
-	golang.org/x/net v0.0.0-20200707034311-ab3426394381
-	golang.org/x/sys v0.0.0-20200909081042-eff7692f9009
+	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
+	golang.org/x/sys v0.0.0-20201018230417-eeed37f84f13
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	k8s.io/apimachinery v0.19.2
 	k8s.io/kubernetes v1.18.4

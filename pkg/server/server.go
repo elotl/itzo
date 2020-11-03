@@ -115,7 +115,7 @@ func New(rootdir string, usePodman bool) *Server {
 
 	var um UnitManager
 	if usePodman {
-		um = unit.NewPodmanManager()
+		um, _ = unit.NewPodmanManager()
 	} else {
 		um = unit.NewUnitManager(rootdir)
 	}
