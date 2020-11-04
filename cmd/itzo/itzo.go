@@ -65,11 +65,9 @@ func main() {
 			err = podmanManager.StartContainer(*rootdir, *appunit)
 			if err != nil {
 				glog.Fatalf("error starting podman container: %v", err)
+			} else {
+				os.Exit(0)
 			}
-			// TODO - uncomment
-			//else {
-			//	os.Exit(0)
-			//}
 		}
 		glog.Infof("Starting %s for pod %s unit %s; restart policy is %v",
 			*appcmdline, *podname, *appunit, policy)
