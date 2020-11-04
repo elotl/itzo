@@ -74,11 +74,13 @@ func (pm *PodmanManager) StartContainer(rootdir, name string) error {
 		glog.Errorf("error opening unit: %v", err)
 		return err
 	}
+	glog.Infof("pulling podman image: %s", unitSpec.Image)
 	_, err = images.Pull(pm.connText, unitSpec.Image, entities.ImagePullOptions{})
 	if err != nil {
 		glog.Errorf("Error pulling unit image: %v", err)
 		return err
 	}
+	glog.Infof("successfully pulled image: %s", unitSpec.Image)
 
 	// List images
 	imageSummary, err := images.List(pm.connText, nil, nil)
