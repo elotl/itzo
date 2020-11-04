@@ -58,7 +58,7 @@ func main() {
 		policy := api.RestartPolicy(*apprestartpolicy)
 		if *usePodman {
 			glog.Infof("using podman")
-			podmanManager, err := unit.NewPodmanManager()
+			podmanManager, err := unit.NewPodmanManager(*rootdir)
 			if err != nil {
 				glog.Fatalf("error creating podman manager: %v", err)
 			}
@@ -66,6 +66,10 @@ func main() {
 			if err != nil {
 				glog.Fatalf("error starting podman container: %v", err)
 			}
+			// TODO - uncomment
+			//else {
+			//	os.Exit(0)
+			//}
 		}
 		glog.Infof("Starting %s for pod %s unit %s; restart policy is %v",
 			*appcmdline, *podname, *appunit, policy)

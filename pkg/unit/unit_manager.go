@@ -17,6 +17,7 @@ limitations under the License.
 package unit
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -70,6 +71,7 @@ type UnitManager struct {
 	rootDir      string
 	RunningUnits *conmap.StringOsProcess
 	LogBuf       *conmap.StringLogbufLogBuffer
+	connText	 context.Context
 }
 
 func NewUnitManager(rootDir string) *UnitManager {
@@ -78,7 +80,12 @@ func NewUnitManager(rootDir string) *UnitManager {
 		rootDir:      rootDir,
 		RunningUnits: conmap.NewStringOsProcess(),
 		LogBuf:       conmap.NewStringLogbufLogBuffer(),
+		connText: 	  context.TODO(),
 	}
+}
+
+func (um *UnitManager) GetContext() context.Context {
+	return context.TODO()
 }
 
 func (um *UnitManager) GetLogBuffer(unit string) (*logbuf.LogBuffer, error) {

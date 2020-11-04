@@ -21,6 +21,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -87,6 +88,7 @@ type ServerUnitMgr interface {
 type UnitManager interface {
 	ServerUnitMgr
 	UnitRunner
+	GetContext() context.Context
 }
 
 type Server struct {
@@ -114,13 +116,16 @@ func New(rootdir string, usePodman bool) *Server {
 	mounter := mount.NewOSMounter(rootdir)
 
 	var um UnitManager
+	var ctx context.Context
 	if usePodman {
-		um, _ = unit.NewPodmanManager()
+		um, _= unit.NewPodmanManager(rootdir)
 		glog.Info("using podman in server")
+		ctx = um.GetContext()
 	} else {
+		ctx = context.TODO()
 		um = unit.NewUnitManager(rootdir)
 	}
-	pc := NewPodController(rootdir, mounter, um, usePodman)
+	pc := NewPodController(ctx, rootdir, mounter, um, usePodman)
 	pc.Start()
 	return &Server{
 		env:            EnvStore{},

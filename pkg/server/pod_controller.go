@@ -82,12 +82,19 @@ type PodController struct {
 	usePodman bool
 }
 
-func NewPodController(rootdir string, mounter Mounter, unitMgr UnitRunner, usePodman bool) *PodController {
+func NewPodController(ctx context.Context, rootdir string, mounter Mounter, unitMgr UnitRunner, usePodman bool) *PodController {
+	var imgPuller Puller
+	if usePodman {
+		imgPuller = NewPodmanPuller(ctx)
+		glog.Info("using podman image puller")
+	} else {
+		imgPuller = &ImagePuller{}
+	}
 	return &PodController{
 		rootdir:     rootdir,
 		unitMgr:     unitMgr,
 		mountCtl:    mounter,
-		imagePuller: &ImagePuller{},
+		imagePuller: imgPuller,
 		updateChan:  make(chan *api.PodParameters, specChanSize),
 		syncErrors:  make(map[string]api.UnitStatus),
 		podStatus: &api.PodSpec{
@@ -429,48 +436,51 @@ func getRepoCreds(server string, allCreds map[string]api.RegistryCredentials) (s
 }
 
 func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds map[string]api.RegistryCredentials, policy api.RestartPolicy, podSecurityContext *api.PodSecurityContext) {
-	// pull image
-	server, imageRepo, err := util.ParseImageSpec(unit.Image)
-	if err != nil {
-		msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
-		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-		return
-	}
-	username, password := getRepoCreds(server, allCreds)
-	err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, username, password)
-	if err != nil {
-		msg := fmt.Sprintf("Error pulling image for unit %s: %v",
-			unit.Name, err)
-		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-		return
-	}
+	if !pc.usePodman {
 
-	err = pc.saveUnitConfig(&unit, podSecurityContext)
-	if err != nil {
-		msg := fmt.Sprintf("Error saving unit %s configuration: %v",
-			unit.Name, err)
-		pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-		return
-	}
-	// attach mounts
-	mountFailure := false
-	for _, mount := range unit.VolumeMounts {
-		err := pc.mountCtl.AttachMount(
-			unit.Name, mount.Name, mount.MountPath)
+		// pull image
+		server, imageRepo, err := util.ParseImageSpec(unit.Image)
 		if err != nil {
-			msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
-				mount.Name, unit.Name, err)
+			msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
 			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
-			mountFailure = true
-			break
+			return
 		}
-	}
-	if mountFailure {
-		return
+		username, password := getRepoCreds(server, allCreds)
+		err = pc.imagePuller.PullImage(pc.rootdir, unit.Name, imageRepo, server, username, password)
+		if err != nil {
+			msg := fmt.Sprintf("Error pulling image for unit %s: %v",
+				unit.Name, err)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+			return
+		}
+
+		err = pc.saveUnitConfig(&unit, podSecurityContext)
+		if err != nil {
+			msg := fmt.Sprintf("Error saving unit %s configuration: %v",
+				unit.Name, err)
+			pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+			return
+		}
+		// attach mounts
+		mountFailure := false
+		for _, mount := range unit.VolumeMounts {
+			err := pc.mountCtl.AttachMount(
+				unit.Name, mount.Name, mount.MountPath)
+			if err != nil {
+				msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
+					mount.Name, unit.Name, err)
+				pc.syncErrors[unit.Name] = makeFailedUpdateStatus(&unit, msg)
+				mountFailure = true
+				break
+			}
+		}
+		if mountFailure {
+			return
+		}
 	}
 
 	glog.Infoln("Starting unit", unit.Name)
-	err = pc.unitMgr.StartUnit(
+	err := pc.unitMgr.StartUnit(
 		pc.podName,
 		pc.podHostname,
 		unit.Name,

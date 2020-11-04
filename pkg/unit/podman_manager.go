@@ -15,10 +15,11 @@ import (
 )
 
 type PodmanManager struct {
-	connText context.Context
+	ConnText context.Context
+	rootdir  string
 }
 
-func NewPodmanManager() (*PodmanManager, error) {
+func NewPodmanManager(rootdir string) (*PodmanManager, error) {
 	// Get Podman socket location
 	sock_dir := os.Getenv("XDG_RUNTIME_DIR")
 	socket := "unix:" + sock_dir + "/podman/podman.sock"
@@ -31,15 +32,82 @@ func NewPodmanManager() (*PodmanManager, error) {
 		glog.Errorf("Error connecting to podman socket: %v", err)
 		return &PodmanManager{}, err
 	}
-	return &PodmanManager{connText: connText}, nil
+	return &PodmanManager{ConnText: connText, rootdir: rootdir}, nil
+}
+
+func (pm *PodmanManager) GetContext() context.Context {
+	return pm.ConnText
 }
 
 func (pm *PodmanManager) StartUnit(podname, hostname, unitname, workingdir, netns string, command, args, appenv []string, policy api.RestartPolicy) error {
+	unitSpec, err := OpenUnit(pm.rootdir, unitname)
+	if err != nil {
+		glog.Errorf("error opening unit: %v", err)
+		return err
+	}
+	glog.Infof("pulling podman image: %s", unitSpec.Image)
+	_, err = images.Pull(pm.ConnText, unitSpec.Image, entities.ImagePullOptions{})
+	if err != nil {
+		glog.Errorf("Error pulling unit image: %v", err)
+		return err
+	}
+	glog.Infof("successfully pulled image: %s", unitSpec.Image)
+
+	// List images
+	imageSummary, err := images.List(pm.ConnText, nil, nil)
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, i := range imageSummary {
+		names = append(names, i.RepoTags...)
+	}
+	glog.Infof("podman images: %s", names)
+
+	// Container create
+	s := specgen.NewSpecGenerator(unitSpec.Image, false)
+	s.Terminal = true
+	r, err := containers.CreateWithSpec(pm.ConnText, s)
+	if err != nil {
+		glog.Errorf("error creating with spec: %v", err)
+		return err
+	}
+
+	// Container start
+	err = containers.Start(pm.ConnText, r.ID, nil)
+	if err != nil {
+		glog.Errorf("during starting container %s error occured: %v", r.ID, err)
+		return err
+	}
+
+	// Wait for container to run
+	running := define.ContainerStateRunning
+	_, err = containers.Wait(pm.ConnText, r.ID, &running)
+	if err != nil {
+		return err
+	}
+
+	// Container list
+	var latestContainers = 1
+	containerLatestList, err := containers.List(pm.ConnText, nil, nil, &latestContainers, nil, nil, nil)
+	if err != nil {
+		glog.Error(err)
+		return err
+	}
+	glog.Infof("Latest container is %s\n", containerLatestList[0].Names[0])
+
+	// Container inspect
+	ctrData, err := containers.Inspect(pm.ConnText, r.ID, nil)
+	if err != nil {
+		glog.Errorf("error while inspecting %s : %v", r.ID, err)
+		return err
+	}
+	glog.Infof("Container uses image %s\n", ctrData.ImageName)
 	return nil
 }
 
 func (pm *PodmanManager) StopUnit(name string) error {
-	err := containers.Stop(pm.connText, name, nil)
+	err := containers.Stop(pm.ConnText, name, nil)
 	return err
 }
 
@@ -58,7 +126,7 @@ func (pm *PodmanManager) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, e
 func (pm *PodmanManager) UnitRunning(unit string) bool {
 
 	// Container inspect
-	ctrData, err := containers.Inspect(pm.connText, unit, nil)
+	ctrData, err := containers.Inspect(pm.ConnText, unit, nil)
 	if err != nil {
 		glog.Errorf("error while inspecting %s : %v", unit, err)
 		return false
@@ -77,7 +145,7 @@ func (pm *PodmanManager) StartContainer(rootdir, name string) error {
 		return err
 	}
 	glog.Infof("pulling podman image: %s", unitSpec.Image)
-	_, err = images.Pull(pm.connText, unitSpec.Image, entities.ImagePullOptions{})
+	_, err = images.Pull(pm.ConnText, unitSpec.Image, entities.ImagePullOptions{})
 	if err != nil {
 		glog.Errorf("Error pulling unit image: %v", err)
 		return err
@@ -85,7 +153,7 @@ func (pm *PodmanManager) StartContainer(rootdir, name string) error {
 	glog.Infof("successfully pulled image: %s", unitSpec.Image)
 
 	// List images
-	imageSummary, err := images.List(pm.connText, nil, nil)
+	imageSummary, err := images.List(pm.ConnText, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -98,14 +166,14 @@ func (pm *PodmanManager) StartContainer(rootdir, name string) error {
 	// Container create
 	s := specgen.NewSpecGenerator(unitSpec.Image, false)
 	s.Terminal = true
-	r, err := containers.CreateWithSpec(pm.connText, s)
+	r, err := containers.CreateWithSpec(pm.ConnText, s)
 	if err != nil {
 		glog.Errorf("error creating with spec: %v", err)
 		return err
 	}
 
 	// Container start
-	err = containers.Start(pm.connText, r.ID, nil)
+	err = containers.Start(pm.ConnText, r.ID, nil)
 	if err != nil {
 		glog.Errorf("during starting container %s error occured: %v", r.ID, err)
 		return err
@@ -113,14 +181,14 @@ func (pm *PodmanManager) StartContainer(rootdir, name string) error {
 
 	// Wait for container to run
 	running := define.ContainerStateRunning
-	_, err = containers.Wait(pm.connText, r.ID, &running)
+	_, err = containers.Wait(pm.ConnText, r.ID, &running)
 	if err != nil {
 		return err
 	}
 
 	// Container list
 	var latestContainers = 1
-	containerLatestList, err := containers.List(pm.connText, nil, nil, &latestContainers, nil, nil, nil)
+	containerLatestList, err := containers.List(pm.ConnText, nil, nil, &latestContainers, nil, nil, nil)
 	if err != nil {
 		glog.Error(err)
 		return err
@@ -128,7 +196,7 @@ func (pm *PodmanManager) StartContainer(rootdir, name string) error {
 	glog.Infof("Latest container is %s\n", containerLatestList[0].Names[0])
 
 	// Container inspect
-	ctrData, err := containers.Inspect(pm.connText, r.ID, nil)
+	ctrData, err := containers.Inspect(pm.ConnText, r.ID, nil)
 	if err != nil {
 		glog.Errorf("error while inspecting %s : %v", r.ID, err)
 		return err
