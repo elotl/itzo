@@ -22,6 +22,8 @@ func NewPodmanManager() (*PodmanManager, error) {
 	// Get Podman socket location
 	sock_dir := os.Getenv("XDG_RUNTIME_DIR")
 	socket := "unix:" + sock_dir + "/podman/podman.sock"
+	glog.Infof("expecting podman socket on: %s", socket)
+	socket = "unix:/run/podman/podman.sock"
 
 	// Connect to Podman socket
 	connText, err := bindings.NewConnection(context.Background(), socket)
