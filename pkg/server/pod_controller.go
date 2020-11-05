@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -87,7 +88,7 @@ type PodController struct {
 	netNS      string
 	podIP      string
 	podRestartCount int32
-	usePodman bool
+	usePodman  bool
 }
 
 func NewPodController(ctx context.Context, rootdir string, mounter Mounter, unitMgr UnitRunner, usePodman bool) *PodController {
@@ -518,6 +519,7 @@ func getRepoCreds(server string, allCreds map[string]api.RegistryCredentials) (s
 }
 
 func (pc *PodController) startUnit(ctx context.Context, unit api.Unit, allCreds map[string]api.RegistryCredentials, policy api.RestartPolicy, podSecurityContext *api.PodSecurityContext) {
+	glog.Infof("pc.startUnit, using podman: %s", strconv.FormatBool(pc.usePodman))
 	if !pc.usePodman {
 
 		// pull image

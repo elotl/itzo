@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
@@ -90,7 +91,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	glog.Info("Starting up agent")
+	glog.Infof("Starting up agent, is podman used? %s", strconv.FormatBool(*usePodman))
 	server := server.New(*rootdir, *usePodman)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
