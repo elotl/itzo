@@ -9,6 +9,7 @@ require (
 	github.com/containers/buildah v1.17.0 // indirect
 	github.com/containers/libpod/v2 v2.0.4
 	github.com/elotl/wsstream v0.0.0-20180531183345-a88a26dd5a78
+	github.com/ghodss/yaml v1.0.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/gorilla/websocket v1.4.2
@@ -32,6 +33,7 @@ require (
 	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
 	golang.org/x/sys v0.0.0-20201018230417-eeed37f84f13
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
+	k8s.io/api v0.18.4
 	k8s.io/apimachinery v0.19.2
 	k8s.io/kubernetes v1.18.4
 	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89

@@ -11,7 +11,10 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/golang/glog"
-	"os"
+)
+
+const (
+	PodmanSocketPath = "unix:/run/podman/podman.sock"
 )
 
 type PodmanManager struct {
@@ -19,15 +22,15 @@ type PodmanManager struct {
 	rootdir  string
 }
 
-func NewPodmanManager(rootdir string) (*PodmanManager, error) {
-	// Get Podman socket location
-	sock_dir := os.Getenv("XDG_RUNTIME_DIR")
-	socket := "unix:" + sock_dir + "/podman/podman.sock"
-	glog.Infof("expecting podman socket on: %s", socket)
-	socket = "unix:/run/podman/podman.sock"
-
+func GetPodmanConnection() (context.Context, error) {
 	// Connect to Podman socket
-	connText, err := bindings.NewConnection(context.Background(), socket)
+	connText, err := bindings.NewConnection(context.Background(), PodmanSocketPath)
+	return connText, err
+}
+
+func NewPodmanManager(rootdir string) (*PodmanManager, error) {
+	// Connect to Podman socket
+	connText, err := GetPodmanConnection()
 	if err != nil {
 		glog.Errorf("Error connecting to podman socket: %v", err)
 		return &PodmanManager{}, err

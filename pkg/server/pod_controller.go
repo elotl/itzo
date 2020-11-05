@@ -18,6 +18,14 @@ package server
 
 import (
 	"fmt"
+	"github.com/containers/libpod/v2/pkg/bindings/containers"
+	"github.com/containers/libpod/v2/pkg/bindings/play"
+	"github.com/containers/libpod/v2/pkg/domain/entities"
+	"github.com/ghodss/yaml"
+	"io/ioutil"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -329,6 +337,33 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		return event
 	case UpdateTypeUnitsChange:
 		addUnits, deleteUnits := diffUnits(spec.Units, status.Units)
+		removeVolumes := false
+		forceRemove := true
+		if pc.usePodman {
+			connText, err := itzounit.GetPodmanConnection()
+			for _, unit := range deleteUnits {
+				err = containers.Stop(connText, unit.Name, nil)
+				if err != nil {
+					glog.Errorf("error stopping %s container: %v", unit.Name, err)
+				}
+
+				err = containers.Remove(connText, unit.Name, &forceRemove, &removeVolumes)
+				if err != nil {
+					glog.Errorf("error removing %s container: %v", unit.Name, err)
+				}
+			}
+			for _, unit := range addUnits {
+				err = containers.Start(connText, unit.Name, nil)
+				if err != nil {
+					glog.Errorf("error starting %s container: %v", unit.Name, err)
+				}
+			}
+			return event
+
+			// podman stop unit-name && podman rm unit-name
+			// podman run unit-name --pod pod-name
+			// exit function
+		}
 		// do deletes
 		for _, unit := range deleteUnits {
 			// there are some units to delete
@@ -342,6 +377,46 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		initsToStart, unitsToStart = []api.Unit{}, addUnits
 	case UpdateTypePodCreate:
 		// start pod
+		if pc.usePodman {
+			connText, err := itzounit.GetPodmanConnection()
+			k8sPodSpec := api.PodSpecToK8sPodSpec(*spec)
+			pod := v1.Pod{
+				TypeMeta:   metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "my-pod",
+				},
+				Spec:       k8sPodSpec,
+				Status:     v1.PodStatus{},
+			}
+			tmpFile, err := ioutil.TempFile(os.TempDir(), "pod-*.yaml")
+			if err != nil {
+				fmt.Println("Cannot create temporary file", err)
+			}
+			tmpFilePath := os.TempDir() + tmpFile.Name()
+
+			// cleaning up by removing the file
+			defer os.Remove(tmpFile.Name())
+
+			// Write to the file
+			fileContents, err := yaml.Marshal(pod)
+			if _, err = tmpFile.Write(fileContents); err != nil {
+				fmt.Println("Failed to write to temporary file", err)
+			}
+
+			report, err := play.Kube(connText, tmpFilePath, entities.PlayKubeOptions{})
+			if err != nil {
+				glog.Errorf("podman pod creatino failed with: %v", err)
+				return event
+			}
+			glog.Infof("created pod: %s", report)
+			return event
+			// podman play kube /tmp/<file created from spec>
+			// save pod and container(s) ids
+			// exit function
+			// podmanManager := pc.unitMgr.(itzounit.PodmanManager)
+
+			// play.Kube(pc.unitMgr.GetContext())
+		}
 		glog.Info("status units are nil, trying to create pod from scratch")
 		for _, volume := range spec.Volumes {
 			err := pc.mountCtl.CreateMount(&volume)
@@ -352,6 +427,13 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		spec.Phase = api.PodDispatching
 		initsToStart, unitsToStart = spec.InitUnits, spec.Units
 	case UpdateTypePodRestart:
+		if pc.usePodman {
+			// delete pod
+			// create pod from spec.
+			// exit function
+			//connText, err := itzounit.GetPodmanConnection()
+			//pods.Stop(connText, status)
+		}
 		glog.Info("init units not equal, trying to restart pod")
 		pc.DestroyPod(status)
 		for _, volume := range spec.Volumes {
