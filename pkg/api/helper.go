@@ -47,40 +47,50 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 }
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
-	hostPathType := v1.HostPathType(*volume.HostPath.Type)
+	var hostPathType v1.HostPathType
+	if volume.HostPath.Type != nil {
+		hostPathType = v1.HostPathType(*volume.HostPath.Type)
+	}
+
 	sizeLimit := resource.NewQuantity(volume.EmptyDir.SizeLimit, resource.DecimalSI)
 	var secretItems []v1.KeyToPath
 	var configMapItems []v1.KeyToPath
 	var projectionSources []v1.VolumeProjection
+	if volume.Projected != nil {
+		for _, source := range volume.Projected.Sources {
+			var items []v1.KeyToPath
+			for _, item := range source.Secret.Items {
+				items = append(items, v1.KeyToPath(item))
+			}
+			var cmItems []v1.KeyToPath
+			for _, item := range source.ConfigMap.Items {
+				cmItems = append(cmItems, v1.KeyToPath(item))
+			}
+			projectionSources = append(projectionSources, v1.VolumeProjection{
+				Secret:              &v1.SecretProjection{
+					LocalObjectReference: v1.LocalObjectReference(source.Secret.LocalObjectReference),
+					Items:                items,
+					Optional:             source.Secret.Optional,
+				},
+				ConfigMap:           &v1.ConfigMapProjection{
+					LocalObjectReference: v1.LocalObjectReference(source.ConfigMap.LocalObjectReference),
+					Items:                cmItems,
+					Optional:             source.ConfigMap.Optional,
+				},
+			})
+		}
+	}
+	if volume.Secret != nil {
+		for _, item := range volume.Secret.Items {
+			secretItems = append(secretItems, v1.KeyToPath(item))
+		}
+	}
+	if volume.ConfigMap != nil {
+		for _, item := range volume.ConfigMap.Items {
+			configMapItems = append(configMapItems, v1.KeyToPath(item))
+		}
+	}
 
-	for _, source := range volume.Projected.Sources {
-		var items []v1.KeyToPath
-		for _, item := range source.Secret.Items {
-			items = append(items, v1.KeyToPath(item))
-		}
-		var cmItems []v1.KeyToPath
-		for _, item := range source.ConfigMap.Items {
-			cmItems = append(cmItems, v1.KeyToPath(item))
-		}
-		projectionSources = append(projectionSources, v1.VolumeProjection{
-			Secret:              &v1.SecretProjection{
-				LocalObjectReference: v1.LocalObjectReference(source.Secret.LocalObjectReference),
-				Items:                items,
-				Optional:             source.Secret.Optional,
-			},
-			ConfigMap:           &v1.ConfigMapProjection{
-				LocalObjectReference: v1.LocalObjectReference(source.ConfigMap.LocalObjectReference),
-				Items:                cmItems,
-				Optional:             source.ConfigMap.Optional,
-			},
-		})
-	}
-	for _, item := range volume.Secret.Items {
-		secretItems = append(secretItems, v1.KeyToPath(item))
-	}
-	for _, item := range volume.ConfigMap.Items {
-		configMapItems = append(configMapItems, v1.KeyToPath(item))
-	}
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
@@ -291,12 +301,21 @@ func PodSpecToK8sPodSpec(podSpec PodSpec) v1.PodSpec {
 		containers = append(containers, container)
 	}
 	var hostAliases []v1.HostAlias
-	for _, hostAlias := range podSpec.HostAliases {
-		hA := v1.HostAlias(hostAlias)
-		hostAliases = append(hostAliases, hA)
+	if podSpec.HostAliases != nil {
+		for _, hostAlias := range podSpec.HostAliases {
+			hA := v1.HostAlias(hostAlias)
+			hostAliases = append(hostAliases, hA)
+		}
 	}
-	podDNSConfig := PodDNSConfigtoK8sPodDNSConfig(*podSpec.DNSConfig)
-	podSecurityContext := PodSecurityCtxToK8sPodSecurityCtx(*podSpec.SecurityContext)
+	var podDNSConfig v1.PodDNSConfig
+	if podSpec.DNSConfig != nil {
+		podDNSConfig = PodDNSConfigtoK8sPodDNSConfig(*podSpec.DNSConfig)
+	}
+	var podSecurityContext v1.PodSecurityContext
+	if podSpec.SecurityContext != nil {
+		podSecurityContext = PodSecurityCtxToK8sPodSecurityCtx(*podSpec.SecurityContext)
+	}
+
 	spec := v1.PodSpec{
 		Volumes:          volumes,
 		InitContainers:   initContainers,
