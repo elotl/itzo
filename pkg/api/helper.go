@@ -51,8 +51,10 @@ func VolumeToK8sVolume(volume Volume) v1.Volume {
 	if volume.HostPath != nil {
 		hostPathType = v1.HostPathType(*volume.HostPath.Type)
 	}
-
-	sizeLimit := resource.NewQuantity(volume.EmptyDir.SizeLimit, resource.DecimalSI)
+	sizeLimit := &resource.Quantity{}
+	if volume.EmptyDir != nil {
+		sizeLimit = resource.NewQuantity(volume.EmptyDir.SizeLimit, resource.DecimalSI)
+	}
 	var secretItems []v1.KeyToPath
 	var configMapItems []v1.KeyToPath
 	var projectionSources []v1.VolumeProjection
@@ -147,9 +149,12 @@ func VolumeMountToK8sVolumeMount(vm VolumeMount) v1.VolumeMount {
 	}
 }
 
-func SecurityCtxToK8sSecurityCtx(sc SecurityContext) v1.SecurityContext {
-	add := []v1.Capability{}
-	drop := []v1.Capability{}
+func SecurityCtxToK8sSecurityCtx(sc *SecurityContext) v1.SecurityContext {
+	if sc == nil {
+		return v1.SecurityContext{}
+	}
+	var add []v1.Capability
+	var drop []v1.Capability
 	for _, a := range sc.Capabilities.Add {
 		add = append(add, v1.Capability(a))
 	}
@@ -166,43 +171,46 @@ func SecurityCtxToK8sSecurityCtx(sc SecurityContext) v1.SecurityContext {
 	}
 }
 
-func ProbeToK8sProbe(probe Probe) v1.Probe {
-	var headers []v1.HTTPHeader
-	for _, header := range probe.HTTPGet.HTTPHeaders {
-		headers = append(headers, v1.HTTPHeader{
-			Name:  header.Name,
-			Value: header.Value,
-		})
-	}
-	return v1.Probe{
-		Handler: v1.Handler{
-			Exec:    &v1.ExecAction{Command: probe.Exec.Command},
-			HTTPGet: &v1.HTTPGetAction{
-				Path:        probe.HTTPGet.Path,
-				Port:        intstr.IntOrString{
-					Type: probe.Handler.HTTPGet.Port.Type,
-					IntVal: probe.Handler.HTTPGet.Port.IntVal,
-					StrVal: probe.Handler.HTTPGet.Port.StrVal,
+func ProbeToK8sProbe(probe *Probe) v1.Probe {
+	if probe != nil {
+		var headers []v1.HTTPHeader
+		for _, header := range probe.HTTPGet.HTTPHeaders {
+			headers = append(headers, v1.HTTPHeader{
+				Name:  header.Name,
+				Value: header.Value,
+			})
+		}
+		return v1.Probe{
+			Handler: v1.Handler{
+				Exec: &v1.ExecAction{Command: probe.Exec.Command},
+				HTTPGet: &v1.HTTPGetAction{
+					Path: probe.HTTPGet.Path,
+					Port: intstr.IntOrString{
+						Type:   probe.Handler.HTTPGet.Port.Type,
+						IntVal: probe.Handler.HTTPGet.Port.IntVal,
+						StrVal: probe.Handler.HTTPGet.Port.StrVal,
+					},
+					Host:        probe.HTTPGet.Host,
+					Scheme:      v1.URIScheme(probe.HTTPGet.Scheme),
+					HTTPHeaders: headers,
 				},
-				Host:        probe.HTTPGet.Host,
-				Scheme:      v1.URIScheme(probe.HTTPGet.Scheme),
-				HTTPHeaders: headers,
-			},
-			TCPSocket: &v1.TCPSocketAction{
-				Port: intstr.IntOrString{
-					Type:   probe.Handler.TCPSocket.Port.Type,
-					IntVal: probe.Handler.TCPSocket.Port.IntVal,
-					StrVal: probe.Handler.TCPSocket.Port.StrVal,
+				TCPSocket: &v1.TCPSocketAction{
+					Port: intstr.IntOrString{
+						Type:   probe.Handler.TCPSocket.Port.Type,
+						IntVal: probe.Handler.TCPSocket.Port.IntVal,
+						StrVal: probe.Handler.TCPSocket.Port.StrVal,
+					},
+					Host: probe.Handler.TCPSocket.Host,
 				},
-				Host: probe.Handler.TCPSocket.Host,
 			},
-		},
-		InitialDelaySeconds: probe.InitialDelaySeconds,
-		TimeoutSeconds:      probe.TimeoutSeconds,
-		PeriodSeconds:       probe.PeriodSeconds,
-		SuccessThreshold:    probe.SuccessThreshold,
-		FailureThreshold:    probe.FailureThreshold,
+			InitialDelaySeconds: probe.InitialDelaySeconds,
+			TimeoutSeconds:      probe.TimeoutSeconds,
+			PeriodSeconds:       probe.PeriodSeconds,
+			SuccessThreshold:    probe.SuccessThreshold,
+			FailureThreshold:    probe.FailureThreshold,
+		}
 	}
+	return v1.Probe{}
 }
 
 func UnitToK8sContainer(unit Unit) v1.Container {
@@ -219,10 +227,10 @@ func UnitToK8sContainer(unit Unit) v1.Container {
 	for _, volMount := range unit.VolumeMounts {
 		volMounts = append(volMounts, VolumeMountToK8sVolumeMount(volMount))
 	}
-	readinessProbe := ProbeToK8sProbe(*unit.ReadinessProbe)
-	livenessProbe := ProbeToK8sProbe(*unit.LivenessProbe)
-	startupProbe := ProbeToK8sProbe(*unit.StartupProbe)
-	securityContext := SecurityCtxToK8sSecurityCtx(*unit.SecurityContext)
+	readinessProbe := ProbeToK8sProbe(unit.ReadinessProbe)
+	livenessProbe := ProbeToK8sProbe(unit.LivenessProbe)
+	startupProbe := ProbeToK8sProbe(unit.StartupProbe)
+	securityContext := SecurityCtxToK8sSecurityCtx(unit.SecurityContext)
 	return v1.Container{
 		Name:                     unit.Name,
 		Image:                    unit.Image,
