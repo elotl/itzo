@@ -48,7 +48,7 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
 	var hostPathType v1.HostPathType
-	if volume.HostPath.Type != nil {
+	if volume.HostPath != nil {
 		hostPathType = v1.HostPathType(*volume.HostPath.Type)
 	}
 
