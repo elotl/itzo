@@ -380,6 +380,8 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		// start pod
 		if pc.usePodman {
 			connText, err := itzounit.GetPodmanConnection()
+			// debug, todo, remove this log line
+			glog.Infof("got kip pod spec: %v", spec)
 			k8sPodSpec := api.PodSpecToK8sPodSpec(*spec)
 			pod := v1.Pod{
 				TypeMeta:   metav1.TypeMeta{},

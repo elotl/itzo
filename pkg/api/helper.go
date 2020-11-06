@@ -47,10 +47,6 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 }
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
-	var hostPathType v1.HostPathType
-	if volume.HostPath != nil {
-		hostPathType = v1.HostPathType(*volume.HostPath.Type)
-	}
 	sizeLimit := &resource.Quantity{}
 	if volume.EmptyDir != nil {
 		sizeLimit = resource.NewQuantity(volume.EmptyDir.SizeLimit, resource.DecimalSI)
@@ -92,14 +88,20 @@ func VolumeToK8sVolume(volume Volume) v1.Volume {
 			configMapItems = append(configMapItems, v1.KeyToPath(item))
 		}
 	}
+	hostPath := v1.HostPathVolumeSource{}
+	if volume.HostPath != nil {
+		var hostPathType v1.HostPathType
+		hostPathType = v1.HostPathType(*volume.HostPath.Type)
+		hostPath = v1.HostPathVolumeSource{
+			Path: volume.HostPath.Path,
+			Type: &hostPathType,
+		}
+	}
 
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
-			HostPath:  &v1.HostPathVolumeSource{
-				Path: volume.HostPath.Path,
-				Type: &hostPathType,
-			},
+			HostPath:  &hostPath,
 			EmptyDir:  &v1.EmptyDirVolumeSource{
 				Medium:    v1.StorageMedium(volume.EmptyDir.Medium),
 				SizeLimit: sizeLimit,
