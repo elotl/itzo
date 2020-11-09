@@ -23,8 +23,6 @@ import (
 	"github.com/containers/libpod/v2/pkg/domain/entities"
 	"github.com/ghodss/yaml"
 	"io/ioutil"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"strconv"
 	"strings"
@@ -383,14 +381,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			// debug, todo, remove this log line
 			glog.Infof("got kip pod spec: %v", spec)
 			k8sPodSpec := api.PodSpecToK8sPodSpec(*spec)
-			pod := v1.Pod{
-				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "my-pod",
-				},
-				Spec:       k8sPodSpec,
-				Status:     v1.PodStatus{},
-			}
+			podYaml := api.K8sPodToYamlFormat(k8sPodSpec)
 			tmpFile, err := ioutil.TempFile(os.TempDir(), "pod-*.yaml")
 			if err != nil {
 				fmt.Println("Cannot create temporary file", err)
@@ -400,7 +391,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			defer os.Remove(tmpFile.Name())
 
 			// Write to the file
-			fileContents, err := yaml.Marshal(pod)
+			fileContents, err := yaml.Marshal(podYaml)
 			glog.Infof("file contents:\n %s", string(fileContents))
 			if _, err = tmpFile.Write(fileContents); err != nil {
 				fmt.Println("Failed to write to temporary file", err)

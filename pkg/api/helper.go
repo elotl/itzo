@@ -19,6 +19,7 @@ package api
 import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -360,4 +361,26 @@ func PodSpecToK8sPodSpec(podSpec PodSpec) v1.PodSpec {
 		DNSConfig:        &podDNSConfig,
 	}
 	return spec
+}
+
+type K8sPodYaml struct {
+	Kind string  `json:"kind"`
+	ApiVersion string `json:"apiVersion"`
+	Spec v1.PodSpec
+	Status v1.PodStatus `yaml:"status,omitempty"`
+	TypeMeta   metav1.TypeMeta
+	ObjectMeta metav1.ObjectMeta
+}
+
+func K8sPodToYamlFormat(pod v1.PodSpec) K8sPodYaml {
+	return K8sPodYaml{
+		ApiVersion: "v1",
+		Kind: "Pod",
+		Spec: pod,
+		Status:     v1.PodStatus{},
+		TypeMeta:   metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "my-pod",
+		},
+	}
 }
