@@ -158,11 +158,19 @@ func UnitEnvToK8sContainerEnv(env EnvVar) v1.EnvVar {
 }
 
 func VolumeMountToK8sVolumeMount(vm VolumeMount) v1.VolumeMount {
+	// FIXME - add SubPath to kip Volume mount type and send it from kip
+	// DUCKTAPE:
+	subPath := ""
+	if vm.Name == "resolvconf" {
+		subPath = "/etc/"
+	} else {
+		subPath = ""
+	}
 	return v1.VolumeMount{
 		Name:             vm.Name,
 		ReadOnly:         false,
 		MountPath:        vm.MountPath,
-		SubPath:          "",
+		SubPath:          subPath,
 		MountPropagation: nil,
 		SubPathExpr:      "",
 	}
