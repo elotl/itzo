@@ -25,7 +25,6 @@ import (
 	"github.com/instrumenta/kubeval/kubeval"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -402,27 +401,15 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			if _, err = tmpFile.Write(fileContents); err != nil {
 				glog.Errorf("Failed to write to temporary file: %v", err)
 			}
-			// todo remove debug logs:
-			path := filepath.Join("/tmp/itzo/units", "..", "packages")
-			_, err = os.Stat(path)
-			if os.IsNotExist(err) {
-				glog.Infof("Folder %s does not exist.", path)
-			} else {
-				glog.Infof("%s exists", path)
-			}
-			finfo, err := os.Stat(filepath.Join("/tmp/itzo/packages", "resolvconf"))
-			if os.IsNotExist(err) {
-				glog.Infof("resolvconf does not exists: %v", err)
-			} else {
-				glog.Info("resolvconf exists")
-				glog.Infof("resolvconf is dir? %v", finfo.IsDir())
-			}
+			spec.Phase = api.PodWaiting
 			report, err := play.Kube(connText, tmpFile.Name(), entities.PlayKubeOptions{})
 			if err != nil {
 				glog.Errorf("podman pod creating failed with: %v", err)
+				spec.Phase = api.PodFailed
 				return event
 			}
 			glog.Infof("created pod: %s", report)
+			spec.Phase = api.PodRunning
 			return event
 			// podman play kube /tmp/<file created from spec>
 			// save pod and container(s) ids
