@@ -479,6 +479,9 @@ func saveFile(r io.Reader) (filename string, n int64, err error) {
 }
 
 func (s *Server) deployHandler(w http.ResponseWriter, r *http.Request) {
+	// TODO - if using podman, we can simply send ConfigMaps here and store them somewhere.
+	// Then we need to pass configmap paths to podman's play kube command, and it
+	// will do most of the work out of the box
 	switch r.Method {
 	case "POST":
 		path := strings.TrimPrefix(r.URL.Path, "/")

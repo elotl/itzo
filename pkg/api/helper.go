@@ -48,7 +48,7 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 }
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
-	hostPathType := v1.HostPathFile
+	hostPathType := v1.HostPathDirectory
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
