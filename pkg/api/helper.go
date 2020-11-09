@@ -380,6 +380,7 @@ func K8sPodToYamlFormat(pod v1.PodSpec) K8sPodYaml {
 		Status:     v1.PodStatus{},
 		TypeMeta:   metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
+			// todo use constant here
 			Name: "my-pod",
 		},
 	}

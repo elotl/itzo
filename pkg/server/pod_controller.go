@@ -22,6 +22,7 @@ import (
 	"github.com/containers/libpod/v2/pkg/bindings/play"
 	"github.com/containers/libpod/v2/pkg/domain/entities"
 	"github.com/ghodss/yaml"
+	"github.com/instrumenta/kubeval/kubeval"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -393,13 +394,17 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			// Write to the file
 			fileContents, err := yaml.Marshal(podYaml)
 			glog.Infof("file contents:\n %s", string(fileContents))
+			_, err = kubeval.Validate(fileContents, kubeval.NewDefaultConfig())
+			if err != nil {
+				glog.Errorf("validation of k8s file failed with: %v", err)
+			}
 			if _, err = tmpFile.Write(fileContents); err != nil {
-				fmt.Println("Failed to write to temporary file", err)
+				glog.Errorf("Failed to write to temporary file: %v", err)
 			}
 
 			report, err := play.Kube(connText, tmpFile.Name(), entities.PlayKubeOptions{})
 			if err != nil {
-				glog.Errorf("podman pod creatino failed with: %v", err)
+				glog.Errorf("podman pod creating failed with: %v", err)
 				return event
 			}
 			glog.Infof("created pod: %s", report)
