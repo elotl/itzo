@@ -401,6 +401,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 
 			// Write to the file
 			fileContents, err := yaml.Marshal(pod)
+			glog.Infof("file contents:\n %s", string(fileContents))
 			if _, err = tmpFile.Write(fileContents); err != nil {
 				fmt.Println("Failed to write to temporary file", err)
 			}
