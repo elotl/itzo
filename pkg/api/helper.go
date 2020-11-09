@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"github.com/golang/glog"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -48,95 +49,25 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 }
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
+	if volume.HostPath != nil {
+		glog.Infof("vol name: %s, hostPath.Type: %s, hostPath.Path: %s", volume.Name, string(*volume.HostPath.Type), volume.HostPath.Path)
+	}
 	hostPathType := v1.HostPathDirectory
+	path := volume.Name
+	// FIXME: should be handled properly, this is just for POC
+	if volume.Name == "resolvconf" {
+		hostPathType = v1.HostPathFile
+		path = "resolvconf/etc/resolv.conf"
+	}
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
 			HostPath: &v1.HostPathVolumeSource{
-				Path: filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name),
+				Path: filepath.Join("/tmp/itzo/units", "..", "packages", path),
 				Type: &hostPathType,
 			},
 		},
 	}
-	//sizeLimit := &resource.Quantity{}
-	//if volume.EmptyDir != nil {
-	//	sizeLimit = resource.NewQuantity(volume.EmptyDir.SizeLimit, resource.DecimalSI)
-	//	emptyDir := v1.EmptyDirVolumeSource{
-	//		Medium:    v1.StorageMedium(volume.EmptyDir.Medium),
-	//		SizeLimit: sizeLimit,
-	//	}
-	//	vol.EmptyDir = &emptyDir
-	//}
-	//var secretItems []v1.KeyToPath
-	//var configMapItems []v1.KeyToPath
-	//var projectionSources []v1.VolumeProjection
-	//if volume.Projected != nil {
-	//	for _, source := range volume.Projected.Sources {
-	//		var items []v1.KeyToPath
-	//		for _, item := range source.Secret.Items {
-	//			items = append(items, v1.KeyToPath(item))
-	//		}
-	//		var cmItems []v1.KeyToPath
-	//		for _, item := range source.ConfigMap.Items {
-	//			cmItems = append(cmItems, v1.KeyToPath(item))
-	//		}
-	//		projectionSources = append(projectionSources, v1.VolumeProjection{
-	//			Secret: &v1.SecretProjection{
-	//				LocalObjectReference: v1.LocalObjectReference(source.Secret.LocalObjectReference),
-	//				Items:                items,
-	//				Optional:             source.Secret.Optional,
-	//			},
-	//			ConfigMap: &v1.ConfigMapProjection{
-	//				LocalObjectReference: v1.LocalObjectReference(source.ConfigMap.LocalObjectReference),
-	//				Items:                cmItems,
-	//				Optional:             source.ConfigMap.Optional,
-	//			},
-	//		})
-	//	}
-	//	projectedSource := v1.ProjectedVolumeSource{
-	//		Sources:     projectionSources,
-	//		DefaultMode: volume.Projected.DefaultMode,
-	//	}
-	//	vol.Projected = &projectedSource
-	//}
-	//if volume.Secret != nil {
-	//	for _, item := range volume.Secret.Items {
-	//		secretItems = append(secretItems, v1.KeyToPath(item))
-	//	}
-	//	secretSource := v1.SecretVolumeSource{
-	//		SecretName:  volume.Secret.SecretName,
-	//		Items:       secretItems,
-	//		DefaultMode: volume.Secret.DefaultMode,
-	//		Optional:    volume.Secret.Optional,
-	//	}
-	//	vol.Secret = &secretSource
-	//}
-	//if volume.ConfigMap != nil {
-	//	for _, item := range volume.ConfigMap.Items {
-	//		configMapItems = append(configMapItems, v1.KeyToPath(item))
-	//	}
-	//	configMap := v1.ConfigMapVolumeSource{
-	//		LocalObjectReference: v1.LocalObjectReference{Name: volume.ConfigMap.LocalObjectReference.Name},
-	//		Items:                configMapItems,
-	//		DefaultMode:          volume.ConfigMap.DefaultMode,
-	//		Optional:             volume.ConfigMap.Optional,
-	//	}
-	//	vol.ConfigMap = &configMap
-	//}
-	//if volume.HostPath != nil {
-	//	var hostPathType v1.HostPathType
-	//	glog.Infof("volume host path: %s", volume.HostPath.Path)
-	//	path := volume.HostPath.Path
-	//	if volume.HostPath.Path == "" {
-	//		path = filepath.Join("/tmp/itzo/units", "..", "packages", vol.Name)
-	//	}
-	//	hostPathType = v1.HostPathType(*volume.HostPath.Type)
-	//	hostPath := v1.HostPathVolumeSource{
-	//		Path: path,
-	//		Type: &hostPathType,
-	//	}
-	//	vol.HostPath = &hostPath
-	//}
 	return vol
 }
 
@@ -159,18 +90,11 @@ func UnitEnvToK8sContainerEnv(env EnvVar) v1.EnvVar {
 
 func VolumeMountToK8sVolumeMount(vm VolumeMount) v1.VolumeMount {
 	// FIXME - add SubPath to kip Volume mount type and send it from kip
-	// DUCKTAPE:
-	subPath := ""
-	if vm.Name == "resolvconf" {
-		subPath = "/etc/"
-	} else {
-		subPath = ""
-	}
 	return v1.VolumeMount{
 		Name:             vm.Name,
 		ReadOnly:         false,
 		MountPath:        vm.MountPath,
-		SubPath:          subPath,
+		SubPath:          "",
 		MountPropagation: nil,
 		SubPathExpr:      "",
 	}
