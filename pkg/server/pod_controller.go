@@ -406,7 +406,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			path := filepath.Join("/tmp/itzo/units", "..", "packages")
 			_, err = os.Stat(path)
 			if os.IsNotExist(err) {
-				glog.Infof("Folder %s does not exist.")
+				glog.Infof("Folder %s does not exist.", path)
 			}
 			report, err := play.Kube(connText, tmpFile.Name(), entities.PlayKubeOptions{})
 			if err != nil {
