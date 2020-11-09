@@ -395,7 +395,6 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			if err != nil {
 				fmt.Println("Cannot create temporary file", err)
 			}
-			tmpFilePath := os.TempDir() + tmpFile.Name()
 
 			// cleaning up by removing the file
 			defer os.Remove(tmpFile.Name())
@@ -406,7 +405,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 				fmt.Println("Failed to write to temporary file", err)
 			}
 
-			report, err := play.Kube(connText, tmpFilePath, entities.PlayKubeOptions{})
+			report, err := play.Kube(connText, tmpFile.Name(), entities.PlayKubeOptions{})
 			if err != nil {
 				glog.Errorf("podman pod creatino failed with: %v", err)
 				return event
