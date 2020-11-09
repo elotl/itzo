@@ -163,6 +163,7 @@ func TestK8sPodToYamlFormat(t *testing.T) {
 	k8sPodSpec := PodSpecToK8sPodSpec(kipPodSpec)
 	podYaml := K8sPodToYamlFormat(k8sPodSpec)
 	fileContents, err := yaml.Marshal(podYaml)
+	t.Log(string(fileContents))
 	assert.NoError(t, err)
 	conf := kubeval.NewDefaultConfig()
 	_, err = kubeval.Validate(fileContents, conf)

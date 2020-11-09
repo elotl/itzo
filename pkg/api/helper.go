@@ -17,9 +17,7 @@ limitations under the License.
 package api
 
 import (
-	"github.com/golang/glog"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"path/filepath"
@@ -50,89 +48,95 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 }
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
+	hostPathType := v1.HostPathFile
 	vol := v1.Volume{
 		Name: volume.Name,
-		VolumeSource: v1.VolumeSource{},
+		VolumeSource: v1.VolumeSource{
+			HostPath: &v1.HostPathVolumeSource{
+				Path: filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name),
+				Type: &hostPathType,
+			},
+		},
 	}
-	sizeLimit := &resource.Quantity{}
-	if volume.EmptyDir != nil {
-		sizeLimit = resource.NewQuantity(volume.EmptyDir.SizeLimit, resource.DecimalSI)
-		emptyDir := v1.EmptyDirVolumeSource{
-			Medium:    v1.StorageMedium(volume.EmptyDir.Medium),
-			SizeLimit: sizeLimit,
-		}
-		vol.EmptyDir = &emptyDir
-	}
-	var secretItems []v1.KeyToPath
-	var configMapItems []v1.KeyToPath
-	var projectionSources []v1.VolumeProjection
-	if volume.Projected != nil {
-		for _, source := range volume.Projected.Sources {
-			var items []v1.KeyToPath
-			for _, item := range source.Secret.Items {
-				items = append(items, v1.KeyToPath(item))
-			}
-			var cmItems []v1.KeyToPath
-			for _, item := range source.ConfigMap.Items {
-				cmItems = append(cmItems, v1.KeyToPath(item))
-			}
-			projectionSources = append(projectionSources, v1.VolumeProjection{
-				Secret: &v1.SecretProjection{
-					LocalObjectReference: v1.LocalObjectReference(source.Secret.LocalObjectReference),
-					Items:                items,
-					Optional:             source.Secret.Optional,
-				},
-				ConfigMap: &v1.ConfigMapProjection{
-					LocalObjectReference: v1.LocalObjectReference(source.ConfigMap.LocalObjectReference),
-					Items:                cmItems,
-					Optional:             source.ConfigMap.Optional,
-				},
-			})
-		}
-		projectedSource := v1.ProjectedVolumeSource{
-			Sources:     projectionSources,
-			DefaultMode: volume.Projected.DefaultMode,
-		}
-		vol.Projected = &projectedSource
-	}
-	if volume.Secret != nil {
-		for _, item := range volume.Secret.Items {
-			secretItems = append(secretItems, v1.KeyToPath(item))
-		}
-		secretSource := v1.SecretVolumeSource{
-			SecretName:  volume.Secret.SecretName,
-			Items:       secretItems,
-			DefaultMode: volume.Secret.DefaultMode,
-			Optional:    volume.Secret.Optional,
-		}
-		vol.Secret = &secretSource
-	}
-	if volume.ConfigMap != nil {
-		for _, item := range volume.ConfigMap.Items {
-			configMapItems = append(configMapItems, v1.KeyToPath(item))
-		}
-		configMap := v1.ConfigMapVolumeSource{
-			LocalObjectReference: v1.LocalObjectReference{Name: volume.ConfigMap.LocalObjectReference.Name},
-			Items:                configMapItems,
-			DefaultMode:          volume.ConfigMap.DefaultMode,
-			Optional:             volume.ConfigMap.Optional,
-		}
-		vol.ConfigMap = &configMap
-	}
-	if volume.HostPath != nil {
-		var hostPathType v1.HostPathType
-		glog.Infof("volume host path: %s", volume.HostPath.Path)
-		path := volume.HostPath.Path
-		if volume.HostPath.Path == "" {
-			path = filepath.Join("/tmp/itzo/units", "..", "packages", vol.Name)
-		}
-		hostPathType = v1.HostPathType(*volume.HostPath.Type)
-		hostPath := v1.HostPathVolumeSource{
-			Path: path,
-			Type: &hostPathType,
-		}
-		vol.HostPath = &hostPath
-	}
+	//sizeLimit := &resource.Quantity{}
+	//if volume.EmptyDir != nil {
+	//	sizeLimit = resource.NewQuantity(volume.EmptyDir.SizeLimit, resource.DecimalSI)
+	//	emptyDir := v1.EmptyDirVolumeSource{
+	//		Medium:    v1.StorageMedium(volume.EmptyDir.Medium),
+	//		SizeLimit: sizeLimit,
+	//	}
+	//	vol.EmptyDir = &emptyDir
+	//}
+	//var secretItems []v1.KeyToPath
+	//var configMapItems []v1.KeyToPath
+	//var projectionSources []v1.VolumeProjection
+	//if volume.Projected != nil {
+	//	for _, source := range volume.Projected.Sources {
+	//		var items []v1.KeyToPath
+	//		for _, item := range source.Secret.Items {
+	//			items = append(items, v1.KeyToPath(item))
+	//		}
+	//		var cmItems []v1.KeyToPath
+	//		for _, item := range source.ConfigMap.Items {
+	//			cmItems = append(cmItems, v1.KeyToPath(item))
+	//		}
+	//		projectionSources = append(projectionSources, v1.VolumeProjection{
+	//			Secret: &v1.SecretProjection{
+	//				LocalObjectReference: v1.LocalObjectReference(source.Secret.LocalObjectReference),
+	//				Items:                items,
+	//				Optional:             source.Secret.Optional,
+	//			},
+	//			ConfigMap: &v1.ConfigMapProjection{
+	//				LocalObjectReference: v1.LocalObjectReference(source.ConfigMap.LocalObjectReference),
+	//				Items:                cmItems,
+	//				Optional:             source.ConfigMap.Optional,
+	//			},
+	//		})
+	//	}
+	//	projectedSource := v1.ProjectedVolumeSource{
+	//		Sources:     projectionSources,
+	//		DefaultMode: volume.Projected.DefaultMode,
+	//	}
+	//	vol.Projected = &projectedSource
+	//}
+	//if volume.Secret != nil {
+	//	for _, item := range volume.Secret.Items {
+	//		secretItems = append(secretItems, v1.KeyToPath(item))
+	//	}
+	//	secretSource := v1.SecretVolumeSource{
+	//		SecretName:  volume.Secret.SecretName,
+	//		Items:       secretItems,
+	//		DefaultMode: volume.Secret.DefaultMode,
+	//		Optional:    volume.Secret.Optional,
+	//	}
+	//	vol.Secret = &secretSource
+	//}
+	//if volume.ConfigMap != nil {
+	//	for _, item := range volume.ConfigMap.Items {
+	//		configMapItems = append(configMapItems, v1.KeyToPath(item))
+	//	}
+	//	configMap := v1.ConfigMapVolumeSource{
+	//		LocalObjectReference: v1.LocalObjectReference{Name: volume.ConfigMap.LocalObjectReference.Name},
+	//		Items:                configMapItems,
+	//		DefaultMode:          volume.ConfigMap.DefaultMode,
+	//		Optional:             volume.ConfigMap.Optional,
+	//	}
+	//	vol.ConfigMap = &configMap
+	//}
+	//if volume.HostPath != nil {
+	//	var hostPathType v1.HostPathType
+	//	glog.Infof("volume host path: %s", volume.HostPath.Path)
+	//	path := volume.HostPath.Path
+	//	if volume.HostPath.Path == "" {
+	//		path = filepath.Join("/tmp/itzo/units", "..", "packages", vol.Name)
+	//	}
+	//	hostPathType = v1.HostPathType(*volume.HostPath.Type)
+	//	hostPath := v1.HostPathVolumeSource{
+	//		Path: path,
+	//		Type: &hostPathType,
+	//	}
+	//	vol.HostPath = &hostPath
+	//}
 	return vol
 }
 
