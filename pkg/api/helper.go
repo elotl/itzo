@@ -66,12 +66,12 @@ func VolumeToK8sVolume(volume Volume) v1.Volume {
 				cmItems = append(cmItems, v1.KeyToPath(item))
 			}
 			projectionSources = append(projectionSources, v1.VolumeProjection{
-				Secret:              &v1.SecretProjection{
+				Secret: &v1.SecretProjection{
 					LocalObjectReference: v1.LocalObjectReference(source.Secret.LocalObjectReference),
 					Items:                items,
 					Optional:             source.Secret.Optional,
 				},
-				ConfigMap:           &v1.ConfigMapProjection{
+				ConfigMap: &v1.ConfigMapProjection{
 					LocalObjectReference: v1.LocalObjectReference(source.ConfigMap.LocalObjectReference),
 					Items:                cmItems,
 					Optional:             source.ConfigMap.Optional,
@@ -146,8 +146,8 @@ func VolumeToK8sVolume(volume Volume) v1.Volume {
 
 func UnitEnvToK8sContainerEnv(env EnvVar) v1.EnvVar {
 	envVar := v1.EnvVar{
-		Name:      env.Name,
-		Value:     env.Value,
+		Name:  env.Name,
+		Value: env.Value,
 	}
 	if env.ValueFrom != nil {
 		envVar.ValueFrom = &v1.EnvVarSource{
@@ -364,19 +364,19 @@ func PodSpecToK8sPodSpec(podSpec PodSpec) v1.PodSpec {
 }
 
 type K8sPodYaml struct {
-	Kind string  `json:"kind"`
-	ApiVersion string `json:"apiVersion"`
-	Spec v1.PodSpec
-	Status v1.PodStatus `yaml:"status,omitempty"`
-	TypeMeta   metav1.TypeMeta
-	ObjectMeta metav1.ObjectMeta
+	Kind       string            `json:"kind"`
+	ApiVersion string            `json:"apiVersion"`
+	Spec       v1.PodSpec        `json:"spec"`
+	Status     v1.PodStatus      `json:"status,omitempty"`
+	TypeMeta   metav1.TypeMeta   `json:",inline"`
+	ObjectMeta metav1.ObjectMeta `json:"metadata,omitempty"`
 }
 
 func K8sPodToYamlFormat(pod v1.PodSpec) K8sPodYaml {
 	return K8sPodYaml{
 		ApiVersion: "v1",
-		Kind: "Pod",
-		Spec: pod,
+		Kind:       "Pod",
+		Spec:       pod,
 		Status:     v1.PodStatus{},
 		TypeMeta:   metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
