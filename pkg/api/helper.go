@@ -97,47 +97,67 @@ func VolumeToK8sVolume(volume Volume) v1.Volume {
 			Type: &hostPathType,
 		}
 	}
+	var emptyDir v1.EmptyDirVolumeSource
+	if volume.EmptyDir != nil {
+		emptyDir = v1.EmptyDirVolumeSource{
+			Medium:    v1.StorageMedium(volume.EmptyDir.Medium),
+			SizeLimit: sizeLimit,
+		}
+	}
+	var configMap v1.ConfigMapVolumeSource
+	if volume.ConfigMap != nil {
+		configMap = v1.ConfigMapVolumeSource{
+			LocalObjectReference: v1.LocalObjectReference{Name: volume.ConfigMap.LocalObjectReference.Name},
+			Items:                configMapItems,
+			DefaultMode:          volume.ConfigMap.DefaultMode,
+			Optional:             volume.ConfigMap.Optional,
+		}
+	}
+	var secretSource v1.SecretVolumeSource
+	if volume.Secret != nil {
+		secretSource = v1.SecretVolumeSource{
+			SecretName:  volume.Secret.SecretName,
+			Items:       secretItems,
+			DefaultMode: volume.Secret.DefaultMode,
+			Optional:    volume.Secret.Optional,
+		}
+	}
+	var projectedSource v1.ProjectedVolumeSource
+	if volume.Projected != nil {
+		projectedSource = v1.ProjectedVolumeSource{
+			Sources:     projectionSources,
+			DefaultMode: volume.Projected.DefaultMode,
+		}
+	}
 
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
 			HostPath:  &hostPath,
-			EmptyDir:  &v1.EmptyDirVolumeSource{
-				Medium:    v1.StorageMedium(volume.EmptyDir.Medium),
-				SizeLimit: sizeLimit,
-			},
-			Secret:    &v1.SecretVolumeSource{
-				SecretName:  volume.Secret.SecretName,
-				Items:       secretItems,
-				DefaultMode: volume.Secret.DefaultMode,
-				Optional:    volume.Secret.Optional,
-			},
-			ConfigMap: &v1.ConfigMapVolumeSource{
-				LocalObjectReference: v1.LocalObjectReference{Name: volume.ConfigMap.LocalObjectReference.Name},
-				Items:                configMapItems,
-				DefaultMode:          volume.ConfigMap.DefaultMode,
-				Optional:             volume.ConfigMap.Optional,
-			},
-			Projected: &v1.ProjectedVolumeSource{
-				Sources:     projectionSources,
-				DefaultMode: volume.Projected.DefaultMode,
-			},
+			EmptyDir:  &emptyDir,
+			Secret:    &secretSource,
+			ConfigMap: &configMap,
+			Projected: &projectedSource,
 		},
 	}
 	return vol
 }
 
 func UnitEnvToK8sContainerEnv(env EnvVar) v1.EnvVar {
-	return v1.EnvVar{
-		Name:  env.Name,
-		Value: env.Value,
-		ValueFrom: &v1.EnvVarSource{
+	envVar := v1.EnvVar{
+		Name:      env.Name,
+		Value:     env.Value,
+	}
+	if env.ValueFrom != nil {
+		envVar.ValueFrom = &v1.EnvVarSource{
 			SecretKeyRef: &v1.SecretKeySelector{
 				LocalObjectReference: v1.LocalObjectReference{Name: env.ValueFrom.SecretKeyRef.Name},
 				Key:                  env.ValueFrom.SecretKeyRef.Key,
 			},
-		},
+		}
 	}
+
+	return envVar
 }
 
 func VolumeMountToK8sVolumeMount(vm VolumeMount) v1.VolumeMount {
