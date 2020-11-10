@@ -29,6 +29,7 @@ func TestPodSpecToK8sPodSpec(t *testing.T)  {
 					{
 						Name: "default-token-hppdm",
 						MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
+						SubPath: "",
 					},
 				},
 				Ports: []ContainerPort{
@@ -107,6 +108,7 @@ func TestK8sPodToYamlFormat(t *testing.T) {
 					{
 						Name: "default-token-hppdm",
 						MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
+						SubPath: "",
 					},
 				},
 				Ports: []ContainerPort{

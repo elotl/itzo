@@ -404,6 +404,7 @@ func TestFullSyncErrors(t *testing.T) {
 			VolumeMounts: []api.VolumeMount{
 				{
 					Name: "v1",
+					SubPath: "",
 				},
 			},
 		}},
@@ -426,6 +427,7 @@ func TestFullSyncErrors(t *testing.T) {
 			VolumeMounts: []api.VolumeMount{
 				{
 					Name: "v1",
+					SubPath: "",
 				},
 			},
 		}},

@@ -17,7 +17,6 @@ limitations under the License.
 package api
 
 import (
-	"github.com/golang/glog"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -50,18 +49,20 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
 	hostPathType := v1.HostPathDirectory
-	path := filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name)
 	if volume.HostPath != nil {
-		glog.Infof("vol name: %s, hostPath.Type: %s, hostPath.Path: %s", volume.Name, string(*volume.HostPath.Type), volume.HostPath.Path)
 		hostPathType = v1.HostPathType(*volume.HostPath.Type)
-		path = filepath.Join("/tmp/itzo/units", "..", "packages", volume.HostPath.Path)
-		glog.Errorf("NOERROR, volume host path: %s", *volume.HostPath.Type)
 	}
+	path := volume.Name
+	//// FIXME: should be handled properly, this is just for POC
+	//if volume.Name == "resolvconf" {
+	//	hostPathType = v1.HostPathFile
+	//	path = "resolvconf/etc/resolv.conf"
+	//}
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
 			HostPath: &v1.HostPathVolumeSource{
-				Path: path,
+				Path: filepath.Join("/tmp/itzo/units", "..", "packages", path),
 				Type: &hostPathType,
 			},
 		},
@@ -87,12 +88,11 @@ func UnitEnvToK8sContainerEnv(env EnvVar) v1.EnvVar {
 }
 
 func VolumeMountToK8sVolumeMount(vm VolumeMount) v1.VolumeMount {
-	// FIXME - add SubPath to kip Volume mount type and send it from kip
 	return v1.VolumeMount{
 		Name:             vm.Name,
 		ReadOnly:         false,
 		MountPath:        vm.MountPath,
-		SubPath:          "",
+		SubPath:          vm.SubPath,
 		MountPropagation: nil,
 		SubPathExpr:      "",
 	}
