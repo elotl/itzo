@@ -779,6 +779,7 @@ func (pc *PodController) getContainerStatuses() ([]api.UnitStatus, []api.UnitSta
 		if err != nil || ctrData == nil {
 			// todo handle
 			glog.Warning("cannot get container state from podman")
+			continue
 		}
 		unitStatuses = append(unitStatuses, api.UnitStatus{
 			Name: unit.Name,

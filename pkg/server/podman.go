@@ -31,12 +31,13 @@ func (pp *PodmanPuller) PullImage(rootdir, name, image, server, username, passwo
 func ContainerStateToUnit(ctrData define.InspectContainerData) api.UnitState {
 	if ctrData.State != nil {
 		state := *ctrData.State
-		return api.UnitState{
-				Waiting:    &api.UnitStateWaiting{
-					Reason:       state.Status,
-					StartFailure: false,
-				},
+		if state.Running {
+			return api.UnitState{
 				Running:    &api.UnitStateRunning{StartedAt: api.Time{Time: state.StartedAt}},
+			}
+		}
+		if state.Dead {
+			return api.UnitState{
 				Terminated: &api.UnitStateTerminated{
 					ExitCode:   state.ExitCode,
 					FinishedAt: api.Time{Time: state.FinishedAt},
@@ -46,6 +47,16 @@ func ContainerStateToUnit(ctrData define.InspectContainerData) api.UnitState {
 					StartedAt:  api.Time{Time: state.StartedAt},
 				},
 			}
+		}
+		return api.UnitState{
+				Waiting:    &api.UnitStateWaiting{
+					Reason:       state.Status,
+					StartFailure: false,
+				},
+			}
 	}
-	return api.UnitState{}
+	return api.UnitState{Waiting: &api.UnitStateWaiting{
+		Reason:       "waiting for container status",
+		StartFailure: false,
+	}}
 }
