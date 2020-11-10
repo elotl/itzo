@@ -49,21 +49,19 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 }
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
+	hostPathType := v1.HostPathDirectory
+	path := filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name)
 	if volume.HostPath != nil {
 		glog.Infof("vol name: %s, hostPath.Type: %s, hostPath.Path: %s", volume.Name, string(*volume.HostPath.Type), volume.HostPath.Path)
-	}
-	hostPathType := v1.HostPathDirectory
-	path := volume.Name
-	// FIXME: should be handled properly, this is just for POC
-	if volume.Name == "resolvconf" {
-		hostPathType = v1.HostPathFile
-		path = "resolvconf/etc/resolv.conf"
+		hostPathType = v1.HostPathType(*volume.HostPath.Type)
+		path = filepath.Join("/tmp/itzo/units", "..", "packages", volume.HostPath.Path)
+		glog.Errorf("NOERROR, volume host path: %s", *volume.HostPath.Type)
 	}
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
 			HostPath: &v1.HostPathVolumeSource{
-				Path: filepath.Join("/tmp/itzo/units", "..", "packages", path),
+				Path: path,
 				Type: &hostPathType,
 			},
 		},
