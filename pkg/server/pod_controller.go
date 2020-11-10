@@ -750,6 +750,13 @@ func (pc *PodController) getUnitStatuses(units []api.Unit) []api.UnitStatus {
 }
 
 func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error) {
+	if pc.usePodman {
+		statuses, initStatuses, err := pc.getContainerStatuses()
+		if err != nil {
+			glog.Errorf("error getting container status from podman: %v", err)
+		}
+		return statuses, initStatuses, nil
+	}
 	statuses := pc.getUnitStatuses(pc.podStatus.Units)
 	initStatuses := pc.getUnitStatuses(pc.podStatus.InitUnits)
 	// Kubelet reports completed init units as "Ready" whereas
@@ -762,4 +769,23 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error)
 		}
 	}
 	return statuses, initStatuses, nil
+}
+
+func (pc *PodController) getContainerStatuses() ([]api.UnitStatus, []api.UnitStatus, error) {
+	connText, _ := itzounit.GetPodmanConnection()
+	var unitStatuses []api.UnitStatus
+	for _, unit := range pc.podStatus.Units {
+		ctrData, err := containers.Inspect(connText, unit.Name, nil)
+		if err != nil || ctrData == nil {
+			// todo handle
+			glog.Warning("cannot get container state from podman")
+		}
+		unitStatuses = append(unitStatuses, api.UnitStatus{
+			Name: unit.Name,
+			State: ContainerStateToUnit(*ctrData),
+			RestartCount: 0,
+			Image:        unit.Image,
+		})
+	}
+	return unitStatuses, []api.UnitStatus{}, nil
 }
