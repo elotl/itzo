@@ -23,6 +23,18 @@ import (
 	"path/filepath"
 )
 
+const (
+	resolvconfVolumeName string          = "resolvconf"
+	etchostsVolumeName   string          = "etchosts"
+)
+
+var (
+	specialVolumesTypes = map[string]v1.HostPathType{
+		resolvconfVolumeName: v1.HostPathFile,
+		etchostsVolumeName: v1.HostPathDirectory,
+	}
+)
+
 func IsHostNetwork(securityContext *PodSecurityContext) bool {
 	if securityContext == nil {
 		return false
@@ -48,16 +60,13 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 }
 
 func VolumeToK8sVolume(volume Volume) v1.Volume {
-	hostPathType := v1.HostPathDirectory
-	if volume.HostPath != nil {
+	var hostPathType v1.HostPathType
+	if hostType, ok := specialVolumesTypes[volume.Name]; ok {
+		hostPathType = hostType
+	} else if volume.HostPath != nil {
 		hostPathType = v1.HostPathType(*volume.HostPath.Type)
 	}
 	path := volume.Name
-	//// FIXME: should be handled properly, this is just for POC
-	//if volume.Name == "resolvconf" {
-	//	hostPathType = v1.HostPathFile
-	//	path = "resolvconf/etc/resolv.conf"
-	//}
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{

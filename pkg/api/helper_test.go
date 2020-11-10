@@ -110,6 +110,11 @@ func TestK8sPodToYamlFormat(t *testing.T) {
 						MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
 						SubPath: "",
 					},
+					{
+						Name: resolvconfVolumeName,
+						MountPath: "/etc/resolvconf",
+						SubPath: "/etc/resolv.conf",
+					},
 				},
 				Ports: []ContainerPort{
 					{
@@ -146,6 +151,15 @@ func TestK8sPodToYamlFormat(t *testing.T) {
 					},
 					HostPath:    nil,
 					Projected:   nil,
+				},
+			},
+			{
+				Name: resolvconfVolumeName,
+				VolumeSource: VolumeSource{
+					HostPath: &HostPathVolumeSource{
+						Path: "/tmp/itzo/packages/resolvconf",
+						Type: nil,
+					} ,
 				},
 			},
 		},
