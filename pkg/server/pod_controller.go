@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"github.com/containers/libpod/v2/pkg/bindings/containers"
 	"github.com/containers/libpod/v2/pkg/bindings/play"
-	"github.com/containers/libpod/v2/pkg/domain/entities"
 	"github.com/containers/libpod/v2/pkg/bindings/pods"
+	"github.com/containers/libpod/v2/pkg/domain/entities"
 	"github.com/ghodss/yaml"
 	"github.com/instrumenta/kubeval/kubeval"
 	"io/ioutil"
@@ -343,20 +343,22 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		if pc.usePodman {
 			connText, err := itzounit.GetPodmanConnection()
 			for _, unit := range deleteUnits {
-				err = containers.Stop(connText, unit.Name, nil)
+				containerName := api.UnitNameToContainerName(unit.Name)
+				err = containers.Stop(connText, containerName, nil)
 				if err != nil {
-					glog.Errorf("error stopping %s container: %v", unit.Name, err)
+					glog.Errorf("error stopping %s container: %v", containerName, err)
 				}
 
-				err = containers.Remove(connText, unit.Name, &forceRemove, &removeVolumes)
+				err = containers.Remove(connText, containerName, &forceRemove, &removeVolumes)
 				if err != nil {
-					glog.Errorf("error removing %s container: %v", unit.Name, err)
+					glog.Errorf("error removing %s container: %v", containerName, err)
 				}
 			}
 			for _, unit := range addUnits {
-				err = containers.Start(connText, unit.Name, nil)
+				containerName := api.UnitNameToContainerName(unit.Name)
+				err = containers.Start(connText, containerName, nil)
 				if err != nil {
-					glog.Errorf("error starting %s container: %v", unit.Name, err)
+					glog.Errorf("error starting %s container: %v", containerName, err)
 				}
 			}
 			return event
@@ -829,11 +831,13 @@ func (pc *PodController) getContainerStatuses() ([]api.UnitStatus, []api.UnitSta
 			glog.Warningf("cannot get container state from podman for unit: %s\n%v \nctrData: %v", containerName, err, ctrData)
 			continue
 		}
+		state, ready := ContainerStateToUnit(*ctrData)
 		unitStatuses = append(unitStatuses, api.UnitStatus{
-			Name: unit.Name,
-			State: ContainerStateToUnit(*ctrData),
+			Name:         unit.Name,
+			State:        state,
 			RestartCount: 0,
 			Image:        unit.Image,
+			Ready:        ready,
 		})
 	}
 	return unitStatuses, []api.UnitStatus{}, nil
