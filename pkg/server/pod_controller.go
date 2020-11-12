@@ -816,13 +816,16 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error)
 }
 
 func (pc *PodController) getContainerStatuses() ([]api.UnitStatus, []api.UnitStatus, error) {
-	connText, _ := itzounit.GetPodmanConnection()
+	connText, err := itzounit.GetPodmanConnection()
+	if err != nil {
+		glog.Errorf("cannot get podman conn: %v", err)
+	}
 	var unitStatuses []api.UnitStatus
 	for _, unit := range pc.podStatus.Units {
 		ctrData, err := containers.Inspect(connText, unit.Name, nil)
 		if err != nil || ctrData == nil {
 			// todo handle
-			glog.Warning("cannot get container state from podman")
+			glog.Warningf("cannot get container state from podman for unit: %s\n%v \nctrData: %v", unit.Name, err, ctrData)
 			continue
 		}
 		unitStatuses = append(unitStatuses, api.UnitStatus{
