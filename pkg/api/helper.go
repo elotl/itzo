@@ -26,6 +26,7 @@ import (
 const (
 	resolvconfVolumeName string          = "resolvconf"
 	etchostsVolumeName   string          = "etchosts"
+	podmanPodName        string          = "my-pod"
 )
 
 var (
@@ -326,7 +327,11 @@ func K8sPodToYamlFormat(pod v1.PodSpec) K8sPodYaml {
 		TypeMeta:   metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			// todo use constant here
-			Name: "my-pod",
+			Name: podmanPodName,
 		},
 	}
+}
+
+func UnitNameToContainerName(unitName string) string {
+	return podmanPodName + unitName
 }
