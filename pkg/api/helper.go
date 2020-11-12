@@ -333,5 +333,5 @@ func K8sPodToYamlFormat(pod v1.PodSpec) K8sPodYaml {
 }
 
 func UnitNameToContainerName(unitName string) string {
-	return podmanPodName + unitName
+	return podmanPodName + "-" + unitName
 }
