@@ -33,6 +33,9 @@ var (
 		resolvconfVolumeName: v1.HostPathFile,
 		etchostsVolumeName: v1.HostPathDirectory,
 	}
+	specialVolumesPaths = map[string]string{
+		resolvconfVolumeName: "/tmp/itzo/packages/resolvconf/etc/resolv.conf",
+	}
 )
 
 func IsHostNetwork(securityContext *PodSecurityContext) bool {
@@ -63,15 +66,22 @@ func VolumeToK8sVolume(volume Volume) v1.Volume {
 	var hostPathType v1.HostPathType
 	if hostType, ok := specialVolumesTypes[volume.Name]; ok {
 		hostPathType = hostType
+
 	} else if volume.HostPath != nil {
 		hostPathType = v1.HostPathType(*volume.HostPath.Type)
 	}
-	path := volume.Name
+	path :=  filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name)
+	if hostPath, ok := specialVolumesPaths[volume.Name]; ok {
+		path = hostPath
+	} else if volume.HostPath != nil {
+		path = volume.HostPath.Path
+	}
+
 	vol := v1.Volume{
 		Name: volume.Name,
 		VolumeSource: v1.VolumeSource{
 			HostPath: &v1.HostPathVolumeSource{
-				Path: filepath.Join("/tmp/itzo/units", "..", "packages", path),
+				Path: path,
 				Type: &hostPathType,
 			},
 		},

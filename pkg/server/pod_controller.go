@@ -21,6 +21,7 @@ import (
 	"github.com/containers/libpod/v2/pkg/bindings/containers"
 	"github.com/containers/libpod/v2/pkg/bindings/play"
 	"github.com/containers/libpod/v2/pkg/domain/entities"
+	"github.com/containers/libpod/v2/pkg/bindings/pods"
 	"github.com/ghodss/yaml"
 	"github.com/instrumenta/kubeval/kubeval"
 	"io/ioutil"
@@ -432,8 +433,51 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 			// delete pod
 			// create pod from spec.
 			// exit function
-			//connText, err := itzounit.GetPodmanConnection()
-			//pods.Stop(connText, status)
+			connText, _ := itzounit.GetPodmanConnection()
+			stopReport, err := pods.Stop(connText, "my-pod", nil)
+			if err != nil || len(stopReport.Errs) > 0 {
+				glog.Errorf("error stopping pod: %v", err)
+				for _, err := range stopReport.Errs {
+					glog.Errorf("errors stopping pod: %s", err.Error())
+				}
+			}
+			removeReport, err := pods.Remove(connText, "my-pod", nil)
+			if err != nil || removeReport.Err != nil {
+				glog.Errorf("error stopping pod: %v \n%v", err, removeReport.Err)
+
+			}
+			// debug, todo, remove this log line
+			glog.Infof("got kip pod spec: %v", spec)
+			k8sPodSpec := api.PodSpecToK8sPodSpec(*spec)
+			podYaml := api.K8sPodToYamlFormat(k8sPodSpec)
+			tmpFile, err := ioutil.TempFile(os.TempDir(), "pod-*.yaml")
+			if err != nil {
+				fmt.Println("Cannot create temporary file", err)
+			}
+
+			// cleaning up by removing the file
+			defer os.Remove(tmpFile.Name())
+
+			// Write to the file
+			fileContents, err := yaml.Marshal(podYaml)
+			glog.Infof("file contents:\n %s", string(fileContents))
+			_, err = kubeval.Validate(fileContents, kubeval.NewDefaultConfig())
+			if err != nil {
+				glog.Errorf("validation of k8s file failed with: %v", err)
+			}
+			if _, err = tmpFile.Write(fileContents); err != nil {
+				glog.Errorf("Failed to write to temporary file: %v", err)
+			}
+			spec.Phase = api.PodWaiting
+			report, err := play.Kube(connText, tmpFile.Name(), entities.PlayKubeOptions{})
+			if err != nil {
+				glog.Errorf("podman pod creating failed with: %v", err)
+				spec.Phase = api.PodFailed
+				return event
+			}
+			glog.Infof("created pod: %s", report)
+			spec.Phase = api.PodRunning
+			return event
 		}
 		glog.Info("init units not equal, trying to restart pod")
 		pc.DestroyPod(status)
