@@ -17,7 +17,6 @@ func NewPodmanPuller(connText context.Context) *PodmanPuller {
 	return &PodmanPuller{connText: connText}
 }
 
-
 func (pp *PodmanPuller) PullImage(rootdir, name, image, server, username, password string) error {
 	pulledImages, err := images.Pull(pp.connText, image, entities.ImagePullOptions{})
 	if err != nil {
@@ -33,7 +32,7 @@ func ContainerStateToUnit(ctrData define.InspectContainerData) (api.UnitState, b
 		state := *ctrData.State
 		if state.Running {
 			return api.UnitState{
-				Running:    &api.UnitStateRunning{StartedAt: api.Time{Time: state.StartedAt}},
+				Running: &api.UnitStateRunning{StartedAt: api.Time{Time: state.StartedAt}},
 			}, true
 		}
 		if state.Dead {
@@ -42,18 +41,18 @@ func ContainerStateToUnit(ctrData define.InspectContainerData) (api.UnitState, b
 					ExitCode:   state.ExitCode,
 					FinishedAt: api.Time{Time: state.FinishedAt},
 					// TODO send better reason
-					Reason:     state.Status,
-					Message:    state.Error,
-					StartedAt:  api.Time{Time: state.StartedAt},
+					Reason:    state.Status,
+					Message:   state.Error,
+					StartedAt: api.Time{Time: state.StartedAt},
 				},
 			}, false
 		}
 		return api.UnitState{
-				Waiting:    &api.UnitStateWaiting{
-					Reason:       state.Status,
-					StartFailure: false,
-				},
-			}, false
+			Waiting: &api.UnitStateWaiting{
+				Reason:       state.Status,
+				StartFailure: false,
+			},
+		}, false
 	}
 	return api.UnitState{Waiting: &api.UnitStateWaiting{
 		Reason:       "waiting for container status",

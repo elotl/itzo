@@ -17,6 +17,7 @@ limitations under the License.
 package server
 
 import (
+	"errors"
 	"fmt"
 	"github.com/containers/libpod/v2/pkg/bindings/containers"
 	"github.com/containers/libpod/v2/pkg/bindings/play"
@@ -348,7 +349,6 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 				if err != nil {
 					glog.Errorf("error stopping %s container: %v", containerName, err)
 				}
-
 				err = containers.Remove(connText, containerName, &forceRemove, &removeVolumes)
 				if err != nil {
 					glog.Errorf("error removing %s container: %v", containerName, err)
@@ -797,10 +797,7 @@ func (pc *PodController) getUnitStatuses(units []api.Unit) []api.UnitStatus {
 
 func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error) {
 	if pc.usePodman {
-		statuses, initStatuses, err := pc.getContainerStatuses()
-		if err != nil {
-			glog.Errorf("error getting container status from podman: %v", err)
-		}
+		statuses, initStatuses := pc.getContainerStatuses()
 		return statuses, initStatuses, nil
 	}
 	statuses := pc.getUnitStatuses(pc.podStatus.Units)
@@ -817,28 +814,45 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error)
 	return statuses, initStatuses, nil
 }
 
-func (pc *PodController) getContainerStatuses() ([]api.UnitStatus, []api.UnitStatus, error) {
+func (pc *PodController) getContainerStatus(connText context.Context, unit api.Unit) (api.UnitStatus, error)  {
+	containerName := api.UnitNameToContainerName(unit.Name)
+	ctrData, err := containers.Inspect(connText, containerName, nil)
+	if err != nil || ctrData == nil {
+		errorMsg := fmt.Sprintf("cannot get container state from podman for unit: %s\n%v \nctrData: %v", containerName, err, ctrData)
+		return api.UnitStatus{}, errors.New(errorMsg)
+
+	}
+	state, ready := ContainerStateToUnit(*ctrData)
+	status := api.UnitStatus{
+		Name:         unit.Name,
+		State:        state,
+		RestartCount: 0,
+		Image:        unit.Image,
+		Ready:        ready,
+	}
+	return status, nil
+}
+
+func (pc *PodController) getContainerStatuses() (unitStatuses []api.UnitStatus, initUnitStatuses []api.UnitStatus) {
 	connText, err := itzounit.GetPodmanConnection()
 	if err != nil {
 		glog.Errorf("cannot get podman conn: %v", err)
 	}
-	var unitStatuses []api.UnitStatus
 	for _, unit := range pc.podStatus.Units {
-		containerName := api.UnitNameToContainerName(unit.Name)
-		ctrData, err := containers.Inspect(connText, containerName, nil)
-		if err != nil || ctrData == nil {
-			// todo handle
-			glog.Warningf("cannot get container state from podman for unit: %s\n%v \nctrData: %v", containerName, err, ctrData)
-			continue
+		unitStatus, err := pc.getContainerStatus(connText, unit)
+		if err != nil {
+			glog.Error(err)
+			unitStatus = *api.MakeStillCreatingStatus(unit.Name, unit.Image, "cannot get container state from podman")
 		}
-		state, ready := ContainerStateToUnit(*ctrData)
-		unitStatuses = append(unitStatuses, api.UnitStatus{
-			Name:         unit.Name,
-			State:        state,
-			RestartCount: 0,
-			Image:        unit.Image,
-			Ready:        ready,
-		})
+		unitStatuses = append(unitStatuses, unitStatus)
 	}
-	return unitStatuses, []api.UnitStatus{}, nil
+	for _, unit := range pc.podStatus.InitUnits {
+		unitStatus, err := pc.getContainerStatus(connText, unit)
+		if err != nil {
+			glog.Error(err)
+			unitStatus = *api.MakeStillCreatingStatus(unit.Name, unit.Image, "cannot get container state from podman")
+		}
+		initUnitStatuses = append(initUnitStatuses, unitStatus)
+	}
+	return unitStatuses, initUnitStatuses
 }
