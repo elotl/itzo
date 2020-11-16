@@ -1,6 +1,7 @@
-package api
+package convert
 
 import (
+	"github.com/elotl/itzo/pkg/api"
 	"github.com/ghodss/yaml"
 	"github.com/golangplus/testing/assert"
 	"github.com/instrumenta/kubeval/kubeval"
@@ -8,16 +9,16 @@ import (
 )
 
 func TestPodSpecToK8sPodSpec(t *testing.T)  {
-	kipPodSpec := PodSpec{
-		Phase:            PodRunning,
-		RestartPolicy:    "Never",
-		Units:            []Unit{
+	kipPodSpec := api.PodSpec{
+		Phase:         api.PodRunning,
+		RestartPolicy: "Never",
+		Units:            []api.Unit{
 			{
 				Name: "web",
 				Image: "nginx:stable",
 				Command: []string{},
 				Args: []string{},
-				Env: []EnvVar{
+				Env: []api.EnvVar{
 					{
 						"KUBERNETES_SERVICE_PORT_HTTPS",
 						"443",
@@ -25,41 +26,41 @@ func TestPodSpecToK8sPodSpec(t *testing.T)  {
 					},
 
 				},
-				VolumeMounts: []VolumeMount{
+				VolumeMounts: []api.VolumeMount{
 					{
 						Name: "default-token-hppdm",
 						MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
 						SubPath: "",
 					},
 				},
-				Ports: []ContainerPort{
+				Ports: []api.ContainerPort{
 					{
-						Name: "web",
-						HostPort: 0,
+						Name:          "web",
+						HostPort:      0,
 						ContainerPort: 80,
-						Protocol: MakeProtocol("TCP"),
+						Protocol:      api.MakeProtocol("TCP"),
 					},
 				},
 			},
 		},
-		InitUnits:        []Unit{},
+		InitUnits:        []api.Unit{},
 		ImagePullSecrets: nil,
 		InstanceType:     "e2-micro",
-		Spot:             PodSpot{Policy: SpotNever},
-		Resources:        ResourceSpec{
+		Spot:             api.PodSpot{Policy: api.SpotNever},
+		Resources:        api.ResourceSpec{
 			DedicatedCPU: false,
 			SustainedCPU: nil,
 			PrivateIPOnly: false,
 		},
-		Placement:        PlacementSpec{},
-		Volumes:          []Volume{
+		Placement: api.PlacementSpec{},
+		Volumes:          []api.Volume{
 			{
 				Name: "default-token-hppdm",
-				VolumeSource: VolumeSource{
+				VolumeSource: api.VolumeSource{
 					EmptyDir:    nil,
 					PackagePath: nil,
 					ConfigMap:   nil,
-					Secret:      &SecretVolumeSource{
+					Secret:      &api.SecretVolumeSource{
 						SecretName:  "secret",
 						Items:       nil,
 						DefaultMode: nil,
@@ -70,7 +71,7 @@ func TestPodSpecToK8sPodSpec(t *testing.T)  {
 				},
 			},
 		},
-		SecurityContext:  &PodSecurityContext{
+		SecurityContext:  &api.PodSecurityContext{
 			NamespaceOptions:   nil,
 			RunAsUser:          nil,
 			RunAsGroup:         nil,
@@ -87,16 +88,16 @@ func TestPodSpecToK8sPodSpec(t *testing.T)  {
 }
 
 func TestK8sPodToYamlFormat(t *testing.T) {
-	kipPodSpec := PodSpec{
-		Phase:            PodRunning,
-		RestartPolicy:    "Never",
-		Units:            []Unit{
+	kipPodSpec := api.PodSpec{
+		Phase:         api.PodRunning,
+		RestartPolicy: "Never",
+		Units:            []api.Unit{
 			{
 				Name: "web",
 				Image: "nginx:stable",
 				Command: []string{},
 				Args: []string{},
-				Env: []EnvVar{
+				Env: []api.EnvVar{
 					{
 						"KUBERNETES_SERVICE_PORT_HTTPS",
 						"443",
@@ -104,46 +105,46 @@ func TestK8sPodToYamlFormat(t *testing.T) {
 					},
 
 				},
-				VolumeMounts: []VolumeMount{
+				VolumeMounts: []api.VolumeMount{
 					{
 						Name: "default-token-hppdm",
 						MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
 						SubPath: "",
 					},
 					{
-						Name: resolvconfVolumeName,
+						Name: ResolvconfVolumeName,
 						MountPath: "/etc/resolvconf",
 						SubPath: "/etc/resolv.conf",
 					},
 				},
-				Ports: []ContainerPort{
+				Ports: []api.ContainerPort{
 					{
-						Name: "web",
-						HostPort: 0,
+						Name:          "web",
+						HostPort:      0,
 						ContainerPort: 80,
-						Protocol: MakeProtocol("TCP"),
+						Protocol:      api.MakeProtocol("TCP"),
 					},
 				},
 			},
 		},
-		InitUnits:        []Unit{},
+		InitUnits:        []api.Unit{},
 		ImagePullSecrets: nil,
 		InstanceType:     "e2-micro",
-		Spot:             PodSpot{Policy: SpotNever},
-		Resources:        ResourceSpec{
+		Spot:             api.PodSpot{Policy: api.SpotNever},
+		Resources:        api.ResourceSpec{
 			DedicatedCPU: false,
 			SustainedCPU: nil,
 			PrivateIPOnly: false,
 		},
-		Placement:        PlacementSpec{},
-		Volumes:          []Volume{
+		Placement: api.PlacementSpec{},
+		Volumes:          []api.Volume{
 			{
 				Name: "default-token-hppdm",
-				VolumeSource: VolumeSource{
+				VolumeSource: api.VolumeSource{
 					EmptyDir:    nil,
 					PackagePath: nil,
 					ConfigMap:   nil,
-					Secret:      &SecretVolumeSource{
+					Secret:      &api.SecretVolumeSource{
 						SecretName:  "secret",
 						Items:       nil,
 						DefaultMode: nil,
@@ -154,16 +155,16 @@ func TestK8sPodToYamlFormat(t *testing.T) {
 				},
 			},
 			{
-				Name: resolvconfVolumeName,
-				VolumeSource: VolumeSource{
-					HostPath: &HostPathVolumeSource{
+				Name: ResolvconfVolumeName,
+				VolumeSource: api.VolumeSource{
+					HostPath: &api.HostPathVolumeSource{
 						Path: "/tmp/itzo/packages/resolvconf",
 						Type: nil,
 					} ,
 				},
 			},
 		},
-		SecurityContext:  &PodSecurityContext{
+		SecurityContext:  &api.PodSecurityContext{
 			NamespaceOptions:   nil,
 			RunAsUser:          nil,
 			RunAsGroup:         nil,

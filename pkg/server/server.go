@@ -42,7 +42,6 @@ import (
 	"github.com/elotl/itzo/pkg/host"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/metrics"
-	"github.com/elotl/itzo/pkg/mount"
 	itzonet "github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
@@ -87,7 +86,6 @@ type ServerUnitMgr interface {
 
 type UnitManager interface {
 	ServerUnitMgr
-	UnitRunner
 	GetContext() context.Context
 }
 
@@ -113,26 +111,15 @@ func New(rootdir string, usePodman bool) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
-	mounter := mount.NewOSMounter(rootdir)
-
-	var um UnitManager
-	var ctx context.Context
-	if usePodman {
-		um, _= unit.NewPodmanManager(rootdir)
-		glog.Info("using podman in server")
-		ctx = um.GetContext()
-	} else {
-		ctx = context.TODO()
-		um = unit.NewUnitManager(rootdir)
-	}
-	pc := NewPodController(ctx, rootdir, mounter, um, usePodman)
+	pc, err := NewPodController(rootdir, usePodman)
+	glog.Error(err)
 	pc.Start()
 	return &Server{
 		env:            EnvStore{},
 		startTime:      time.Now().UTC(),
 		installRootdir: rootdir,
 		podController:  pc,
-		unitMgr:        um,
+		unitMgr:        nil,
 		wsUpgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -316,7 +303,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 				badRequest(w, err.Error())
 				return
 			}
-			logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
+			logBuffer, err := s.podController.GetLogBuffer(unitName)
 			if err != nil {
 				badRequest(w, err.Error())
 				return
@@ -345,7 +332,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, err.Error())
 			return
 		}
-		logs, err := s.unitMgr.ReadLogBuffer(unitName, n)
+		logs, err := s.podController.ReadLogBuffer(unitName, n)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
@@ -383,7 +370,7 @@ func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName s
 		case <-ws.Closed():
 			return
 		case <-fileTicker.C:
-			unitRunning := s.unitMgr.UnitRunning(unitName)
+			unitRunning := s.podController.UnitRunning(unitName)
 			if !unitRunning {
 				// We can finish running but still have some data left
 				// in the buffer. If that's the case, go through one
@@ -573,18 +560,19 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
+	// todo encapsulate this in more highlevel podController function
 	unitName, err := s.podController.GetUnitName(params.UnitName)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return
 	}
-	_, exists := s.unitMgr.GetPid(unitName)
+	_, exists := s.podController.GetPid(unitName)
 	if !exists {
 		writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
 		return
 	}
 
-	logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
+	logBuffer, err := s.podController.GetLogBuffer(unitName)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return
@@ -618,7 +606,7 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 		case <-ws.Closed():
 			return
 		case <-fileTicker.C:
-			unitRunning := s.unitMgr.UnitRunning(unitName)
+			unitRunning := s.podController.UnitRunning(unitName)
 			if !unitRunning {
 				writeWSError(ws, "Unit %s is not running\n", unitName)
 				return

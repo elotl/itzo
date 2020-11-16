@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"github.com/containers/libpod/v2/libpod/define"
 	"github.com/containers/libpod/v2/pkg/bindings/images"
 	"github.com/containers/libpod/v2/pkg/domain/entities"
-	"github.com/elotl/itzo/pkg/api"
 	"github.com/golang/glog"
 )
 
@@ -27,35 +25,3 @@ func (pp *PodmanPuller) PullImage(rootdir, name, image, server, username, passwo
 	return nil
 }
 
-func ContainerStateToUnit(ctrData define.InspectContainerData) (api.UnitState, bool) {
-	if ctrData.State != nil {
-		state := *ctrData.State
-		if state.Running {
-			return api.UnitState{
-				Running: &api.UnitStateRunning{StartedAt: api.Time{Time: state.StartedAt}},
-			}, true
-		}
-		if state.Dead {
-			return api.UnitState{
-				Terminated: &api.UnitStateTerminated{
-					ExitCode:   state.ExitCode,
-					FinishedAt: api.Time{Time: state.FinishedAt},
-					// TODO send better reason
-					Reason:    state.Status,
-					Message:   state.Error,
-					StartedAt: api.Time{Time: state.StartedAt},
-				},
-			}, false
-		}
-		return api.UnitState{
-			Waiting: &api.UnitStateWaiting{
-				Reason:       state.Status,
-				StartFailure: false,
-			},
-		}, false
-	}
-	return api.UnitState{Waiting: &api.UnitStateWaiting{
-		Reason:       "waiting for container status",
-		StartFailure: false,
-	}}, false
-}
