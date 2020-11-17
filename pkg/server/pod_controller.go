@@ -66,7 +66,7 @@ func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 	var podRuntime runtime.RuntimeService
 	var err error
 	if usePodman {
-		podRuntime, err = runtime.NewPodmanRuntime()
+		podRuntime, err = runtime.NewPodmanRuntime(rootdir)
 		if err != nil {
 			return &PodController{}, err
 		}

@@ -45,7 +45,7 @@ type RuntimeService interface {
 
 type ImageService interface {
 	ListImages()
-	ImageStatus(rootdir, image string)
+	ImageStatus(rootdir, image string) error
 	PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error
-	RemoveImage(rootdir, image string)
+	RemoveImage(rootdir, image string) error
 }

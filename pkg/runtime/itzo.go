@@ -41,11 +41,11 @@ func (ip *ImagePuller) ListImages() {
 	panic("implement me")
 }
 
-func (ip *ImagePuller) ImageStatus(rootdir, image string) {
+func (ip *ImagePuller) ImageStatus(rootdir, image string) error {
 	panic("implement me")
 }
 
-func (ip *ImagePuller) RemoveImage(rootdir, image string) {
+func (ip *ImagePuller) RemoveImage(rootdir, image string) error {
 	panic("implement me")
 }
 

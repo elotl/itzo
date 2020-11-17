@@ -352,11 +352,11 @@ func (p *ImagePullMock) ListImages() {
 	panic("implement me")
 }
 
-func (p *ImagePullMock) ImageStatus(rootdir, image string) {
+func (p *ImagePullMock) ImageStatus(rootdir, image string) error {
 	panic("implement me")
 }
 
-func (p *ImagePullMock) RemoveImage(rootdir, image string) {
+func (p *ImagePullMock) RemoveImage(rootdir, image string) error {
 	panic("implement me")
 }
 
