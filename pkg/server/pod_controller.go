@@ -64,9 +64,12 @@ type PodController struct {
 
 func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 	var podRuntime runtime.RuntimeService
+	var err error
 	if usePodman {
-		podRuntime, _ = runtime.NewPodmanRuntime()
-		glog.Info("using podman image puller")
+		podRuntime, err = runtime.NewPodmanRuntime()
+		if err != nil {
+			return &PodController{}, err
+		}
 	} else {
 		mounter := mount.NewOSMounter(rootdir)
 		unitMgr := itzounit.NewUnitManager(rootdir)
@@ -298,8 +301,8 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 				pc.waitGroup.Done()
 				return
 			}
-			// TODO rethink
-			//if !pc.waitForInitUnit(ctx, unit.Name, ipolicy) {
+			//TODO rethink
+			//if pc.waitForInitUnit(ctx, unit.Name, ipolicy) {
 			//	return
 			//}
 		}
