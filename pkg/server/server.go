@@ -21,7 +21,6 @@ package server
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -77,25 +76,12 @@ func (pe *ParameterError) Error() string {
 	return ""
 }
 
-type ServerUnitMgr interface {
-	GetLogBuffer(unit string) (*logbuf.LogBuffer, error)
-	ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error)
-	UnitRunning(unit string) bool
-	GetPid(unitName string) (int, bool)
-}
-
-type UnitManager interface {
-	ServerUnitMgr
-	GetContext() context.Context
-}
-
 type Server struct {
 	env                 EnvStore
 	httpServer          *http.Server
 	mux                 http.ServeMux
 	startTime           time.Time
 	podController       *PodController
-	unitMgr             ServerUnitMgr
 	wsUpgrader          websocket.Upgrader
 	installRootdir      string
 	lastMetricTime      time.Time
@@ -119,7 +105,6 @@ func New(rootdir string, usePodman bool) *Server {
 		startTime:      time.Now().UTC(),
 		installRootdir: rootdir,
 		podController:  pc,
-		unitMgr:        nil,
 		wsUpgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,

@@ -58,17 +58,8 @@ func main() {
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
 		if *usePodman {
-			glog.Infof("using podman")
-			podmanManager, err := unit.NewPodmanManager(*rootdir)
-			if err != nil {
-				glog.Fatalf("error creating podman manager: %v", err)
-			}
-			err = podmanManager.StartContainer(*rootdir, *appunit)
-			if err != nil {
-				glog.Fatalf("error starting podman container: %v", err)
-			} else {
-				os.Exit(0)
-			}
+			glog.Errorf("Unexpected behavior, unitmanager called itzo runtime with use podman flag")
+			os.Exit(1)
 		}
 		glog.Infof("Starting %s for pod %s unit %s; restart policy is %v",
 			*appcmdline, *podname, *appunit, policy)
@@ -92,6 +83,7 @@ func main() {
 	}
 
 	glog.Infof("Starting up agent, is podman used? %s", strconv.FormatBool(*usePodman))
+	// TODO if podman flag is set, ensure that podman service is running
 	server := server.New(*rootdir, *usePodman)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)

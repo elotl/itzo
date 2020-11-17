@@ -184,8 +184,6 @@ func (um *UnitManager) StartUnit(podname, hostname, unitname, workingdir, netns 
 		workingdir,
 		"--netns",
 		netns,
-		//"--use-podman",
-		//"true",
 	}
 	cmd := exec.Command("/proc/self/exe", cmdline...)
 	cmd.Stdout = os.Stdout
