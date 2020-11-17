@@ -379,7 +379,7 @@ type UnitMock struct {
 }
 
 func (u *UnitMock) UnitRunning(s string) bool {
-	panic("implement me")
+	return false
 }
 
 func (u *UnitMock) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
@@ -881,7 +881,7 @@ func TestWaitForInitUnitReturnCases(t *testing.T) {
 		}, nil)
 		assert.NoError(t, err, msg)
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		retVal := podCtl.waitForInitUnit(ctx, u.Name, tc.restartPolicy)
+		retVal := podCtl.waitForInitUnit(ctx, u.Name, u.Image, tc.restartPolicy)
 		select {
 		case <-ctx.Done():
 			assert.True(t, tc.contextDone, msg)

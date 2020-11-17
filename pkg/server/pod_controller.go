@@ -277,7 +277,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		initsToStart = spec.InitUnits
 		unitsToStart = spec.Units
 	}
-	_, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	if pc.cancelFunc != nil {
 		glog.Infof("Canceling previous pod update")
 		pc.cancelFunc()
@@ -301,10 +301,9 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 				pc.waitGroup.Done()
 				return
 			}
-			//TODO rethink
-			//if pc.waitForInitUnit(ctx, unit.Name, ipolicy) {
-			//	return
-			//}
+			if !pc.waitForInitUnit(ctx, unit.Name, unit.Image, ipolicy) {
+				return
+			}
 		}
 		for _, unit := range unitsToStart {
 			unitStatus, err := pc.runtime.StartContainer(unit, spec, pc.podName)
@@ -322,7 +321,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 	return event
 }
 
-func (pc *PodController) waitForInitUnit(ctx context.Context, name string, policy api.RestartPolicy) bool {
+func (pc *PodController) waitForInitUnit(ctx context.Context, name, image string, policy api.RestartPolicy) bool {
 	for {
 		select {
 		case <-ctx.Done():
@@ -331,12 +330,7 @@ func (pc *PodController) waitForInitUnit(ctx context.Context, name string, polic
 		case <-time.After(waitForInitUnitPollInterval):
 			glog.Infof("Checking status of init unit %s", name)
 		}
-		u, err := itzounit.OpenUnit(pc.rootdir, name)
-		if err != nil {
-			glog.Warningf("Opening init unit %s: %v", name, err)
-			continue
-		}
-		status, err := u.GetStatus()
+		status, err := pc.runtime.ContainerStatus(name, image)
 		if err != nil {
 			glog.Warningf("Getting status of init unit %s: %v", name, err)
 			continue
