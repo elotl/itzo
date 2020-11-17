@@ -18,6 +18,8 @@ package server
 
 import (
 	"fmt"
+	"github.com/elotl/itzo/pkg/logbuf"
+	runtime2 "github.com/elotl/itzo/pkg/runtime"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -27,7 +29,6 @@ import (
 	"github.com/elotl/itzo/pkg/unit"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func TestMergeSecretsIntoSpec(t *testing.T) {
@@ -344,16 +345,28 @@ func (m *MountMock) DetachMount(unitname, dst string) error {
 }
 
 type ImagePullMock struct {
-	Pull func(rootdir, name, image, server, username, password string) error
+	Pull func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error
 }
 
-func (p *ImagePullMock) PullImage(rootdir, name, image, server, username, password string) error {
-	return p.Pull(rootdir, name, image, server, username, password)
+func (p *ImagePullMock) ListImages() {
+	panic("implement me")
+}
+
+func (p *ImagePullMock) ImageStatus(rootdir, image string) {
+	panic("implement me")
+}
+
+func (p *ImagePullMock) RemoveImage(rootdir, image string) {
+	panic("implement me")
+}
+
+func (p *ImagePullMock) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
+	return p.Pull(rootdir, name, image, registryCredentials)
 }
 
 func NewImagePullMock() *ImagePullMock {
 	return &ImagePullMock{
-		Pull: func(rootdir, name, image, server, username, password string) error {
+		Pull: func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
 			return nil
 		},
 	}
@@ -363,6 +376,22 @@ type UnitMock struct {
 	Start  func(string, string, string, string, string, []string, []string, []string, api.RestartPolicy) error
 	Stop   func(string) error
 	Remove func(string) error
+}
+
+func (u *UnitMock) UnitRunning(s string) bool {
+	panic("implement me")
+}
+
+func (u *UnitMock) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
+	panic("implement me")
+}
+
+func (u *UnitMock) ReadLogBuffer(unitName string, n int) ([]logbuf.LogEntry, error) {
+	panic("implement me")
+}
+
+func (u *UnitMock) GetPid(s string) (int, bool) {
+	panic("implement me")
 }
 
 func (u *UnitMock) StartUnit(podname, hostname, unitname, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
@@ -403,7 +432,7 @@ func TestFullSyncErrors(t *testing.T) {
 			Command: []string{"hello"},
 			VolumeMounts: []api.VolumeMount{
 				{
-					Name: "v1",
+					Name:    "v1",
 					SubPath: "",
 				},
 			},
@@ -426,7 +455,7 @@ func TestFullSyncErrors(t *testing.T) {
 			Command: []string{"hello"},
 			VolumeMounts: []api.VolumeMount{
 				{
-					Name: "v1",
+					Name:    "v1",
 					SubPath: "",
 				},
 			},
@@ -458,7 +487,8 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "mount_delete_failed",
 			mod: func(pc *PodController) {
-				m := pc.mountCtl.(*MountMock)
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				m := r.MountCtl.(*MountMock)
 				m.Delete = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
 				}
@@ -468,7 +498,8 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "mount_create_failed",
 			mod: func(pc *PodController) {
-				m := pc.mountCtl.(*MountMock)
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				m := r.MountCtl.(*MountMock)
 				m.Create = func(vol *api.Volume) error {
 					return fmt.Errorf("mounter failed")
 				}
@@ -478,7 +509,8 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "unit_stop_failed",
 			mod: func(pc *PodController) {
-				m := pc.unitMgr.(*UnitMock)
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				m := r.UnitMgr.(*UnitMock)
 				m.Stop = func(name string) error {
 					return fmt.Errorf("unit stop failed")
 				}
@@ -488,7 +520,8 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "mount_detach_failed",
 			mod: func(pc *PodController) {
-				m := pc.mountCtl.(*MountMock)
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				m := r.MountCtl.(*MountMock)
 				m.Detach = func(name, dst string) error {
 					return fmt.Errorf("mounter detach failed")
 				}
@@ -498,7 +531,8 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "unit_remove_failed",
 			mod: func(pc *PodController) {
-				m := pc.unitMgr.(*UnitMock)
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				m := r.UnitMgr.(*UnitMock)
 				m.Remove = func(name string) error {
 					return fmt.Errorf("unit removal failed")
 				}
@@ -510,8 +544,9 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "pull_failed",
 			mod: func(pc *PodController) {
-				puller := pc.imagePuller.(*ImagePullMock)
-				puller.Pull = func(rootdir, name, image, server, username, password string) error {
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				puller := r.ImgPuller.(*ImagePullMock)
+				puller.Pull = func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
 					return fmt.Errorf("Pull Failed")
 				}
 			},
@@ -520,7 +555,8 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "attach_failed",
 			mod: func(pc *PodController) {
-				m := pc.mountCtl.(*MountMock)
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				m := r.MountCtl.(*MountMock)
 				m.Attach = func(unitname, src, dst string) error {
 					return fmt.Errorf("mounter failed")
 				}
@@ -530,7 +566,8 @@ func TestFullSyncErrors(t *testing.T) {
 		{
 			name: "unit_start_failed",
 			mod: func(pc *PodController) {
-				m := pc.unitMgr.(*UnitMock)
+				r := pc.runtime.(*runtime2.ItzoRuntime)
+				m := r.UnitMgr.(*UnitMock)
 				m.Start = func(pod, hostname, name, workingdir, netns string, command, args, env []string, rp api.RestartPolicy) error {
 					return fmt.Errorf("unit add failed")
 				}
@@ -541,12 +578,12 @@ func TestFullSyncErrors(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			runtime := runtime2.NewItzoRuntime(DEFAULT_ROOTDIR, NewUnitMock(), NewMountMock(), NewImagePullMock())
+
 			podCtl := PodController{
-				rootdir:     DEFAULT_ROOTDIR,
-				mountCtl:    NewMountMock(),
-				unitMgr:     NewUnitMock(),
-				imagePuller: NewImagePullMock(),
-				syncErrors:  make(map[string]api.UnitStatus),
+				rootdir:    DEFAULT_ROOTDIR,
+				runtime:    runtime,
+				syncErrors: make(map[string]api.UnitStatus),
 			}
 			testCase.mod(&podCtl)
 			podCtl.SyncPodUnits(&spec, &status, creds)
@@ -656,12 +693,11 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 	creds := make(map[string]api.RegistryCredentials)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			runtime := runtime2.NewItzoRuntime(DEFAULT_ROOTDIR, NewUnitMock(), NewMountMock(), NewImagePullMock())
 			pc := PodController{
-				rootdir:     DEFAULT_ROOTDIR,
-				mountCtl:    NewMountMock(),
-				unitMgr:     NewUnitMock(),
-				imagePuller: NewImagePullMock(),
-				syncErrors:  make(map[string]api.UnitStatus),
+				rootdir:    DEFAULT_ROOTDIR,
+				runtime:    runtime,
+				syncErrors: make(map[string]api.UnitStatus),
 			}
 			event := pc.SyncPodUnits(testCase.spec, testCase.status, creds)
 			assert.Equal(t, testCase.expectedEvent, event)
@@ -762,8 +798,13 @@ func TestPodControllerStatus(t *testing.T) {
 	s, err = units[1].GetStatus()
 	assert.NoError(t, err)
 	assertStatusEqual(t, &initExpected, s)
-
-	podCtl := NewPodController(context.TODO(), rootdir, nil, nil, false)
+	runtime := runtime2.NewItzoRuntime(rootdir, unit.NewUnitManager(rootdir), nil, nil)
+	podCtl := &PodController{
+		rootdir:    rootdir,
+		runtime:    runtime,
+		usePodman:  false,
+		syncErrors: make(map[string]api.UnitStatus),
+	}
 	podCtl.podStatus = &status
 	statuses, initStatuses, err := podCtl.GetStatus()
 	assert.NoError(t, err)
@@ -786,51 +827,6 @@ func TestPodControllerStatus(t *testing.T) {
 	assertStatusEqual(t, &expected, &statuses[0])
 	assert.Len(t, initStatuses, 1)
 	assertStatusEqual(t, &initExpected, &initStatuses[0])
-}
-
-func TestFindPortByName(t *testing.T) {
-	unit := &api.Unit{
-		Ports: []api.ContainerPort{
-			{
-				Name:          "foo",
-				ContainerPort: 8080,
-			},
-			{
-				Name:          "bar",
-				ContainerPort: 9000,
-			},
-		},
-	}
-	want := 8080
-	got, err := findPortByName(unit, "foo")
-	if got != want || err != nil {
-		t.Errorf("Expected %v, got %v, err: %v", want, got, err)
-	}
-}
-
-func TestTranslateProbePorts(t *testing.T) {
-	probe := &api.Probe{
-		Handler: api.Handler{
-			HTTPGet: &api.HTTPGetAction{
-				Port: intstr.FromString("foo"),
-			},
-		},
-	}
-	unit := &api.Unit{
-		Ports: []api.ContainerPort{
-			{
-				Name:          "foo",
-				ContainerPort: 8080,
-			},
-		},
-	}
-	newProbe := translateProbePorts(unit, probe)
-	assert.NotNil(t, newProbe)
-	assert.Equal(t, intstr.Int, newProbe.HTTPGet.Port.Type)
-	assert.Equal(t, int32(8080), newProbe.HTTPGet.Port.IntVal)
-	assert.Equal(t, intstr.String, probe.HTTPGet.Port.Type)
-	assert.Equal(t, "foo", probe.HTTPGet.Port.StrVal)
-
 }
 
 func TestWaitForInitUnitReturnCases(t *testing.T) {
@@ -870,12 +866,11 @@ func TestWaitForInitUnitReturnCases(t *testing.T) {
 	for i, tc := range tests {
 		msg := fmt.Sprintf("Test case %d", i)
 		rootDir, units, closer := createTestUnits("testunit")
+		runtime := runtime2.NewItzoRuntime(rootDir, NewUnitMock(), NewMountMock(), NewImagePullMock())
 		podCtl := PodController{
-			rootdir:     rootDir,
-			mountCtl:    NewMountMock(),
-			unitMgr:     NewUnitMock(),
-			imagePuller: NewImagePullMock(),
-			syncErrors:  make(map[string]api.UnitStatus),
+			rootdir:    rootDir,
+			runtime:    runtime,
+			syncErrors: make(map[string]api.UnitStatus),
 		}
 
 		u := units[0]
@@ -896,49 +891,5 @@ func TestWaitForInitUnitReturnCases(t *testing.T) {
 		assert.Equal(t, tc.success, retVal, msg)
 		closer()
 		cancel()
-	}
-}
-
-func TestGetRepoCreds(t *testing.T) {
-	tests := []struct {
-		server string
-		creds  map[string]api.RegistryCredentials
-		u      string
-		p      string
-	}{
-		{
-			server: "",
-			creds:  nil,
-			u:      "",
-			p:      "",
-		},
-		{
-			server: "",
-			creds: map[string]api.RegistryCredentials{
-				"index.docker.io": api.RegistryCredentials{
-					Username: "myuser",
-					Password: "mypass",
-				},
-			},
-			u: "myuser",
-			p: "mypass",
-		},
-		{
-			server: "docker.io",
-			creds: map[string]api.RegistryCredentials{
-				"registry-1.docker.io": api.RegistryCredentials{
-					Username: "myuser",
-					Password: "mypass",
-				},
-			},
-			u: "myuser",
-			p: "mypass",
-		},
-	}
-	for i, tc := range tests {
-		user, pass := getRepoCreds(tc.server, tc.creds)
-		msg := fmt.Sprintf("test case %d failed", i)
-		assert.Equal(t, tc.u, user, msg)
-		assert.Equal(t, tc.p, pass, msg)
 	}
 }

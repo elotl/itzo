@@ -19,6 +19,7 @@ package server
 import (
 	"fmt"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/runtime"
 	"sync"
 	"time"
@@ -67,7 +68,10 @@ func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 		podRuntime, _ = runtime.NewPodmanRuntime()
 		glog.Info("using podman image puller")
 	} else {
-		podRuntime = runtime.NewItzoRuntime(rootdir)
+		mounter := mount.NewOSMounter(rootdir)
+		unitMgr := itzounit.NewUnitManager(rootdir)
+		imgPuller := runtime.ImagePuller{}
+		podRuntime = runtime.NewItzoRuntime(rootdir, unitMgr, mounter, &imgPuller)
 	}
 	return &PodController{
 		rootdir:     rootdir,
@@ -270,7 +274,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		initsToStart = spec.InitUnits
 		unitsToStart = spec.Units
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	if pc.cancelFunc != nil {
 		glog.Infof("Canceling previous pod update")
 		pc.cancelFunc()
@@ -287,19 +291,24 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		}
 		for _, unit := range initsToStart {
 			// Start init units first, one by one, and wait for each to finish.
-			err := pc.runtime.StartContainer(unit, spec, pc.podName)
+			unitStatus, err := pc.runtime.StartContainer(unit, spec, pc.podName)
 			if err != nil {
 				glog.Errorf("error starting unit %s : %v", unit.Name, err)
+				pc.syncErrors[unit.Name] = *unitStatus
+				pc.waitGroup.Done()
 				return
 			}
-			if !pc.waitForInitUnit(ctx, unit.Name, ipolicy) {
-				return
-			}
+			// TODO rethink
+			//if !pc.waitForInitUnit(ctx, unit.Name, ipolicy) {
+			//	return
+			//}
 		}
 		for _, unit := range unitsToStart {
-			err := pc.runtime.StartContainer(unit, spec, pc.podName)
+			unitStatus, err := pc.runtime.StartContainer(unit, spec, pc.podName)
 			if err != nil {
 				glog.Errorf("error starting unit %s : %v", unit.Name, err)
+				pc.syncErrors[unit.Name] = *unitStatus
+				pc.waitGroup.Done()
 				return
 			}
 			delete(pc.syncErrors, unit.Name)
@@ -353,12 +362,20 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error)
 		if err != nil {
 			glog.Error(err)
 		}
+		failedStatus, exists := pc.syncErrors[unit.Name]
+		if exists {
+			unitStatus = &failedStatus
+		}
 		statuses = append(statuses, *unitStatus)
 	}
 	for _, unit := range pc.podStatus.InitUnits {
 		unitStatus, err := pc.runtime.ContainerStatus(unit.Name, unit.Image)
 		if err != nil {
 			glog.Error(err)
+		}
+		failedStatus, exists := pc.syncErrors[unit.Name]
+		if exists {
+			unitStatus = &failedStatus
 		}
 		initStatuses = append(initStatuses, *unitStatus)
 	}
@@ -397,11 +414,13 @@ func (pc *PodController) RestartPod(spec, status *api.PodSpec) error {
 		return err
 	}
 	for _, unit := range spec.Units {
-		err = pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
+		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
 		if err != nil {
+			pc.syncErrors[unit.Name] = *unitStatus
 			return err
 		}
 	}
+	pc.podRestartCount += 1
 	spec.Phase = api.PodDispatching
 	return nil
 }
@@ -413,8 +432,9 @@ func (pc *PodController) CreatePod(spec *api.PodSpec) error {
 		return err
 	}
 	for _, unit := range spec.Units {
-		err = pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
+		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
 		if err != nil {
+			pc.syncErrors[unit.Name] = *unitStatus
 			return err
 		}
 	}
@@ -432,8 +452,9 @@ func (pc *PodController) RestartUnits(spec, status *api.PodSpec) ([]api.Unit, er
 	}
 
 	for _, unit := range addUnits {
-		err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
+		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
 		if err != nil {
+			pc.syncErrors[unit.Name] = *unitStatus
 			return []api.Unit{}, err
 		}
 	}

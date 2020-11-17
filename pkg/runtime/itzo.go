@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
-	"github.com/elotl/itzo/pkg/mount"
 	itzounit "github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
@@ -80,28 +79,26 @@ func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredential
 
 type ItzoRuntime struct {
 	rootdir   string
-	unitMgr   UnitRunner
-	mountCtl  Mounter
-	imgPuller ImageService
+	UnitMgr   UnitRunner
+	MountCtl  Mounter
+	ImgPuller ImageService
 	netNS     string
 	podIP     string
 }
 
-func NewItzoRuntime(rootdir string) *ItzoRuntime {
-	unitMgr := itzounit.NewUnitManager(rootdir)
-	mounter := mount.NewOSMounter(rootdir)
+func NewItzoRuntime(rootdir string, unitMgr UnitRunner, mounter Mounter, imgPuller ImageService) *ItzoRuntime {
 	return &ItzoRuntime{
 		rootdir:   rootdir,
-		unitMgr:   unitMgr,
-		mountCtl:  mounter,
-		imgPuller: &ImagePuller{},
+		UnitMgr:   unitMgr,
+		MountCtl:  mounter,
+		ImgPuller: imgPuller,
 	}
 }
 
 func (i *ItzoRuntime) RunPodSandbox(spec *api.PodSpec) error {
 	glog.Info("status units are nil, trying to create pod from scratch")
 	for _, volume := range spec.Volumes {
-		err := i.mountCtl.CreateMount(&volume)
+		err := i.MountCtl.CreateMount(&volume)
 		if err != nil {
 			glog.Errorf("Error creating volume: %s, %v", volume.Name, err)
 			return err
@@ -112,7 +109,7 @@ func (i *ItzoRuntime) RunPodSandbox(spec *api.PodSpec) error {
 }
 
 func (i *ItzoRuntime) StopPodSandbox(spec *api.PodSpec) error {
-	panic("implement me")
+	return nil
 }
 
 func (i *ItzoRuntime) RemovePodSandbox(spec *api.PodSpec) error {
@@ -124,7 +121,7 @@ func (i *ItzoRuntime) RemovePodSandbox(spec *api.PodSpec) error {
 		}
 	}
 	for _, volume := range spec.Volumes {
-		err := i.mountCtl.DeleteMount(&volume)
+		err := i.MountCtl.DeleteMount(&volume)
 		if err != nil {
 			glog.Errorf("Error removing volume %s: %v", volume.Name, err)
 			return err
@@ -137,31 +134,34 @@ func (i *ItzoRuntime) PodSandboxStatus() error {
 	panic("implement me")
 }
 
-func (i *ItzoRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) error {
+func (i *ItzoRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) (*api.UnitStatus, error) {
 	// pull image
-	err := i.imgPuller.PullImage(i.rootdir, unit.Name, unit.Image, registryCredentials)
+	err := i.ImgPuller.PullImage(i.rootdir, unit.Name, unit.Image, registryCredentials)
 	if err != nil {
-		return err
+		msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
+		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, msg), err
 	}
 	err = i.saveUnitConfig(&unit, spec.SecurityContext)
 	if err != nil {
-		return err
+		msg := fmt.Sprintf("Error saving unit %s configuration: %v",
+			unit.Name, err)
+		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, msg), err
 	}
 	// attach mounts
 	for _, volMount := range unit.VolumeMounts {
-		err := i.mountCtl.AttachMount(
+		err := i.MountCtl.AttachMount(
 			unit.Name, volMount.Name, volMount.MountPath)
 		if err != nil {
 			msg := fmt.Sprintf("Error attaching mount %s to unit %s: %v",
 				volMount.Name, unit.Name, err)
-			return errors.Wrapf(err, msg)
+			return api.MakeFailedUpdateStatus(unit.Name, unit.Image, msg), err
 		}
 	}
-	return nil
+	return nil, nil
 }
 
-func (i *ItzoRuntime) StartContainer(unit api.Unit, podSpec *api.PodSpec, podName string) error {
-	err := i.unitMgr.StartUnit(
+func (i *ItzoRuntime) StartContainer(unit api.Unit, podSpec *api.PodSpec, podName string) (*api.UnitStatus, error) {
+	err := i.UnitMgr.StartUnit(
 		podName,
 		podSpec.Hostname,
 		unit.Name,
@@ -172,9 +172,11 @@ func (i *ItzoRuntime) StartContainer(unit api.Unit, podSpec *api.PodSpec, podNam
 		makeAppEnv(&unit),
 		podSpec.RestartPolicy)
 	if err != nil {
-		return err
+		msg := fmt.Sprintf("Error starting unit %s: %v",
+			unit.Name, err)
+		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, msg), err
 	}
-	return nil
+	return nil, nil
 }
 
 func (i *ItzoRuntime) RemoveContainer(unit *api.Unit) error {
@@ -186,20 +188,20 @@ func (i *ItzoRuntime) RemoveContainer(unit *api.Unit) error {
 	//   * Detach all its mounts.
 	//   * Remove its files/directories.
 	//
-	err := i.unitMgr.StopUnit(unitName)
+	err := i.UnitMgr.StopUnit(unitName)
 	if err != nil {
 		glog.Errorf("Error stopping unit %s: %v; trying to continue",
 			unitName, err)
 	}
 	for _, volMount := range unit.VolumeMounts {
-		err = i.mountCtl.DetachMount(unitName, volMount.MountPath)
+		err = i.MountCtl.DetachMount(unitName, volMount.MountPath)
 		if err != nil {
 			glog.Errorf(
 				"Error detaching mount %s from %s: %v; trying to continue",
 				volMount.Name, unitName, err)
 		}
 	}
-	err = i.unitMgr.RemoveUnit(unitName)
+	err = i.UnitMgr.RemoveUnit(unitName)
 	if err != nil {
 		glog.Errorf("Error removing unit %s; trying to continue",
 			unitName)
@@ -212,7 +214,7 @@ func (i *ItzoRuntime) ListContainers() error {
 }
 
 func (i *ItzoRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {
-	if i.unitMgr.UnitRunning(unitName) {
+	if i.UnitMgr.UnitRunning(unitName) {
 		return &api.UnitStatus{
 			Name: unitName,
 			State: api.UnitState{
@@ -248,19 +250,19 @@ func (i ItzoRuntime) Status() {
 }
 
 func (i *ItzoRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	return i.unitMgr.GetLogBuffer(unitName)
+	return i.UnitMgr.GetLogBuffer(unitName)
 }
 
 func (i *ItzoRuntime) ReadLogBuffer(unitName string, n int) ([]logbuf.LogEntry, error) {
-	return i.unitMgr.ReadLogBuffer(unitName, n)
+	return i.UnitMgr.ReadLogBuffer(unitName, n)
 }
 
 func (i *ItzoRuntime) UnitRunning(unitName string) bool {
-	return i.unitMgr.UnitRunning(unitName)
+	return i.UnitMgr.UnitRunning(unitName)
 }
 
 func (i *ItzoRuntime) GetPid(unitName string) (int, bool) {
-	return i.unitMgr.GetPid(unitName)
+	return i.UnitMgr.GetPid(unitName)
 }
 
 func (i *ItzoRuntime) SetPodNetwork(netNS, podIP string)  {

@@ -74,7 +74,7 @@ type PodmanContainerService struct {
 	connText context.Context
 }
 
-func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) error {
+func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) (*api.UnitStatus, error) {
 	container := convert.UnitToK8sContainer(unit)
 	var k8sVolumes []v1.Volume
 	for _, vol := range spec.Volumes {
@@ -104,10 +104,10 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	}
 	//containerSpec.Mounts
 	//report, err := containers.CreateWithSpec(pcs.connText, containerSpec)
-	return nil
+	return nil, nil
 }
 
-func (pcs *PodmanContainerService) StartContainer(unit api.Unit, spec *api.PodSpec, podName string) error { return nil}
+func (pcs *PodmanContainerService) StartContainer(unit api.Unit, spec *api.PodSpec, podName string) (*api.UnitStatus, error) { return nil, nil}
 func (pcs *PodmanContainerService) RemoveContainer(unit *api.Unit) error { return nil}
 func (pcs *PodmanContainerService) ListContainers() error { return nil}
 func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {

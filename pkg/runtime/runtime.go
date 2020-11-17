@@ -14,8 +14,8 @@ type PodSandbox interface {
 }
 
 type ContainerService interface {
-	CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) error
-	StartContainer(unit api.Unit, spec *api.PodSpec, podName string) error
+	CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) (*api.UnitStatus, error)
+	StartContainer(unit api.Unit, spec *api.PodSpec, podName string) (*api.UnitStatus, error)
 	RemoveContainer(unit *api.Unit) error
 	ListContainers() error
 	ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error)
