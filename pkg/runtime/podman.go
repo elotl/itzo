@@ -17,6 +17,7 @@ import (
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
+	"path/filepath"
 )
 
 const (
@@ -52,14 +53,14 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	return err
 }
 
-func (ps *PodmanSandbox) StopPodSandbox() error {
+func (ps *PodmanSandbox) StopPodSandbox(spec *api.PodSpec) error {
 	report, err := pods.Stop(ps.connText, podName, nil)
 	if report != nil && len(report.Errs) > 0 {
 		return errors.New("TODO")
 	}
 	return err
 }
-func (ps *PodmanSandbox) RemovePodSandbox() error {
+func (ps *PodmanSandbox) RemovePodSandbox(spec *api.PodSpec) error {
 	report, err := pods.Remove(ps.connText, podName, nil)
 	if report != nil && report.Err != nil {
 		return report.Err
@@ -88,6 +89,13 @@ func (p *PodmanImageService) ImageStatus(rootdir, image string) error {
 }
 
 func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
+	exists, err := images.Exists(p.connText, image)
+	if exists {
+		return nil
+	}
+	if err != nil {
+		glog.Errorf("error checking if image %s already exists: %v", image, err)
+	}
 	server, _, err := util.ParseImageSpec(image)
 	if err != nil {
 		return err
@@ -125,8 +133,11 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	if err != nil {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "Pulling image failed"), err
 	}
-	containerSpec := specgen.NewSpecGenerator(container.Image, true)
+	containerSpec := specgen.NewSpecGenerator(container.Image, false)
 	containerSpec.Pod = api.PodmanPodName
+	containerSpec.Command = unit.Command
+	containerSpec.RestartPolicy = string(spec.RestartPolicy)
+
 	for _, env := range container.Env {
 		if env.ValueFrom == nil {
 			containerSpec.Env[env.Name] = env.Value
@@ -140,16 +151,23 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 				break
 			}
 		}
+		path := volume.HostPath.Path
+		if mount.SubPath != "" {
+			path = filepath.Join(path, mount.SubPath)
+		}
 		containerSpec.Mounts = append(containerSpec.Mounts, runtimespec.Mount{
 			Destination: mount.MountPath,
 			Type:        "bind",
-			Source:      volume.HostPath.Path,
+			Source:      path,
 			Options:     nil,
 		})
 	}
-	//containerSpec.Mounts
-	//report, err := containers.CreateWithSpec(pcs.connText, containerSpec)
-	return nil, nil
+	report, err := containers.CreateWithSpec(pcs.imgPuller.connText, containerSpec)
+	if err != nil {
+		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "podman failed to start container"), err
+	}
+	glog.Infof("podman started unit %s as container %s with %s image", unit.Name, report.ID, unit.Image)
+	return api.MakeStillCreatingStatus(unit.Name, unit.Image, "Container created"), nil
 }
 
 func (pcs *PodmanContainerService) StartContainer(unit api.Unit, spec *api.PodSpec, podName string) (*api.UnitStatus, error) {
@@ -197,19 +215,6 @@ type PodmanRuntime struct {
 	PodmanSandbox
 	PodmanContainerService
 	imgPuller PodmanImageService
-}
-
-func (p *PodmanRuntime) getCtx() context.Context {
-	return p.connText
-}
-
-func (p *PodmanRuntime) StopPodSandbox(spec *api.PodSpec) error {
-	_, err := pods.Stop(p.connText, podName, nil)
-	return err
-}
-
-func (p *PodmanRuntime) RemovePodSandbox(spec *api.PodSpec) error {
-	panic("implement me")
 }
 
 func (p *PodmanRuntime) Status() {
