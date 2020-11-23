@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	podName          string = "mypod"
 	PodmanSocketPath string = "unix:/run/podman/podman.sock"
 	defaultTimeout   uint    = 30
 )
@@ -32,10 +31,10 @@ type PodmanSandbox struct {
 
 func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	podSpec := specgen.NewPodSpecGenerator()
-	podSpec.Name = podName
+	podSpec.Name = api.PodName
 	hostname := spec.Hostname
 	if hostname == "" {
-		hostname = podName
+		hostname = api.PodName
 	}
 	nsMode := specgen.Default
 	if api.IsHostNetwork(spec.SecurityContext) {
@@ -57,21 +56,21 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 }
 
 func (ps *PodmanSandbox) StopPodSandbox(spec *api.PodSpec) error {
-	report, err := pods.Stop(ps.connText, podName, nil)
+	report, err := pods.Stop(ps.connText, api.PodName, nil)
 	if report != nil && len(report.Errs) > 0 {
 		return errors.New("TODO")
 	}
 	return err
 }
 func (ps *PodmanSandbox) RemovePodSandbox(spec *api.PodSpec) error {
-	report, err := pods.Remove(ps.connText, podName, nil)
+	report, err := pods.Remove(ps.connText, api.PodName, nil)
 	if report != nil && report.Err != nil {
 		return report.Err
 	}
 	return err
 }
 func (ps *PodmanSandbox) PodSandboxStatus() error {
-	_, err := pods.Inspect(ps.connText, podName)
+	_, err := pods.Inspect(ps.connText, api.PodName)
 	if err != nil {
 		return err
 	}
@@ -138,7 +137,7 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	}
 	containerSpec := specgen.NewSpecGenerator(container.Image, false)
 	containerSpec.Name = convert.UnitNameToContainerName(unit.Name)
-	containerSpec.Pod = api.PodmanPodName
+	containerSpec.Pod = api.PodName
 	containerSpec.Command = unit.Command
 	containerSpec.RestartPolicy = string(spec.RestartPolicy)
 

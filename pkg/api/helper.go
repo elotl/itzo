@@ -16,9 +16,7 @@ limitations under the License.
 
 package api
 
-const (
-	PodmanPodName        string          = "my-pod"
-)
+const PodName string = "itzopod"
 
 func IsHostNetwork(securityContext *PodSecurityContext) bool {
 	if securityContext == nil {
@@ -56,4 +54,3 @@ func MakeFailedUpdateStatus(name, image, reaseon string) *UnitStatus {
 		Image: image,
 	}
 }
-

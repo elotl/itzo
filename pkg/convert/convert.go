@@ -287,13 +287,13 @@ func K8sPodToYamlFormat(pod v1.PodSpec) K8sPodYaml {
 		TypeMeta:   v12.TypeMeta{},
 		ObjectMeta: v12.ObjectMeta{
 			// todo use constant here
-			Name: api.PodmanPodName,
+			Name: api.PodName,
 		},
 	}
 }
 
 func UnitNameToContainerName(unitName string) string {
-	return api.PodmanPodName + "-" + unitName
+	return api.PodName + "-" + unitName
 }
 
 func ContainerStateToUnit(ctrData define.InspectContainerData) (api.UnitState, bool) {
