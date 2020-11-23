@@ -431,13 +431,15 @@ func (pc *PodController) CreatePod(spec *api.PodSpec) error {
 		return err
 	}
 	for _, unit := range spec.Units {
+		glog.Infof("trying to create container: %s", unit.Name)
 		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
 		if err != nil {
 			pc.syncErrors[unit.Name] = *unitStatus
-			glog.Errorf("cannot create container")
+			glog.Errorf("cannot create container %v", err)
 			return err
 		}
 	}
+	glog.Infof("successfully created pod %s", pc.podName)
 	return nil
 }
 

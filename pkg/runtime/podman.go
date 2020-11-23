@@ -133,6 +133,7 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	}
 	err := pcs.imgPuller.PullImage(pcs.rootdir, unit.Name, unit.Image, registryCredentials)
 	if err != nil {
+		glog.Errorf("pulling image %s for container %s failed with: %v", unit.Image, unit.Name, err)
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "Pulling image failed"), err
 	}
 	containerSpec := specgen.NewSpecGenerator(container.Image, false)
