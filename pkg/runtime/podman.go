@@ -98,15 +98,17 @@ func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCred
 	if err != nil {
 		glog.Errorf("error checking if image %s already exists: %v", image, err)
 	}
-	server, _, err := util.ParseImageSpec(image)
+	_, _, err = util.ParseImageSpec(image)
 	if err != nil {
 		return err
 	}
-	username, password := util.GetRepoCreds(server, registryCredentials)
-	opts := entities.ImagePullOptions{
-		Username: username,
-		Password: password,
-	}
+	// TODO handle registry creds
+	opts := entities.ImagePullOptions{}
+	//username, password := util.GetRepoCreds(server, registryCredentials)
+	////opts := entities.ImagePullOptions{
+	////	Username: username,
+	////	Password: password,
+	////}
 	_, err = images.Pull(p.connText, image, opts)
 	return err
 }
