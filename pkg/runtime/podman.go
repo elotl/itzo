@@ -50,6 +50,9 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	podSpec.NoManageResolvConf = true
 	podSpec.NoManageHosts = true
 	_, err := pods.CreatePodFromSpec(ps.connText, podSpec)
+	if err != nil {
+		glog.Errorf("error creating pod from spec: %v", err)
+	}
 	return err
 }
 
@@ -134,6 +137,7 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "Pulling image failed"), err
 	}
 	containerSpec := specgen.NewSpecGenerator(container.Image, false)
+	containerSpec.Name = convert.UnitNameToContainerName(unit.Name)
 	containerSpec.Pod = api.PodmanPodName
 	containerSpec.Command = unit.Command
 	containerSpec.RestartPolicy = string(spec.RestartPolicy)
