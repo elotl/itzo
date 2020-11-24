@@ -13,7 +13,6 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/convert"
 	"github.com/elotl/itzo/pkg/logbuf"
-	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
@@ -83,11 +82,11 @@ type PodmanImageService struct {
 }
 
 func (p *PodmanImageService) ListImages() {
-	panic("implement me")
+	return
 }
 
 func (p *PodmanImageService) ImageStatus(rootdir, image string) error {
-	panic("implement me")
+	return nil
 }
 
 func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
@@ -98,10 +97,10 @@ func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCred
 	if err != nil {
 		glog.Errorf("error checking if image %s already exists: %v", image, err)
 	}
-	_, _, err = util.ParseImageSpec(image)
-	if err != nil {
-		return err
-	}
+	//_, _, err = util.ParseImageSpec(image)
+	//if err != nil {
+	//	return err
+	//}
 	// TODO handle registry creds
 	opts := entities.ImagePullOptions{}
 	//username, password := util.GetRepoCreds(server, registryCredentials)
@@ -109,6 +108,7 @@ func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCred
 	////	Username: username,
 	////	Password: password,
 	////}
+	glog.Infof("tyring to pull image: %s for container: %s", image, name)
 	_, err = images.Pull(p.connText, image, opts)
 	return err
 }
@@ -224,15 +224,15 @@ type PodmanRuntime struct {
 }
 
 func (p *PodmanRuntime) Status() {
-	panic("implement me")
+	return
 }
 
 func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	panic("implement me")
+	return nil, nil
 }
 
 func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
-	panic("implent me")
+	return nil, nil
 }
 
 func (p *PodmanRuntime) UnitRunning(unitName string) bool {
@@ -248,7 +248,7 @@ func (p *PodmanRuntime) UnitRunning(unitName string) bool {
 }
 
 func (p *PodmanRuntime) GetPid(unitName string) (int, bool) {
-	panic("not implemented")
+	return 0, false
 }
 
 func (p *PodmanRuntime) SetPodNetwork(netNS, podIP string) {
