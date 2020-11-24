@@ -90,13 +90,13 @@ func (p *PodmanImageService) ImageStatus(rootdir, image string) error {
 }
 
 func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
-	exists, err := images.Exists(p.connText, image)
-	if exists {
-		return nil
-	}
-	if err != nil {
-		glog.Errorf("error checking if image %s already exists: %v", image, err)
-	}
+	//exists, err := images.Exists(p.connText, image)
+	//if exists {
+	//	return nil
+	//}
+	//if err != nil {
+	//	glog.Errorf("error checking if image %s already exists: %v", image, err)
+	//}
 	//_, _, err = util.ParseImageSpec(image)
 	//if err != nil {
 	//	return err
@@ -108,8 +108,8 @@ func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCred
 	////	Username: username,
 	////	Password: password,
 	////}
-	glog.Infof("tyring to pull image: %s for container: %s", image, name)
-	_, err = images.Pull(p.connText, image, opts)
+	glog.Infof("trying to pull image: %s for container: %s", image, name)
+	_, err := images.Pull(p.connText, image, opts)
 	return err
 }
 
