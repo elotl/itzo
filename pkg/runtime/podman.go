@@ -145,7 +145,10 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	containerSpec.Pod = api.PodName
 	containerSpec.Command = unit.Command
 	containerSpec.RestartPolicy = string(spec.RestartPolicy)
+	containerSpec.Env = make(map[string]string)
+	containerSpec.Mounts = make([]runtimespec.Mount, 0)
 
+	// TODO - examine if it's needed
 	for _, env := range container.Env {
 		if env.ValueFrom == nil {
 			containerSpec.Env[env.Name] = env.Value
