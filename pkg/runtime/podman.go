@@ -21,7 +21,21 @@ import (
 
 const (
 	PodmanSocketPath string = "unix:/run/podman/podman.sock"
-	defaultTimeout   uint    = 30
+	defaultTimeout   uint   = 30
+	RestartPolicyNo = "no"
+	// RestartPolicyAlways unconditionally restarts the container.
+	RestartPolicyAlways = "always"
+	// RestartPolicyOnFailure restarts the container on non-0 exit code,
+	// with an optional maximum number of retries.
+	RestartPolicyOnFailure = "on-failure"
+)
+
+var (
+	restartPolicyMap = map[api.RestartPolicy]string{
+		api.RestartPolicyAlways: RestartPolicyAlways,
+		api.RestartPolicyOnFailure: RestartPolicyOnFailure,
+		api.RestartPolicyNever: RestartPolicyNo,
+	}
 )
 
 type PodmanSandbox struct {
@@ -144,7 +158,7 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	containerSpec.Name = convert.UnitNameToContainerName(unit.Name)
 	containerSpec.Pod = api.PodName
 	containerSpec.Command = unit.Command
-	containerSpec.RestartPolicy = string(spec.RestartPolicy)
+	containerSpec.RestartPolicy = restartPolicyMap[spec.RestartPolicy]
 	containerSpec.Env = make(map[string]string)
 	containerSpec.Mounts = make([]runtimespec.Mount, 0)
 
@@ -203,7 +217,7 @@ func (pcs *PodmanContainerService) RemoveContainer(unit *api.Unit) error {
 	return err
 }
 
-func (pcs *PodmanContainerService) ListContainers() error                { return nil }
+func (pcs *PodmanContainerService) ListContainers() error { return nil }
 func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {
 	containerName := convert.UnitNameToContainerName(unitName)
 	ctrData, err := containers.Inspect(pcs.imgPuller.connText, containerName, nil)
