@@ -357,7 +357,6 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error)
 	for _, unit := range pc.podStatus.Units {
 		unitStatus, err := pc.runtime.ContainerStatus(unit.Name, unit.Image)
 		if err != nil {
-			// TODO add proper handling
 			glog.Error(err)
 		}
 		failedStatus, exists := pc.syncErrors[unit.Name]

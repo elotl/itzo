@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/containers/libpod/v2/pkg/bindings"
 	"github.com/containers/libpod/v2/pkg/bindings/containers"
 	"github.com/containers/libpod/v2/pkg/bindings/images"
@@ -222,8 +221,13 @@ func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (
 	containerName := convert.UnitNameToContainerName(unitName)
 	ctrData, err := containers.Inspect(pcs.imgPuller.connText, containerName, nil)
 	if err != nil {
-		errorMsg := fmt.Sprintf("cannot get container state from podman for unit: %s\n%v \nctrData: %v", containerName, err, ctrData)
-		return api.MakeFailedUpdateStatus(unitName, ctrData.Image, "Container runtime failure"), errors.New(errorMsg)
+		// TODO - distinguish situations:
+		// A - container died (for whatever reason)
+		// B - container is stooped by pod controller and will be recreated with newly image (because it got updated by user)
+		// if we return failed status kip marks pod as failed and reschedules it on new instance
+		//errorMsg := fmt.Sprintf("cannot get container state from podman for unit: %s\n%v \nctrData: %v", containerName, err, ctrData)
+		return api.MakeStillCreatingStatus(unitName, ctrData.Image, "Container stopped"), nil
+		//return api.MakeFailedUpdateStatus(unitName, ctrData.Image, "Container runtime failure"), errors.New(errorMsg)
 
 	}
 	state, ready := convert.ContainerStateToUnit(*ctrData)
