@@ -16,6 +16,7 @@ import (
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -256,7 +257,34 @@ func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error)
 }
 
 func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
-	return nil, nil
+	containerName := convert.UnitNameToContainerName(unit)
+	stdoutChan := make(chan string)
+	stdErrChan := make(chan string)
+	defer close(stdoutChan)
+	defer close(stdErrChan)
+	addTimestamps := true
+	opts := containers.LogOptions{
+		Timestamps: &addTimestamps,
+	}
+	err := containers.Logs(p.imgPuller.connText, containerName, opts, stdoutChan, stdErrChan)
+	if err != nil {
+		glog.Errorf("error getting logs from podman for container %s :%v", containerName, err)
+		return nil, err
+	}
+	logs := make([]logbuf.LogEntry, 0)
+	// TODO add stderr
+	for logLine := range stdoutChan {
+		glog.Infof("raw log line from podman: %s", logLine)
+		log := strings.Split(logLine, " ")
+		logMsg := strings.Join(log[1:], " ")
+		logEntry := logbuf.LogEntry{
+			Timestamp: log[0],
+			Source:    logbuf.StdoutLogSource,
+			Line:      logMsg,
+		}
+		logs = append(logs, logEntry)
+	}
+	return logs, nil
 }
 
 func (p *PodmanRuntime) UnitRunning(unitName string) bool {
