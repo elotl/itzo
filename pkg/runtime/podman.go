@@ -245,7 +245,6 @@ func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (
 type PodmanRuntime struct {
 	PodmanSandbox
 	PodmanContainerService
-	imgPuller PodmanImageService
 }
 
 func (p *PodmanRuntime) Status() {
