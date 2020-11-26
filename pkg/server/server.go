@@ -253,6 +253,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		// client (http.Client) the query params are already parsed
 		// out into URL.RawQuery.  Lets look into the URL and see what
 		// we need to parse...  Yuck!
+		glog.Infof("got log request")
 		var parsedURL *url.URL
 		var err error
 		if r.URL.RawQuery != "" {
@@ -283,6 +284,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		if follow != "" {
 			// Bug: if the unit gets closed or quits, we don't know
 			// about the closure
+			glog.Info("got logs -f request")
 			unitName, err := s.podController.GetUnitName(unit)
 			if err != nil {
 				badRequest(w, err.Error())
@@ -317,13 +319,16 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, err.Error())
 			return
 		}
+		glog.Infof("trying to read log buffer for unit: %s", unitName)
 		logs, err := s.podController.ReadLogBuffer(unitName, n)
+		glog.Infof("got logs from podController: %s", logs)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
 
 		}
 		var buffer bytes.Buffer
+		glog.Info("trying to write logs to buffer")
 		for _, entry := range logs {
 			buffer.WriteString(entry.Format(withMetadata))
 		}

@@ -265,6 +265,7 @@ func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, er
 	opts := containers.LogOptions{
 		Timestamps: &addTimestamps,
 	}
+	glog.Infof("trying to get logs from podman for container: %s", containerName)
 	err := containers.Logs(p.imgPuller.connText, containerName, opts, stdoutChan, stdErrChan)
 	if err != nil {
 		glog.Errorf("error getting logs from podman for container %s :%v", containerName, err)
