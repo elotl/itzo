@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"github.com/elotl/itzo/pkg/logbuf"
 	runtime2 "github.com/elotl/itzo/pkg/runtime"
+	"github.com/elotl/itzo/pkg/util/conmap"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -584,6 +585,7 @@ func TestFullSyncErrors(t *testing.T) {
 				rootdir:    DEFAULT_ROOTDIR,
 				runtime:    runtime,
 				syncErrors: make(map[string]api.UnitStatus),
+				currentlyRestartingUnits: conmap.NewKeyTypeValueType(),
 			}
 			testCase.mod(&podCtl)
 			podCtl.SyncPodUnits(&spec, &status, creds)
@@ -698,6 +700,7 @@ func TestPodController_SyncPodUnits(t *testing.T) {
 				rootdir:    DEFAULT_ROOTDIR,
 				runtime:    runtime,
 				syncErrors: make(map[string]api.UnitStatus),
+				currentlyRestartingUnits: conmap.NewKeyTypeValueType(),
 			}
 			event := pc.SyncPodUnits(testCase.spec, testCase.status, creds)
 			assert.Equal(t, testCase.expectedEvent, event)
@@ -804,6 +807,7 @@ func TestPodControllerStatus(t *testing.T) {
 		runtime:    runtime,
 		usePodman:  false,
 		syncErrors: make(map[string]api.UnitStatus),
+		currentlyRestartingUnits: conmap.NewKeyTypeValueType(),
 	}
 	podCtl.podStatus = &status
 	statuses, initStatuses, err := podCtl.GetStatus()

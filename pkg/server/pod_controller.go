@@ -21,6 +21,7 @@ import (
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/runtime"
+	"github.com/elotl/itzo/pkg/util/conmap"
 	"sync"
 	"time"
 
@@ -60,6 +61,7 @@ type PodController struct {
 	podIP      string
 	podRestartCount int32
 	usePodman  bool
+	currentlyRestartingUnits *conmap.KeyTypeValueType
 }
 
 func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
@@ -88,6 +90,7 @@ func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 		cancelFunc: nil,
 		podRestartCount: 0,
 		usePodman: usePodman,
+		currentlyRestartingUnits: conmap.NewKeyTypeValueType(),
 	}, nil
 }
 
@@ -357,7 +360,15 @@ func (pc *PodController) GetStatus() ([]api.UnitStatus, []api.UnitStatus, error)
 	for _, unit := range pc.podStatus.Units {
 		unitStatus, err := pc.runtime.ContainerStatus(unit.Name, unit.Image)
 		if err != nil {
-			glog.Error(err)
+			// we keep track of restarting units in pc.currentlyRestartingUnits.
+			// if KIP asks for status in the middle of the restart, pc.runtime.ContainerStatus
+			// returns failed status, which then results in KIP trying to reschedule this pod on another
+			// cloud instance. This fixes it.
+			if _, currentlyRestarting := pc.currentlyRestartingUnits.GetOK(unit.Name); !currentlyRestarting {
+				glog.Error(err)
+			} else {
+				unitStatus = api.MakeStillCreatingStatus(unit.Name, unit.Image, "ContainerCreating")
+			}
 		}
 		failedStatus, exists := pc.syncErrors[unit.Name]
 		if exists {
@@ -445,11 +456,13 @@ func (pc *PodController) CreatePod(spec *api.PodSpec) error {
 func (pc *PodController) RestartUnits(spec, status *api.PodSpec) ([]api.Unit, error) {
 	addUnits, deleteUnits := diffUnits(spec.Units, status.Units)
 	spec.Phase = api.PodWaiting
+
 	for _, unit := range deleteUnits {
 		err := pc.runtime.RemoveContainer(&unit)
 		if err != nil {
 			return []api.Unit{}, err
 		}
+		pc.currentlyRestartingUnits.Set(unit.Name, unit.Image)
 	}
 
 	for _, unit := range addUnits {
@@ -458,6 +471,7 @@ func (pc *PodController) RestartUnits(spec, status *api.PodSpec) ([]api.Unit, er
 			pc.syncErrors[unit.Name] = *unitStatus
 			return []api.Unit{}, err
 		}
+		pc.currentlyRestartingUnits.Delete(unit.Name)
 	}
 	return addUnits, nil
 
