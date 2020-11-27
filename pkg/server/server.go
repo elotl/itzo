@@ -178,6 +178,8 @@ func (s *Server) startNetworkAgent(IP, nodeName string) {
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
+		glog.Infof("got update request")
+
 		var params api.PodParameters
 		err := json.NewDecoder(r.Body).Decode(&params)
 		if err != nil {
@@ -185,6 +187,8 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("Error decoding pod update request: %v", err))
 			return
 		}
+		glog.Infof("primary & secondary: %s & %s", s.primaryIP, s.secondaryIP)
+
 		if s.primaryIP == "" && s.secondaryIP == "" {
 			primaryIP, secondaryIP, podNS, err := itzonet.SetupNetNamespace(
 				params.PodIP)
@@ -211,9 +215,11 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			glog.Infof("IP addresses: %q %q pod network namespace: %q",
 				s.primaryIP, s.podIP, podNS)
 		}
+
 		if s.networkAgentCmd == nil && params.NodeName != "" {
 			s.startNetworkAgent(s.primaryIP, params.NodeName)
 		}
+
 		err = s.podController.UpdatePod(&params)
 		if err != nil {
 			glog.Errorf("%v", err)
@@ -254,6 +260,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		// out into URL.RawQuery.  Lets look into the URL and see what
 		// we need to parse...  Yuck!
 		glog.Infof("got log request")
+
 		var parsedURL *url.URL
 		var err error
 		if r.URL.RawQuery != "" {
@@ -320,6 +327,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		glog.Infof("trying to read log buffer for unit: %s", unitName)
+
 		logs, err := s.podController.ReadLogBuffer(unitName, n)
 		glog.Infof("got logs from podController: %s", logs)
 		if err != nil {
@@ -332,6 +340,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		for _, entry := range logs {
 			buffer.WriteString(entry.Format(withMetadata))
 		}
+
 		w.Header().Set("Content-Type", "text/plain")
 		buffStr := buffer.String()
 		if numBytes > 0 && len(buffStr) > numBytes {
