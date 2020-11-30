@@ -664,6 +664,7 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	s.runExec(ws, params)
 }
 
+// TODO: delete this handler as it isn't part of itzoclient in kip anymore
 func (s *Server) runcmdHandler(w http.ResponseWriter, r *http.Request) {
 	var params api.RunCmdParams
 	err := json.NewDecoder(r.Body).Decode(&params)

@@ -63,6 +63,17 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	// those two are important as we deploy and mount resolv.conf and /etc/hosts
 	podSpec.NoManageResolvConf = true
 	podSpec.NoManageHosts = true
+	portMappings := make([]specgen.PortMapping, 0)
+	for _, unit := range spec.Units {
+		for _, port := range unit.Ports {
+			portMappings = append(portMappings, specgen.PortMapping{
+				ContainerPort: uint16(port.ContainerPort),
+				HostPort:      uint16(port.HostPort),
+				Protocol:      string(port.Protocol),
+			})
+		}
+	}
+	podSpec.PortMappings = portMappings
 	_, err := pods.CreatePodFromSpec(ps.connText, podSpec)
 	if err != nil {
 		glog.Errorf("error creating pod from spec: %v", err)

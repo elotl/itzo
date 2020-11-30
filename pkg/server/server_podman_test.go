@@ -1,18 +1,23 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/containers/libpod/v2/libpod/define"
 	"github.com/containers/libpod/v2/pkg/bindings/containers"
 	"github.com/containers/libpod/v2/pkg/bindings/pods"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/runtime"
+	"github.com/elotl/wsstream"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 // Here are E2E test for server endpoints and podman runtime.
 // Before running those you need to:
@@ -88,6 +93,7 @@ func TestCreatePodWithPodman(t *testing.T) {
 	_, podCtl, err := setUpServerAndController()
 	assert.NoError(t, err)
 	defer tearDownSeverAndController()
+	defer removeContainersAndPod([]string{"unit1"})
 	params := api.PodParameters{
 		Secrets:     nil,
 		Credentials: nil,
@@ -118,8 +124,6 @@ func TestCreatePodWithPodman(t *testing.T) {
 	runningState := define.ContainerStateRunning
 	_, err = containers.Wait(conn, "itzopod-unit1", &runningState)
 	assert.NoError(t, err)
-
-	removeContainersAndPod([]string{"unit1"})
 }
 
 func TestGetLogsWithPodman(t *testing.T) {
@@ -130,6 +134,7 @@ func TestGetLogsWithPodman(t *testing.T) {
 	testServer, podCtl, err := setUpServerAndController()
 	assert.NoError(t, err)
 	defer tearDownSeverAndController()
+	defer removeContainersAndPod([]string{"unit1"})
 	params := api.PodParameters{
 		Secrets:     nil,
 		Credentials: nil,
@@ -176,6 +181,161 @@ func TestGetLogsWithPodman(t *testing.T) {
 	responseBody := rr.Body.String()
 	lines := strings.Split(responseBody, "\n")
 	assert.Equal(t, []string{"6", "7", "8", "9", "10", ""}, lines)
+}
 
-	removeContainersAndPod([]string{"unit1"})
+func TestGetStatusWithPodman(t *testing.T)  {
+	if !*testAgainstPodman {
+		return
+	}
+
+	// GIVEN
+	testServer, podCtl, err := setUpServerAndController()
+	assert.NoError(t, err)
+	defer tearDownSeverAndController()
+	defer removeContainersAndPod([]string{"unit1", "unit2"})
+	params := api.PodParameters{
+		Secrets:     nil,
+		Credentials: nil,
+		Spec:        api.PodSpec{
+			RestartPolicy:    api.RestartPolicyNever,
+			Units:            []api.Unit{
+				{
+					Name: "unit1",
+					Image: "busybox:latest",
+					Command: []string{
+						"sleep",
+						"1000",
+					},
+				},
+				{
+					Name: "unit2",
+					Image: "busybox:latest",
+					Command: []string{
+						"echo",
+						"I'm done",
+					},
+				},
+			},
+			InitUnits: []api.Unit{},
+		},
+	}
+	assert.Equal(t, 0, len(podCtl.podStatus.Units))
+
+
+	podCtl.doUpdate(&params)
+	assert.Equal(t, 2, len(podCtl.podStatus.Units))
+	createdUnit := podCtl.podStatus.Units[0]
+	assert.Equal(t, "unit1", createdUnit.Name)
+	assert.Equal(t,  "busybox:latest", createdUnit.Image)
+	conn, err := runtime.GetPodmanConnection()
+	assert.NoError(t, err)
+	_, err = containers.Wait(conn, "itzopod-unit1", &stateRunning)
+	assert.NoError(t, err)
+
+	// WHEN
+	req, err := http.NewRequest("GET", "/rest/v1/status", nil)
+	assert.Nil(t, err)
+	rr := httptest.NewRecorder()
+	testServer.ServeHTTP(rr, req)
+
+	// THEN
+	assert.Equal(t, http.StatusOK, rr.Code)
+	var podStatus api.PodStatusReply
+	body := rr.Body.Bytes()
+	err = json.Unmarshal(body, &podStatus)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(podStatus.UnitStatuses))
+	assert.Equal(t, 0, len(podStatus.InitUnitStatuses))
+	assert.Equal(t, "unit1", podStatus.UnitStatuses[0].Name)
+	assert.NotNil(t, podStatus.UnitStatuses[0].State.Running)
+	assert.Equal(t, "stopped", podStatus.UnitStatuses[1].State.Waiting.Reason)
+	assert.Equal(t, false, podStatus.UnitStatuses[1].State.Waiting.StartFailure)
+}
+
+func TestPortForwardWithPodman(t *testing.T) {
+	if !*testAgainstPodman {
+		return
+	}
+
+	// GIVEN
+	testServer, podCtl, err := setUpServerAndController()
+	assert.NoError(t, err)
+	defer tearDownSeverAndController()
+	defer removeContainersAndPod([]string{"unit1"})
+	params := api.PodParameters{
+		Secrets:     nil,
+		Credentials: nil,
+		Spec:        api.PodSpec{
+			RestartPolicy:    api.RestartPolicyNever,
+			Units:            []api.Unit{
+				{
+					Name: "unit1",
+					Image: "jmalloc/echo-server",
+					Ports: []api.ContainerPort{
+						{
+							HostPort:      10000,
+							ContainerPort: 10000,
+							Protocol:      "TCP",
+						},
+					},
+				},
+			},
+			InitUnits: []api.Unit{},
+		},
+	}
+	assert.Equal(t, 0, len(podCtl.podStatus.Units))
+
+
+	podCtl.doUpdate(&params)
+	assert.Equal(t, 1, len(podCtl.podStatus.Units))
+	createdUnit := podCtl.podStatus.Units[0]
+	assert.Equal(t, "unit1", createdUnit.Name)
+	assert.Equal(t,  "jmalloc/echo-server", createdUnit.Image)
+	conn, err := runtime.GetPodmanConnection()
+	assert.NoError(t, err)
+	_, err = containers.Wait(conn, "itzopod-unit1", &stateRunning)
+	assert.NoError(t, err)
+
+	// WHEN
+
+	testServer.getHandlers()
+	testServer.httpServer = &http.Server{Addr: ":0", Handler: testServer}
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		panic(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	go testServer.httpServer.Serve(listener)
+	portstr := fmt.Sprintf("%d", port)
+	ws, err := createWebsocketClient(portstr, "/rest/v1/portforward/")
+	assert.NoError(t, err)
+	pfp := api.PortForwardParams{
+		Port: portstr,
+	}
+	pfpb, err := json.Marshal(pfp)
+	assert.NoError(t, err)
+	err = ws.WriteRaw(pfpb)
+	assert.NoError(t, err)
+
+	msg := []byte("GET /rest/v1/ping HTTP/1.1\nHost: localhost:" + portstr + "\r\n\r\n")
+	err = ws.WriteMsg(0, msg)
+	assert.NoError(t, err)
+	timeout := 3 * time.Second
+	select {
+	case f := <-ws.ReadMsg():
+		_, m, err := wsstream.UnpackMessage(f)
+		assert.NoError(t, err)
+		assert.Len(t, m, 0)
+	case <-time.After(timeout):
+		assert.FailNow(t, "reading timed out")
+	}
+	select {
+	case f := <-ws.ReadMsg():
+		c, m, err := wsstream.UnpackMessage(f)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, c)
+		assert.True(t, strings.HasSuffix(string(m), "pong"))
+	case <-time.After(timeout):
+		assert.FailNow(t, "reading timed out")
+	}
 }
