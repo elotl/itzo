@@ -20,21 +20,21 @@ var (
 	}
 	specialVolumesPaths = map[string]string{
 		ResolvconfVolumeName: "/tmp/itzo/packages/resolvconf/etc/resolv.conf",
+		EtchostsVolumeName: "/tmp/itzo/packages/etc/hosts",
 	}
 )
 
 func VolumeToK8sVolume(volume api.Volume) v1.Volume {
 	var hostPathType v1.HostPathType
-	if hostType, ok := specialVolumesTypes[volume.Name]; ok {
-		hostPathType = hostType
-
-	} else if volume.HostPath != nil {
+	if volume.PackagePath != nil {
+		vol := handlePackagePathVolumes(volume)
+		return vol
+	}
+	if volume.HostPath != nil {
 		hostPathType = v1.HostPathType(*volume.HostPath.Type)
 	}
 	path := filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name)
-	if hostPath, ok := specialVolumesPaths[volume.Name]; ok {
-		path = hostPath
-	} else if volume.HostPath != nil {
+	if volume.HostPath != nil {
 		path = volume.HostPath.Path
 	}
 
@@ -48,6 +48,21 @@ func VolumeToK8sVolume(volume api.Volume) v1.Volume {
 		},
 	}
 	return vol
+}
+
+func handlePackagePathVolumes(volume api.Volume) v1.Volume {
+	if hostType, ok := specialVolumesTypes[volume.Name]; ok {
+		return v1.Volume{
+			Name: volume.Name,
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Type: &hostType,
+					Path: specialVolumesPaths[volume.Name],
+				},
+			},
+		}
+	}
+	return v1.Volume{}
 }
 
 func UnitEnvToK8sContainerEnv(env api.EnvVar) v1.EnvVar {
