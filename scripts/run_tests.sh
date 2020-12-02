@@ -25,7 +25,7 @@ make
 go test ./...
 
 echo "running podman e2e-tests"
-sudo go test ./pkg/server/   -v -args -podman=true
+go test ./pkg/server/   -v -args -podman=true
 
 CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)
 
