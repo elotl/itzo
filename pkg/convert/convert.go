@@ -31,7 +31,9 @@ func VolumeToK8sVolume(volume api.Volume) v1.Volume {
 		return vol
 	}
 	if volume.HostPath != nil {
-		hostPathType = v1.HostPathType(*volume.HostPath.Type)
+		if volume.HostPath.Type != nil {
+			hostPathType = v1.HostPathType(*volume.HostPath.Type)
+		}
 	}
 	path := filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name)
 	if volume.HostPath != nil {
