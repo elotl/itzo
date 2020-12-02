@@ -17,6 +17,7 @@ before_script:
 script:
 - set -e
 - make
+- which go
 - sudo scripts/run_tests.sh
 env:
   global:
