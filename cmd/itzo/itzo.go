@@ -49,7 +49,7 @@ func main() {
 	var netns = flag.String("netns", "", "Pod network namespace name")
 	// todo, ability to log to a file instead of stdout
 	// todo revert usePodman default to false
-	var usePodman = flag.Bool("use-podman", false, "use podman.io as container runtime")
+	var usePodman = flag.Bool("use-podman", true, "use podman.io as container runtime")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
