@@ -14,7 +14,7 @@ type PodSandbox interface {
 }
 
 type ContainerService interface {
-	CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) (*api.UnitStatus, error)
+	CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error)
 	StartContainer(unit api.Unit, spec *api.PodSpec, podName string) (*api.UnitStatus, error)
 	RemoveContainer(unit *api.Unit) error
 	ListContainers() error
@@ -46,6 +46,6 @@ type RuntimeService interface {
 type ImageService interface {
 	ListImages()
 	ImageStatus(rootdir, image string) error
-	PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error
+	PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error
 	RemoveImage(rootdir, image string) error
 }

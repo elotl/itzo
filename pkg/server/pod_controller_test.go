@@ -346,7 +346,7 @@ func (m *MountMock) DetachMount(unitname, dst string) error {
 }
 
 type ImagePullMock struct {
-	Pull func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error
+	Pull func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, overlayRootfs bool) error
 }
 
 func (p *ImagePullMock) ListImages() {
@@ -361,13 +361,13 @@ func (p *ImagePullMock) RemoveImage(rootdir, image string) error {
 	panic("implement me")
 }
 
-func (p *ImagePullMock) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
-	return p.Pull(rootdir, name, image, registryCredentials)
+func (p *ImagePullMock) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, overlayRootfs bool) error  {
+	return p.Pull(rootdir, name, image, registryCredentials, overlayRootfs)
 }
 
 func NewImagePullMock() *ImagePullMock {
 	return &ImagePullMock{
-		Pull: func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
+		Pull: func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, overlayRootfs bool) error {
 			return nil
 		},
 	}
@@ -547,7 +547,7 @@ func TestFullSyncErrors(t *testing.T) {
 			mod: func(pc *PodController) {
 				r := pc.runtime.(*runtime2.ItzoRuntime)
 				puller := r.ImgPuller.(*ImagePullMock)
-				puller.Pull = func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
+				puller.Pull = func(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, overlayRootfs bool) error {
 					return fmt.Errorf("Pull Failed")
 				}
 			},
