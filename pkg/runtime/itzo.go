@@ -37,7 +37,7 @@ type UnitRunner interface {
 type ImagePuller struct {
 }
 
-func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
+func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error {
 	server, _, err := util.ParseImageSpec(image)
 	if err != nil {
 		msg := fmt.Sprintf("Bad image spec for unit %s: %v", name, err)
@@ -58,6 +58,7 @@ func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredential
 	if err != nil {
 		return errors.Wrapf(err, "opening unit %s for package deploy", name)
 	}
+	u.SetUnitConfigOverlayfs(useOverlayfs)
 	err = u.PullAndExtractImage(image, server, username, password)
 	if err != nil {
 		return errors.Wrapf(err, "pulling image %s", image)
@@ -118,9 +119,9 @@ func (i *ItzoRuntime) RemovePodSandbox(spec *api.PodSpec) error {
 	return nil
 }
 
-func (i *ItzoRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) (*api.UnitStatus, error) {
+func (i *ItzoRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
 	// pull image
-	err := i.ImgPuller.PullImage(i.rootdir, unit.Name, unit.Image, registryCredentials)
+	err := i.ImgPuller.PullImage(i.rootdir, unit.Name, unit.Image, registryCredentials, useOverlayfs)
 	if err != nil {
 		msg := fmt.Sprintf("Bad image spec for unit %s: %v", unit.Name, err)
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, msg), err

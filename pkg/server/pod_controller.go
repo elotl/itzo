@@ -22,6 +22,7 @@ import (
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/runtime"
 	"github.com/elotl/itzo/pkg/util/conmap"
+	"strconv"
 	"sync"
 	"time"
 
@@ -32,10 +33,11 @@ import (
 )
 
 const (
-	UpdateTypeNoChanges   = "no_changes"
-	UpdateTypePodRestart  = "pod_restart"
-	UpdateTypePodCreate   = "pod_created"
-	UpdateTypeUnitsChange = "units_changed"
+	UpdateTypeNoChanges       = "no_changes"
+	UpdateTypePodRestart      = "pod_restart"
+	UpdateTypePodCreate       = "pod_created"
+	UpdateTypeUnitsChange     = "units_changed"
+	UseOverlayfsAnnotationKey = "pod.elotl.co/image-overlay-rootfs"
 )
 
 var (
@@ -54,14 +56,17 @@ type PodController struct {
 	allCreds   map[string]api.RegistryCredentials
 	// We keep syncErrors in the map between syncs until a sync works
 	// and we clear or overwrite the error
-	syncErrors map[string]api.UnitStatus
-	cancelFunc context.CancelFunc
-	waitGroup  sync.WaitGroup
-	netNS      string
-	podIP      string
+	syncErrors      map[string]api.UnitStatus
+	cancelFunc      context.CancelFunc
+	waitGroup       sync.WaitGroup
+	netNS           string
+	podIP           string
 	podRestartCount int32
 	usePodman  bool
 	currentlyRestartingUnits *conmap.KeyTypeValueType
+	// these are annotations with prefix of "pod.elotl.co/"
+	// which are passed from kip
+	annotations map[string]string
 }
 
 func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
@@ -88,7 +93,7 @@ func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 			Phase:         api.PodRunning,
 			RestartPolicy: api.RestartPolicyAlways,
 		},
-		cancelFunc: nil,
+		cancelFunc:      nil,
 		podRestartCount: 0,
 		usePodman: usePodman,
 		currentlyRestartingUnits: conmap.NewKeyTypeValueType(),
@@ -112,13 +117,6 @@ func (pc *PodController) runUpdateLoop() {
 		podParams := <-pc.updateChan
 		glog.Infof("New pod update")
 		pc.doUpdate(podParams)
-		//pc.podName = podParams.PodName
-		//pc.podHostname = podParams.PodHostname
-		//spec := &podParams.Spec
-		//MergeSecretsIntoSpec(podParams.Secrets, spec.Units)
-		//MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
-		//pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
-		//pc.podStatus = spec
 	}
 }
 
@@ -208,7 +206,6 @@ func unitsSlicesEqual(specUnits []api.Unit, statusUnits []api.Unit) bool {
 	}
 	return true
 }
-
 
 func diffUnits(spec []api.Unit, status []api.Unit) ([]api.Unit, []api.Unit) {
 	toAdd := make([]api.Unit, 0)
@@ -436,7 +433,7 @@ func (pc *PodController) RestartPod(spec, status *api.PodSpec) error {
 		return err
 	}
 	for _, unit := range spec.Units {
-		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
+		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds, pc.useImageOverlayRootfs())
 		if err != nil {
 			pc.syncErrors[unit.Name] = *unitStatus
 			return err
@@ -455,7 +452,7 @@ func (pc *PodController) CreatePod(spec *api.PodSpec) error {
 	}
 	for _, unit := range spec.Units {
 		glog.Infof("trying to create container: %s", unit.Name)
-		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
+		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds, pc.useImageOverlayRootfs())
 		if err != nil {
 			pc.syncErrors[unit.Name] = *unitStatus
 			glog.Errorf("cannot create container %v", err)
@@ -479,7 +476,7 @@ func (pc *PodController) RestartUnits(spec, status *api.PodSpec) ([]api.Unit, er
 	}
 
 	for _, unit := range addUnits {
-		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds)
+		unitStatus, err := pc.runtime.CreateContainer(unit, spec, pc.podName, pc.allCreds, pc.useImageOverlayRootfs())
 		if err != nil {
 			pc.syncErrors[unit.Name] = *unitStatus
 			return []api.Unit{}, err
@@ -488,6 +485,25 @@ func (pc *PodController) RestartUnits(spec, status *api.PodSpec) ([]api.Unit, er
 	}
 	return addUnits, nil
 
+}
+
+// we want to tell tosi whether to use an overlay rootfs for containers
+// if the value returned by this function is truthy or missing we instruct
+// tosi to use the "-mount" option otherwise if value is falsy we inform
+// tosi to use the "-extractto" option
+func (pc *PodController) useImageOverlayRootfs() bool {
+	if val, ok := pc.annotations[UseOverlayfsAnnotationKey]; ok {
+		parsed, err := strconv.ParseBool(val)
+		if err != nil {
+			glog.Errorf("error parsing boolean for image overlay: %s", err)
+			// TODO how should we return if bool is parsed wrong?
+			// use default overlay?
+			return true
+		}
+		return parsed
+	}
+	// key does not exist fallback to default
+	return true
 }
 
 // TODO

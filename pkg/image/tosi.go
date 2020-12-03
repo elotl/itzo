@@ -23,25 +23,34 @@ import (
 )
 
 const (
-	TosiMaxRetries     = 3
-	TosiOutputLimit    = 4096
-	TosiExe            = "tosi"
-	TosiMinimumVersion = "v0.0.7"
-	TosiURL            = "https://github.com/elotl/tosi/releases/download/v0.0.7/tosi-amd64"
+	TosiMaxRetries              = 3
+	TosiOutputLimit             = 4096
+	TosiExe                     = "tosi"
+	TosiMinimumVersion          = "v0.0.7"
+	TosiURL                     = "https://github.com/elotl/tosi/releases/download/v0.0.7/tosi-amd64"
+	TosiUseOverlayRootfs        = true
+	TosiDefaultImageExtractFlag = "-mount"
+	TosiExtracttoFlag           = "-extractto"
 )
 
 type Tosi struct {
-	server   string
-	username string
-	password string
-	image    string
-	exe      string
+	server             string
+	username           string
+	password           string
+	image              string
+	exe                string
+	extractWithOverlay bool
 }
 
 func NewTosi() *Tosi {
 	return &Tosi{
-		exe: TosiExe,
+		exe:                TosiExe,
+		extractWithOverlay: TosiUseOverlayRootfs,
 	}
+}
+
+func (t *Tosi) SetTosiExtractionType(useOverlayRootfs bool) {
+	t.extractWithOverlay = useOverlayRootfs
 }
 
 func (t *Tosi) Login(server, username, password string) error {
@@ -72,10 +81,15 @@ func (t *Tosi) run(server, image, dest, configPath, username, password string) e
 	if t.exe != tp {
 		t.exe = tp
 	}
+	imageExtractFlag := TosiDefaultImageExtractFlag
+	// If we are not using an overlayfs have tosi use the extractto flag
+	if !t.extractWithOverlay {
+		imageExtractFlag = TosiExtracttoFlag
+	}
 	args := []string{
 		"-image",
 		image,
-		"-mount",
+		imageExtractFlag,
 		dest,
 		"-saveconfig",
 		configPath,

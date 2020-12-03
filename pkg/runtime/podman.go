@@ -100,7 +100,7 @@ type PodmanImageService struct {
 	connText context.Context
 }
 
-func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
+func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error {
 	//exists, err := images.Exists(p.connText, image)
 	//if exists {
 	//	return nil
@@ -138,7 +138,7 @@ func NewPodmanContainerService(ctx context.Context, rootdir string) *PodmanConta
 	return &PodmanContainerService{rootdir: rootdir, imgPuller: PodmanImageService{connText: ctx}}
 }
 
-func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials) (*api.UnitStatus, error) {
+func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
 	container := convert.UnitToK8sContainer(unit)
 	var k8sVolumes []v1.Volume
 	for _, vol := range spec.Volumes {
@@ -146,7 +146,7 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	}
 	// TODO: ignore this failure for now, it seems that there's response serialization bug on podman site
 
-	_ = pcs.imgPuller.PullImage(pcs.rootdir, unit.Name, unit.Image, registryCredentials)
+	_ = pcs.imgPuller.PullImage(pcs.rootdir, unit.Name, unit.Image, registryCredentials, false)
 	//if err != nil {
 	//	glog.Errorf("pulling image %s for container %s failed with: %v", unit.Image, unit.Name, err)
 	//	return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "Pulling image failed"), err
