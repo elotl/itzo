@@ -95,25 +95,9 @@ func (ps *PodmanSandbox) RemovePodSandbox(spec *api.PodSpec) error {
 	}
 	return err
 }
-func (ps *PodmanSandbox) PodSandboxStatus() error {
-	_, err := pods.Inspect(ps.connText, api.PodName)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 
 type PodmanImageService struct {
 	connText context.Context
-}
-
-func (p *PodmanImageService) ListImages() {
-	return
-}
-
-func (p *PodmanImageService) ImageStatus(rootdir, image string) error {
-	return nil
 }
 
 func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials) error {
@@ -231,7 +215,6 @@ func (pcs *PodmanContainerService) RemoveContainer(unit *api.Unit) error {
 	return err
 }
 
-func (pcs *PodmanContainerService) ListContainers() error { return nil }
 func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {
 	containerName := convert.UnitNameToContainerName(unitName)
 	ctrData, err := containers.Inspect(pcs.imgPuller.connText, containerName, nil)
@@ -259,10 +242,6 @@ func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (
 type PodmanRuntime struct {
 	PodmanSandbox
 	PodmanContainerService
-}
-
-func (p *PodmanRuntime) Status() {
-	return
 }
 
 func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
