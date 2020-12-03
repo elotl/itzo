@@ -231,7 +231,7 @@ func TestGetStatusWithPodman(t *testing.T)  {
 	assert.NoError(t, err)
 	_, err = containers.Wait(conn, "itzopod-unit1", &stateRunning)
 	assert.NoError(t, err)
-	_, err = containers.Wait(conn, "itzopod-unit2", &stateRunning)
+	_, err = containers.Wait(conn, "itzopod-unit2", &stateStopped)
 	assert.NoError(t, err)
 
 	// WHEN
