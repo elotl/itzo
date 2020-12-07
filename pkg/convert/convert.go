@@ -3,15 +3,17 @@ package convert
 import (
 	"github.com/containers/libpod/v2/libpod/define"
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
-	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"path/filepath"
 )
 
-const ResolvconfVolumeName string = "resolvconf"
+const (
+	ResolvconfVolumeName                 = "resolvconf"
+	EtchostsVolumeName                   = "etchosts"
+)
 
-const EtchostsVolumeName string = "etchosts"
 
 var (
 	specialVolumesTypes = map[string]v1.HostPathType{
@@ -23,273 +25,229 @@ var (
 	}
 )
 
-func VolumeToK8sVolume(volume api.Volume) v1.Volume {
-	var hostPathType v1.HostPathType
-	if hostType, ok := specialVolumesTypes[volume.Name]; ok {
-		hostPathType = hostType
-
-	} else if volume.HostPath != nil {
-		hostPathType = v1.HostPathType(*volume.HostPath.Type)
-	}
-	path := filepath.Join("/tmp/itzo/units", "..", "packages", volume.Name)
-	if hostPath, ok := specialVolumesPaths[volume.Name]; ok {
-		path = hostPath
-	} else if volume.HostPath != nil {
-		path = volume.HostPath.Path
-	}
-
-	vol := v1.Volume{
-		Name: volume.Name,
-		VolumeSource: v1.VolumeSource{
-			HostPath: &v1.HostPathVolumeSource{
-				Path: path,
-				Type: &hostPathType,
-			},
-		},
-	}
-	return vol
-}
-
-func UnitEnvToK8sContainerEnv(env api.EnvVar) v1.EnvVar {
-	envVar := v1.EnvVar{
-		Name:  env.Name,
-		Value: env.Value,
-	}
-	if env.ValueFrom != nil {
-		envVar.ValueFrom = &v1.EnvVarSource{
-			SecretKeyRef: &v1.SecretKeySelector{
-				LocalObjectReference: v1.LocalObjectReference{Name: env.ValueFrom.SecretKeyRef.Name},
-				Key:                  env.ValueFrom.SecretKeyRef.Key,
-			},
+func MilpaToK8sVolume(vol api.Volume) *v1.Volume {
+	convertKeyToPath := func(milpa []api.KeyToPath) []v1.KeyToPath {
+		k8s := make([]v1.KeyToPath, len(milpa))
+		for i := range milpa {
+			k8s[i] = v1.KeyToPath{
+				Key:  milpa[i].Key,
+				Path: milpa[i].Path,
+				Mode: milpa[i].Mode,
+			}
 		}
+		return k8s
 	}
-
-	return envVar
-}
-
-func VolumeMountToK8sVolumeMount(vm api.VolumeMount) v1.VolumeMount {
-	return v1.VolumeMount{
-		Name:             vm.Name,
-		ReadOnly:         false,
-		MountPath:        vm.MountPath,
-		SubPath:          vm.SubPath,
-		MountPropagation: nil,
-		SubPathExpr:      "",
-	}
-}
-
-func SecurityCtxToK8sSecurityCtx(sc *api.SecurityContext) v1.SecurityContext {
-	if sc == nil {
-		return v1.SecurityContext{}
-	}
-	var add []v1.Capability
-	var drop []v1.Capability
-	for _, a := range sc.Capabilities.Add {
-		add = append(add, v1.Capability(a))
-	}
-	for _, d := range sc.Capabilities.Drop {
-		drop = append(drop, v1.Capability(d))
-	}
-	return v1.SecurityContext{
-		Capabilities: &v1.Capabilities{
-			Add:  add,
-			Drop: drop,
-		},
-		RunAsUser:  sc.RunAsUser,
-		RunAsGroup: sc.RunAsGroup,
-	}
-}
-
-func ProbeToK8sProbe(probe *api.Probe) v1.Probe {
-	if probe != nil {
-		var headers []v1.HTTPHeader
-		for _, header := range probe.HTTPGet.HTTPHeaders {
-			headers = append(headers, v1.HTTPHeader{
-				Name:  header.Name,
-				Value: header.Value,
-			})
-		}
-		return v1.Probe{
-			Handler: v1.Handler{
-				Exec: &v1.ExecAction{Command: probe.Exec.Command},
-				HTTPGet: &v1.HTTPGetAction{
-					Path: probe.HTTPGet.Path,
-					Port: intstr.IntOrString{
-						Type:   probe.Handler.HTTPGet.Port.Type,
-						IntVal: probe.Handler.HTTPGet.Port.IntVal,
-						StrVal: probe.Handler.HTTPGet.Port.StrVal,
-					},
-					Host:        probe.HTTPGet.Host,
-					Scheme:      v1.URIScheme(probe.HTTPGet.Scheme),
-					HTTPHeaders: headers,
-				},
-				TCPSocket: &v1.TCPSocketAction{
-					Port: intstr.IntOrString{
-						Type:   probe.Handler.TCPSocket.Port.Type,
-						IntVal: probe.Handler.TCPSocket.Port.IntVal,
-						StrVal: probe.Handler.TCPSocket.Port.StrVal,
-					},
-					Host: probe.Handler.TCPSocket.Host,
+	if vol.Secret != nil {
+		return &v1.Volume{
+			Name: vol.Name,
+			VolumeSource: v1.VolumeSource{
+				Secret: &v1.SecretVolumeSource{
+					SecretName:  vol.Secret.SecretName,
+					Items:       convertKeyToPath(vol.Secret.Items),
+					DefaultMode: vol.Secret.DefaultMode,
+					Optional:    vol.Secret.Optional,
 				},
 			},
-			InitialDelaySeconds: probe.InitialDelaySeconds,
-			TimeoutSeconds:      probe.TimeoutSeconds,
-			PeriodSeconds:       probe.PeriodSeconds,
-			SuccessThreshold:    probe.SuccessThreshold,
-			FailureThreshold:    probe.FailureThreshold,
 		}
+	} else if vol.HostPath != nil {
+		var hostPathTypePtr *v1.HostPathType
+		if vol.HostPath.Type != nil {
+			hostPathType := v1.HostPathType(string(*vol.HostPath.Type))
+			hostPathTypePtr = &hostPathType
+		}
+		return &v1.Volume{
+			Name: vol.Name,
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: vol.HostPath.Path,
+					Type: hostPathTypePtr,
+				},
+			},
+		}
+	} else if vol.ConfigMap != nil {
+		return &v1.Volume{
+			Name: vol.Name,
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: vol.ConfigMap.Name,
+					},
+					Items:       convertKeyToPath(vol.ConfigMap.Items),
+					DefaultMode: vol.ConfigMap.DefaultMode,
+					Optional:    vol.ConfigMap.Optional,
+				},
+			},
+		}
+	} else if vol.EmptyDir != nil {
+		var sizeLimit *resource.Quantity
+		if vol.EmptyDir.SizeLimit != 0 {
+			sizeLimit = resource.NewQuantity(vol.EmptyDir.SizeLimit, resource.BinarySI)
+		}
+		return &v1.Volume{
+			Name: vol.Name,
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{
+					Medium:    v1.StorageMedium(string(vol.EmptyDir.Medium)),
+					SizeLimit: sizeLimit,
+				},
+			},
+		}
+	} else if vol.Projected != nil {
+		projVol := &v1.ProjectedVolumeSource{
+			DefaultMode: vol.Projected.DefaultMode,
+		}
+		projVol.Sources = make([]v1.VolumeProjection, len(vol.Projected.Sources))
+		for i, src := range vol.Projected.Sources {
+			if src.Secret != nil {
+				k8Secret := &v1.SecretProjection{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: src.Secret.Name,
+					},
+					Items:    convertKeyToPath(src.Secret.Items),
+					Optional: src.Secret.Optional,
+				}
+				projVol.Sources[i].Secret = k8Secret
+			} else if src.ConfigMap != nil {
+				k8CM := &v1.ConfigMapProjection{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: src.ConfigMap.Name,
+					},
+					Items:    convertKeyToPath(src.ConfigMap.Items),
+					Optional: src.ConfigMap.Optional,
+				}
+				projVol.Sources[i].ConfigMap = k8CM
+			}
+		}
+		return &v1.Volume{
+			Name: vol.Name,
+			VolumeSource: v1.VolumeSource{
+				Projected: projVol,
+			},
+		}
+	} else if vol.PackagePath != nil {
+		var hostPathType v1.HostPathType
+		if hostType, ok := specialVolumesTypes[vol.Name]; ok {
+			hostPathType = hostType
+		}
+		path := filepath.Join("/tmp/itzo/units", "..", "packages", vol.Name)
+		if hostPath, ok := specialVolumesPaths[vol.Name]; ok {
+			path = hostPath
+		}
+		return &v1.Volume{
+			Name: vol.Name,
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: path,
+					Type: &hostPathType,
+				},
+			},
+		}
+	} else {
+		glog.Warningf("Unsupported volume type for volume: %s", vol.Name)
 	}
-	return v1.Probe{}
+	return nil
 }
 
-func UnitToK8sContainer(unit api.Unit) v1.Container {
-	var ports []v1.ContainerPort
+func milpaProbeToK8sProbe(mp *api.Probe) *v1.Probe {
+	if mp == nil {
+		return nil
+	}
+	kp := &v1.Probe{
+		InitialDelaySeconds: mp.InitialDelaySeconds,
+		TimeoutSeconds:      mp.TimeoutSeconds,
+		PeriodSeconds:       mp.PeriodSeconds,
+		SuccessThreshold:    mp.SuccessThreshold,
+		FailureThreshold:    mp.FailureThreshold,
+	}
+	if mp.Exec != nil {
+		kp.Exec = &v1.ExecAction{
+			Command: mp.Exec.Command,
+		}
+	} else if mp.HTTPGet != nil {
+		kp.HTTPGet = &v1.HTTPGetAction{
+			Path:   mp.HTTPGet.Path,
+			Port:   mp.HTTPGet.Port,
+			Host:   mp.HTTPGet.Host,
+			Scheme: v1.URIScheme(string(mp.HTTPGet.Scheme)),
+		}
+		h := make([]v1.HTTPHeader, len(mp.HTTPGet.HTTPHeaders))
+		for i := range mp.HTTPGet.HTTPHeaders {
+			h[i].Name = mp.HTTPGet.HTTPHeaders[i].Name
+			h[i].Value = mp.HTTPGet.HTTPHeaders[i].Value
+		}
+		kp.HTTPGet.HTTPHeaders = h
+	} else if mp.TCPSocket != nil {
+		kp.TCPSocket = &v1.TCPSocketAction{
+			Port: mp.TCPSocket.Port,
+			Host: mp.TCPSocket.Host,
+		}
+	}
+	return kp
+}
+
+func UnitToContainer(unit api.Unit, container *v1.Container) v1.Container {
+	if container == nil {
+		container = &v1.Container{}
+	}
+	container.Name = unit.Name
+	container.Image = unit.Image
+	container.Command = unit.Command
+	container.Args = unit.Args
+	container.WorkingDir = unit.WorkingDir
+	container.Env = make([]v1.EnvVar, len(unit.Env))
+	for i, e := range unit.Env {
+		container.Env[i] = v1.EnvVar{
+			Name:  e.Name,
+			Value: e.Value,
+		}
+	}
 	for _, port := range unit.Ports {
-		p := PortToK8sPortsports(port)
-		ports = append(ports, p)
+		container.Ports = append(container.Ports,
+			v1.ContainerPort{
+				Name:          port.Name,
+				ContainerPort: port.ContainerPort,
+				HostPort:      port.HostPort,
+				Protocol:      v1.Protocol(string(port.Protocol)),
+				HostIP:        port.HostIP,
+			})
 	}
-	var envVars []v1.EnvVar
-	for _, envVar := range unit.Env {
-		envVars = append(envVars, UnitEnvToK8sContainerEnv(envVar))
-	}
-	var volMounts []v1.VolumeMount
-	for _, volMount := range unit.VolumeMounts {
-		volMounts = append(volMounts, VolumeMountToK8sVolumeMount(volMount))
-	}
-	readinessProbe := ProbeToK8sProbe(unit.ReadinessProbe)
-	livenessProbe := ProbeToK8sProbe(unit.LivenessProbe)
-	startupProbe := ProbeToK8sProbe(unit.StartupProbe)
-	securityContext := SecurityCtxToK8sSecurityCtx(unit.SecurityContext)
-	return v1.Container{
-		Name:                     unit.Name,
-		Image:                    unit.Image,
-		Command:                  unit.Command,
-		Args:                     unit.Args,
-		WorkingDir:               unit.WorkingDir,
-		Ports:                    ports,
-		EnvFrom:                  nil,
-		Env:                      envVars,
-		Resources:                v1.ResourceRequirements{},
-		VolumeMounts:             volMounts,
-		VolumeDevices:            nil,
-		LivenessProbe:            &livenessProbe,
-		ReadinessProbe:           &readinessProbe,
-		StartupProbe:             &startupProbe,
-		Lifecycle:                nil,
-		TerminationMessagePath:   "",
-		TerminationMessagePolicy: "",
-		ImagePullPolicy:          "",
-		SecurityContext:          &securityContext,
-		Stdin:                    false,
-		StdinOnce:                false,
-		TTY:                      false,
-	}
-}
-
-func PortToK8sPortsports(port api.ContainerPort) v1.ContainerPort {
-	return v1.ContainerPort{
-		Name:          port.Name,
-		HostIP:        port.HostIP,
-		HostPort:      port.HostPort,
-		ContainerPort: port.ContainerPort,
-		Protocol:      v1.Protocol(port.Protocol),
-	}
-}
-
-func PodDNSConfigtoK8sPodDNSConfig(dnsCfg api.PodDNSConfig) v1.PodDNSConfig {
-	var options []v1.PodDNSConfigOption
-	for _, opt := range dnsCfg.Options {
-		options = append(options, v1.PodDNSConfigOption(opt))
-	}
-	return v1.PodDNSConfig{
-		Nameservers: dnsCfg.Nameservers,
-		Searches:    dnsCfg.Searches,
-		Options:     options,
-	}
-}
-
-func PodSecurityCtxToK8sPodSecurityCtx(podSecurityCtx api.PodSecurityContext) v1.PodSecurityContext {
-	var systCtls []v1.Sysctl
-	for _, sysCtl := range podSecurityCtx.Sysctls {
-		systCtls = append(systCtls, v1.Sysctl(sysCtl))
-	}
-	return v1.PodSecurityContext{
-		RunAsUser:          podSecurityCtx.RunAsUser,
-		RunAsGroup:         podSecurityCtx.RunAsGroup,
-		SupplementalGroups: podSecurityCtx.SupplementalGroups,
-		Sysctls:            systCtls,
-	}
-}
-
-func PodSpecToK8sPodSpec(podSpec api.PodSpec) v1.PodSpec {
-	var volumes []v1.Volume
-	for _, volume := range podSpec.Volumes {
-		vol := VolumeToK8sVolume(volume)
-		volumes = append(volumes, vol)
-	}
-	var initContainers []v1.Container
-	for _, unit := range podSpec.InitUnits {
-		container := UnitToK8sContainer(unit)
-		initContainers = append(initContainers, container)
-	}
-	var containers []v1.Container
-	for _, unit := range podSpec.Units {
-		container := UnitToK8sContainer(unit)
-		containers = append(containers, container)
-	}
-	var hostAliases []v1.HostAlias
-	if podSpec.HostAliases != nil {
-		for _, hostAlias := range podSpec.HostAliases {
-			hA := v1.HostAlias(hostAlias)
-			hostAliases = append(hostAliases, hA)
+	usc := unit.SecurityContext
+	if usc != nil {
+		if container.SecurityContext == nil {
+			container.SecurityContext = &v1.SecurityContext{}
+		}
+		csc := container.SecurityContext
+		csc.RunAsUser = usc.RunAsUser
+		csc.RunAsGroup = usc.RunAsGroup
+		ucaps := usc.Capabilities
+		if ucaps != nil {
+			caps := &v1.Capabilities{
+				Add:  make([]v1.Capability, len(ucaps.Add)),
+				Drop: make([]v1.Capability, len(ucaps.Drop)),
+			}
+			for i, a := range ucaps.Add {
+				caps.Add[i] = v1.Capability(string(a))
+			}
+			for i, d := range ucaps.Drop {
+				caps.Drop[i] = v1.Capability(string(d))
+			}
+			csc.Capabilities = caps
 		}
 	}
-	var podDNSConfig v1.PodDNSConfig
-	if podSpec.DNSConfig != nil {
-		podDNSConfig = PodDNSConfigtoK8sPodDNSConfig(*podSpec.DNSConfig)
+	for _, vm := range unit.VolumeMounts {
+		if vm.Name == ResolvconfVolumeName || vm.Name == EtchostsVolumeName {
+			continue
+		}
+		container.VolumeMounts = append(container.VolumeMounts, v1.VolumeMount{
+			Name:      vm.Name,
+			MountPath: vm.MountPath,
+		})
 	}
-	var podSecurityContext v1.PodSecurityContext
-	if podSpec.SecurityContext != nil {
-		podSecurityContext = PodSecurityCtxToK8sPodSecurityCtx(*podSpec.SecurityContext)
-	}
+	container.StartupProbe = milpaProbeToK8sProbe(unit.StartupProbe)
+	container.ReadinessProbe = milpaProbeToK8sProbe(unit.ReadinessProbe)
+	container.LivenessProbe = milpaProbeToK8sProbe(unit.LivenessProbe)
 
-	spec := v1.PodSpec{
-		Volumes:          volumes,
-		InitContainers:   initContainers,
-		Containers:       containers,
-		RestartPolicy:    v1.RestartPolicy(podSpec.RestartPolicy),
-		DNSPolicy:        v1.DNSPolicy(podSpec.DNSPolicy),
-		SecurityContext:  &podSecurityContext,
-		ImagePullSecrets: nil,
-		Hostname:         podSpec.Hostname,
-		Subdomain:        podSpec.Subdomain,
-		HostAliases:      hostAliases,
-		DNSConfig:        &podDNSConfig,
-	}
-	return spec
-}
-
-type K8sPodYaml struct {
-	Kind       string         `json:"kind"`
-	ApiVersion string         `json:"apiVersion"`
-	Spec       v1.PodSpec     `json:"spec"`
-	Status     v1.PodStatus   `json:"status,omitempty"`
-	TypeMeta   v12.TypeMeta   `json:",inline"`
-	ObjectMeta v12.ObjectMeta `json:"metadata,omitempty"`
-}
-
-func K8sPodToYamlFormat(pod v1.PodSpec) K8sPodYaml {
-	return K8sPodYaml{
-		ApiVersion: "v1",
-		Kind:       "Pod",
-		Spec:       pod,
-		Status:     v1.PodStatus{},
-		TypeMeta:   v12.TypeMeta{},
-		ObjectMeta: v12.ObjectMeta{
-			// todo use constant here
-			Name: api.PodName,
-		},
-	}
+	return *container
 }
 
 func UnitNameToContainerName(unitName string) string {

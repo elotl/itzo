@@ -42,12 +42,12 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 	}
 }
 
-func MakeFailedUpdateStatus(name, image, reaseon string) *UnitStatus {
+func MakeFailedUpdateStatus(name, image, reason string) *UnitStatus {
 	return &UnitStatus{
 		Name: name,
 		State: UnitState{
 			Waiting: &UnitStateWaiting{
-				Reason:       reaseon,
+				Reason:       reason,
 				StartFailure: true,
 			},
 		},
