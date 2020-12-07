@@ -235,9 +235,6 @@ func UnitToContainer(unit api.Unit, container *v1.Container) v1.Container {
 		}
 	}
 	for _, vm := range unit.VolumeMounts {
-		if vm.Name == ResolvconfVolumeName || vm.Name == EtchostsVolumeName {
-			continue
-		}
 		container.VolumeMounts = append(container.VolumeMounts, v1.VolumeMount{
 			Name:      vm.Name,
 			MountPath: vm.MountPath,
