@@ -11,21 +11,9 @@ import (
 )
 
 const (
-	ResolvconfVolumeName                 = "resolvconf"
-	EtchostsVolumeName                   = "etchosts"
 	packagePathBaseDirectory 			 = "/tmp/itzo/packages"
 )
 
-
-var (
-	specialVolumesTypes = map[string]v1.HostPathType{
-		ResolvconfVolumeName: v1.HostPathFile,
-		EtchostsVolumeName:   v1.HostPathDirectory,
-	}
-	specialVolumesPaths = map[string]string{
-		ResolvconfVolumeName: "/tmp/itzo/packages/resolvconf/etc/resolv.conf",
-	}
-)
 
 func MilpaToK8sVolume(vol api.Volume) *v1.Volume {
 	convertKeyToPath := func(milpa []api.KeyToPath) []v1.KeyToPath {
@@ -127,21 +115,14 @@ func MilpaToK8sVolume(vol api.Volume) *v1.Volume {
 			},
 		}
 	} else if vol.PackagePath != nil {
-		var hostPathType v1.HostPathType
-		if hostType, ok := specialVolumesTypes[vol.Name]; ok {
-			hostPathType = hostType
-		}
-		path := filepath.Join("/tmp/itzo/packages", vol.Name)
-		if hostPath, ok := specialVolumesPaths[vol.Name]; ok {
-			path = hostPath
+		hostPathSource, err := convertPackagePathToHostPath(*vol.PackagePath, packagePathBaseDirectory)
+		if err != nil {
+			glog.Errorf("failed to convert vol.PackagePath %v to hostPath : %v", *vol.PackagePath, err)
 		}
 		return &v1.Volume{
 			Name: vol.Name,
 			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: path,
-					Type: &hostPathType,
-				},
+				HostPath: &hostPathSource,
 			},
 		}
 	} else {
