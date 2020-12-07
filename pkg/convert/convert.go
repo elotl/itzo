@@ -6,12 +6,14 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"os"
 	"path/filepath"
 )
 
 const (
 	ResolvconfVolumeName                 = "resolvconf"
 	EtchostsVolumeName                   = "etchosts"
+	packagePathBaseDirectory 			 = "/tmp/itzo/packages"
 )
 
 
@@ -129,7 +131,7 @@ func MilpaToK8sVolume(vol api.Volume) *v1.Volume {
 		if hostType, ok := specialVolumesTypes[vol.Name]; ok {
 			hostPathType = hostType
 		}
-		path := filepath.Join("/tmp/itzo/units", "..", "packages", vol.Name)
+		path := filepath.Join("/tmp/itzo/packages", vol.Name)
 		if hostPath, ok := specialVolumesPaths[vol.Name]; ok {
 			path = hostPath
 		}
@@ -282,4 +284,22 @@ func ContainerStateToUnit(ctrData define.InspectContainerData) (api.UnitState, b
 		Reason:       "waiting for container status",
 		StartFailure: false,
 	}}, false
+}
+
+
+func convertPackagePathToHostPath(hostPath api.PackagePath, itzoPackagesPath string) (v1.HostPathVolumeSource, error) {
+	path := filepath.Join(itzoPackagesPath, hostPath.Path)
+	info, err := os.Stat(path)
+	if err != nil {
+		return v1.HostPathVolumeSource{}, err
+	}
+	HostPathType := v1.HostPathFile
+	if info.IsDir() {
+		HostPathType = v1.HostPathDirectory
+	}
+
+	return v1.HostPathVolumeSource{
+		Path: path,
+		Type: &HostPathType,
+	}, nil
 }
