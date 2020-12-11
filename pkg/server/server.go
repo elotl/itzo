@@ -41,7 +41,6 @@ import (
 	"github.com/elotl/itzo/pkg/host"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/metrics"
-	"github.com/elotl/itzo/pkg/mount"
 	itzonet "github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
@@ -83,7 +82,6 @@ type Server struct {
 	mux                 http.ServeMux
 	startTime           time.Time
 	podController       *PodController
-	unitMgr             *unit.UnitManager
 	wsUpgrader          websocket.Upgrader
 	installRootdir      string
 	lastMetricTime      time.Time
@@ -95,20 +93,18 @@ type Server struct {
 	networkAgentCmd     *exec.Cmd
 }
 
-func New(rootdir string) *Server {
+func New(rootdir string, usePodman bool) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
-	mounter := mount.NewOSMounter(rootdir)
-	um := unit.NewUnitManager(rootdir)
-	pc := NewPodController(rootdir, mounter, um)
+	pc, err := NewPodController(rootdir, usePodman)
+	glog.Error(err)
 	pc.Start()
 	return &Server{
 		env:            EnvStore{},
 		startTime:      time.Now().UTC(),
 		installRootdir: rootdir,
 		podController:  pc,
-		unitMgr:        um,
 		wsUpgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -182,6 +178,8 @@ func (s *Server) startNetworkAgent(IP, nodeName string) {
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
+		glog.Infof("got update request")
+
 		var params api.PodParameters
 		err := json.NewDecoder(r.Body).Decode(&params)
 		if err != nil {
@@ -189,6 +187,8 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("Error decoding pod update request: %v", err))
 			return
 		}
+		glog.Infof("primary & secondary: %s & %s", s.primaryIP, s.secondaryIP)
+
 		if s.primaryIP == "" && s.secondaryIP == "" {
 			primaryIP, secondaryIP, podNS, err := itzonet.SetupNetNamespace(
 				params.PodIP)
@@ -215,9 +215,11 @@ func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 			glog.Infof("IP addresses: %q %q pod network namespace: %q",
 				s.primaryIP, s.podIP, podNS)
 		}
+
 		if s.networkAgentCmd == nil && params.NodeName != "" {
 			s.startNetworkAgent(s.primaryIP, params.NodeName)
 		}
+
 		err = s.podController.UpdatePod(&params)
 		if err != nil {
 			glog.Errorf("%v", err)
@@ -257,6 +259,8 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		// client (http.Client) the query params are already parsed
 		// out into URL.RawQuery.  Lets look into the URL and see what
 		// we need to parse...  Yuck!
+		glog.Infof("got log request")
+
 		var parsedURL *url.URL
 		var err error
 		if r.URL.RawQuery != "" {
@@ -287,12 +291,13 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		if follow != "" {
 			// Bug: if the unit gets closed or quits, we don't know
 			// about the closure
+			glog.Info("got logs -f request")
 			unitName, err := s.podController.GetUnitName(unit)
 			if err != nil {
 				badRequest(w, err.Error())
 				return
 			}
-			logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
+			logBuffer, err := s.podController.GetLogBuffer(unitName)
 			if err != nil {
 				badRequest(w, err.Error())
 				return
@@ -321,16 +326,21 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, err.Error())
 			return
 		}
-		logs, err := s.unitMgr.ReadLogBuffer(unitName, n)
+		glog.Infof("trying to read log buffer for unit: %s", unitName)
+
+		logs, err := s.podController.ReadLogBuffer(unitName, n)
+		glog.Infof("got logs from podController: %s", logs)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
 
 		}
 		var buffer bytes.Buffer
+		glog.Info("trying to write logs to buffer")
 		for _, entry := range logs {
 			buffer.WriteString(entry.Format(withMetadata))
 		}
+
 		w.Header().Set("Content-Type", "text/plain")
 		buffStr := buffer.String()
 		if numBytes > 0 && len(buffStr) > numBytes {
@@ -359,7 +369,7 @@ func (s *Server) RunLogTailer(w http.ResponseWriter, r *http.Request, unitName s
 		case <-ws.Closed():
 			return
 		case <-fileTicker.C:
-			unitRunning := s.unitMgr.UnitRunning(unitName)
+			unitRunning := s.podController.UnitRunning(unitName)
 			if !unitRunning {
 				// We can finish running but still have some data left
 				// in the buffer. If that's the case, go through one
@@ -546,18 +556,19 @@ func (s *Server) servePortForward(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
+	// todo encapsulate this in more highlevel podController function
 	unitName, err := s.podController.GetUnitName(params.UnitName)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return
 	}
-	_, exists := s.unitMgr.GetPid(unitName)
+	_, exists := s.podController.GetPid(unitName)
 	if !exists {
 		writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
 		return
 	}
 
-	logBuffer, err := s.unitMgr.GetLogBuffer(unitName)
+	logBuffer, err := s.podController.GetLogBuffer(unitName)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return
@@ -591,7 +602,7 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 		case <-ws.Closed():
 			return
 		case <-fileTicker.C:
-			unitRunning := s.unitMgr.UnitRunning(unitName)
+			unitRunning := s.podController.UnitRunning(unitName)
 			if !unitRunning {
 				writeWSError(ws, "Unit %s is not running\n", unitName)
 				return
@@ -650,6 +661,7 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 	s.runExec(ws, params)
 }
 
+// TODO: delete this handler as it isn't part of itzoclient in kip anymore
 func (s *Server) runcmdHandler(w http.ResponseWriter, r *http.Request) {
 	var params api.RunCmdParams
 	err := json.NewDecoder(r.Body).Decode(&params)

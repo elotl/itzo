@@ -1,11 +1,16 @@
 language: go
+dist: bionic
 go:
 - '1.13'
 before_install:
 - sudo apt-get install -y apt-transport-https ca-certificates gnupg
 - echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
 - curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
-- sudo apt-get update -y && sudo apt-get install -y awscli jq google-cloud-sdk libdevmapper-dev libgpgme11-dev
+- export VERSION_ID=$(. /etc/os-release; echo $VERSION_ID)
+- echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+- curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | sudo apt-key add -
+- sudo apt-get update -y && sudo apt-get install -y awscli jq google-cloud-sdk libdevmapper-dev libgpgme11-dev podman
+- sudo systemctl start podman.socket
 before_script:
 - openssl aes-256-cbc -K $encrypted_fd1e2a9fc2bf_key -iv $encrypted_fd1e2a9fc2bf_iv -in .account.json.enc -out .account.json -d
 - gcloud auth activate-service-account --key-file=.account.json --project=elotl-kip

@@ -1,19 +1,19 @@
-/*
-Copyright 2020 Elotl Inc
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
+///*
+//Copyright 2020 Elotl Inc
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//Unless required by applicable law or agreed to in writing, software
+//distributed under the License is distributed on an "AS IS" BASIS,
+//WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//See the License for the specific language governing permissions and
+//limitations under the License.
+//*/
+//
 package server
 
 import (
@@ -23,6 +23,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/logbuf"
+	runtime2 "github.com/elotl/itzo/pkg/runtime"
+	"github.com/elotl/itzo/pkg/unit"
+	"github.com/elotl/itzo/pkg/util"
+	"github.com/elotl/wsstream"
+	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -32,19 +40,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/elotl/itzo/pkg/api"
-	"github.com/elotl/itzo/pkg/logbuf"
-	"github.com/elotl/itzo/pkg/unit"
-	"github.com/elotl/itzo/pkg/util"
-	"github.com/elotl/wsstream"
-	"github.com/gorilla/websocket"
-	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -52,66 +51,8 @@ var (
 	// we used to use gorilla mux??? Either way, it should go away   :/
 	s             Server
 	runFunctional = flag.Bool("functional", false, "run functional tests")
+	testAgainstPodman = flag.Bool("podman", false, "run functional tests against podman")
 )
-
-// This will ensure all the helper processes and their children get terminated
-// before the main process exits.
-func killChildren() {
-	// Set of pids.
-	var pids map[int]interface{} = make(map[int]interface{})
-	pids[os.Getpid()] = nil
-
-	d, err := os.Open("/proc")
-	if err != nil {
-		return
-	}
-	defer d.Close()
-
-	for {
-		fis, err := d.Readdir(10)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return
-		}
-
-		for _, fi := range fis {
-			if !fi.IsDir() {
-				continue
-			}
-			name := fi.Name()
-			if name[0] < '0' || name[0] > '9' {
-				continue
-			}
-			pid64, err := strconv.ParseInt(name, 10, 0)
-			if err != nil {
-				continue
-			}
-			pid := int(pid64)
-			statPath := fmt.Sprintf("/proc/%s/stat", name)
-			dataBytes, err := ioutil.ReadFile(statPath)
-			if err != nil {
-				continue
-			}
-			data := string(dataBytes)
-			binStart := strings.IndexRune(data, '(') + 1
-			binEnd := strings.IndexRune(data[binStart:], ')')
-			data = data[binStart+binEnd+2:]
-			var state int
-			var ppid int
-			var pgrp int
-			var sid int
-			_, _ = fmt.Sscanf(data, "%c %d %d %d", &state, &ppid, &pgrp, &sid)
-			_, ok := pids[ppid]
-			if ok {
-				syscall.Kill(pid, syscall.SIGKILL)
-				// Kill any children of this process too.
-				pids[pid] = nil
-			}
-		}
-	}
-}
 
 func TestMain(m *testing.M) {
 	// call flag.Parse() here if TestMain uses flags
@@ -124,6 +65,11 @@ func TestMain(m *testing.M) {
 	var rp = flag.String("restartpolicy", string(api.RestartPolicyAlways), "Restart policy")
 	var netns = flag.String("netns", "", "Pod network namespace")
 	flag.Parse()
+	if *testAgainstPodman {
+		ret := m.Run()
+		KillChildren()
+		os.Exit(ret)
+	}
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*rp)
 		unit.StartUnit(*rootdir, *pod, *hostname, *unitname, *workingdir, *netns, strings.Split(*appcmdline, " "), policy)
@@ -134,16 +80,16 @@ func TestMain(m *testing.M) {
 		panic("Error creating temporary directory")
 	}
 	defer os.RemoveAll(tmpdir)
-
+	podctl, _ := NewPodController(tmpdir, false)
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
-		podController:  NewPodController(tmpdir, nil, nil),
+		podController:  podctl,
 	}
 	s.getHandlers()
 	ret := m.Run()
 	// Engineering: where killing children is how you keep things clean.
-	killChildren()
+	KillChildren()
 	os.Exit(ret)
 }
 
@@ -157,12 +103,18 @@ func sendRequest(t *testing.T, method, url string, body io.Reader) *httptest.Res
 }
 
 func TestPingHandler(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	rr := sendRequest(t, "GET", "/rest/v1/ping", nil)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "pong", rr.Body.String())
 }
 
 func TestGetFile(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	f, err := ioutil.TempFile("", "itzo-test")
 	assert.NoError(t, err)
 	defer f.Close()
@@ -197,6 +149,9 @@ func TestGetFile(t *testing.T) {
 }
 
 func TestVersionHandler(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	rr := sendRequest(t, "GET", "/rest/v1/version", nil)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.NotNil(t, rr.Body)
@@ -233,6 +188,9 @@ func updateUnit(t *testing.T, params *api.PodParameters) {
 }
 
 func TestUpdateHandler(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -240,6 +198,9 @@ func TestUpdateHandler(t *testing.T) {
 }
 
 func TestUpdateHandlerAddVolume(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -259,6 +220,9 @@ func TestUpdateHandlerAddVolume(t *testing.T) {
 }
 
 func TestUpdateHandlerAddUnit(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -277,6 +241,9 @@ func TestUpdateHandlerAddUnit(t *testing.T) {
 }
 
 func TestStatusHandler(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -299,6 +266,9 @@ func TestStatusHandler(t *testing.T) {
 }
 
 func TestStatusHandlerFailed(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -330,6 +300,9 @@ func TestStatusHandlerFailed(t *testing.T) {
 }
 
 func TestStatusHandlerStartFailure(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -360,6 +333,9 @@ func TestStatusHandlerStartFailure(t *testing.T) {
 }
 
 func TestStatusHandlerSucceeded(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -391,6 +367,9 @@ func TestStatusHandlerSucceeded(t *testing.T) {
 }
 
 func TestGetLogsFunctional(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -412,6 +391,9 @@ func TestGetLogsFunctional(t *testing.T) {
 }
 
 func TestGetLogsLinesFunctional(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	if !*runFunctional {
 		return
 	}
@@ -492,6 +474,9 @@ func createTarGzBuf(t *testing.T) []byte {
 }
 
 func TestDeployPackage(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
@@ -500,7 +485,7 @@ func TestDeployPackage(t *testing.T) {
 	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
 	assert.Nil(t, err)
 
-	srv := New(rootdir)
+	srv := New(rootdir, false)
 	srv.getHandlers()
 
 	content := createTarGzBuf(t)
@@ -531,6 +516,9 @@ func TestDeployPackage(t *testing.T) {
 }
 
 func TestDeployInvalidPackage(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	tmpfile, err := ioutil.TempFile("", "itzo-test-deploy-")
 	assert.Nil(t, err)
 	defer tmpfile.Close()
@@ -551,7 +539,7 @@ func TestDeployInvalidPackage(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	srv := New("/tmp/itzo-pkg-test")
+	srv := New("/tmp/itzo-pkg-test", false)
 	srv.getHandlers()
 	srv.ServeHTTP(rr, req)
 
@@ -559,9 +547,13 @@ func TestDeployInvalidPackage(t *testing.T) {
 }
 
 func TestGetLogs(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	unitName := "testunit"
 	um := unit.NewUnitManager(DEFAULT_ROOTDIR)
-	s.unitMgr = um
+	runtime := s.podController.runtime.(*runtime2.ItzoRuntime)
+	runtime.UnitMgr = um
 	lb := logbuf.NewLogBuffer(1000)
 	um.LogBuf.Set(unitName, lb)
 	for i := 0; i < 10; i++ {
@@ -586,10 +578,10 @@ func runServer() (*Server, func(), int) {
 		panic("Error creating temporary directory")
 	}
 	closer := func() { os.RemoveAll(tmpdir) }
+	podCtl, _ := NewPodController(tmpdir, false)
 	s := &Server{
 		installRootdir: tmpdir,
-		unitMgr:        unit.NewUnitManager(tmpdir),
-		podController:  NewPodController(tmpdir, nil, nil),
+		podController:  podCtl,
 	}
 	s.getHandlers()
 	s.httpServer = &http.Server{Addr: ":0", Handler: s}
@@ -614,6 +606,9 @@ func createWebsocketClient(port, path string) (*wsstream.WSStream, error) {
 }
 
 func TestPortForward(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	// We start up our server, start a websocket port forwarwd request
 	// to the same server port and then forward, throught the
 	// websocket, a request to ping we expect pong as the output
@@ -657,6 +652,9 @@ func TestPortForward(t *testing.T) {
 }
 
 func TestExec(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	// We start up our server, start an exec request
 	ss, closer, port := runServer()
 	defer closer()
@@ -701,69 +699,74 @@ func TestExec(t *testing.T) {
 // unit and unit pipes as well as the server.  :( It's going to be a
 // change detector test If this gets in the way, comment it out,
 // assign an issue to bcox.
-func TestAttach(t *testing.T) {
-	unitName := "testunit"
-	ss, closer, port := runServer()
-	defer closer()
-	portstr := fmt.Sprintf("%d", port)
-	defer ss.httpServer.Close()
-	// need the pod controller in order to get the unit
-	ss.podController.podStatus.Units = []api.Unit{{
-		Name: unitName,
-	}}
-
-	// Open the unit
-	u, err := unit.OpenUnit(ss.installRootdir, unitName)
-	assert.NoError(t, err)
-	defer u.Destroy()
-
-	ss.unitMgr.CaptureLogs("mypod", unitName, u.LogPipe)
-	// silly hack that allows us to get the output from the unit
-	ss.unitMgr.RunningUnits.Set(unitName, &os.Process{})
-	unitin, err := u.OpenStdinReader()
-	assert.NoError(t, err)
-	lp := u.LogPipe
-	unitout, err := lp.OpenWriter(unit.PIPE_UNIT_STDOUT)
-	defer unitout.Close()
-
-	// start a unit that we can get stdin and stdout from
-	ch := make(chan error)
-	go func() {
-		err = u.RunUnitLoop(
-			[]string{"/bin/cat", "-"},
-			nil, 0, 0, nil, unitin, unitout, nil, api.RestartPolicyNever)
-		ch <- err
-	}()
-
-	ws, err := createWebsocketClient(portstr, "/rest/v1/attach/")
-	assert.NoError(t, err)
-	defer ws.CloseAndCleanup()
-
-	params := api.AttachParams{
-		Interactive: true,
-	}
-	paramsb, err := json.Marshal(params)
-	assert.NoError(t, err)
-	err = ws.WriteRaw(paramsb)
-	assert.NoError(t, err)
-
-	msgString := []byte("Hello Milpa\n") // don't forget newline, we are line based
-	err = ws.WriteMsg(wsstream.StdinChan, msgString)
-	assert.NoError(t, err)
-
-	timeout := 3 * time.Second
-	select {
-	case f := <-ws.ReadMsg():
-		c, m, err := wsstream.UnpackMessage(f)
-		assert.NoError(t, err)
-		assert.Equal(t, 1, c)
-		assert.Equal(t, msgString, m)
-	case <-time.After(timeout):
-		assert.FailNow(t, "reading timed out")
-	}
-}
+// Paweł: commenting out for now, we have to rethink how to test it properly with runtime interfaces
+// TODO
+//func TestAttach(t *testing.T) {
+//	unitName := "testunit"
+//	ss, closer, port := runServer()
+//	defer closer()
+//	portstr := fmt.Sprintf("%d", port)
+//	defer ss.httpServer.Close()
+//	// need the pod controller in order to get the unit
+//	ss.podController.podStatus.Units = []api.Unit{{
+//		Name: unitName,
+//	}}
+//
+//	// Open the unit
+//	u, err := unit.OpenUnit(ss.installRootdir, unitName)
+//	assert.NoError(t, err)
+//	defer u.Destroy()
+//	runtime := ss.podController.runtime.(*runtime2.ItzoRuntime)
+//	runtime.UnitMgr.CaptureLogs("mypod", unitName, u.LogPipe)
+//	// silly hack that allows us to get the output from the unit
+//	ss.unitMgr.RunningUnits.Set(unitName, &os.Process{})
+//	unitin, err := u.OpenStdinReader()
+//	assert.NoError(t, err)
+//	lp := u.LogPipe
+//	unitout, err := lp.OpenWriter(unit.PIPE_UNIT_STDOUT)
+//	defer unitout.Close()
+//
+//	// start a unit that we can get stdin and stdout from
+//	ch := make(chan error)
+//	go func() {
+//		err = u.RunUnitLoop(
+//			[]string{"/bin/cat", "-"},
+//			nil, 0, 0, nil, unitin, unitout, nil, api.RestartPolicyNever)
+//		ch <- err
+//	}()
+//
+//	ws, err := createWebsocketClient(portstr, "/rest/v1/attach/")
+//	assert.NoError(t, err)
+//	defer ws.CloseAndCleanup()
+//
+//	params := api.AttachParams{
+//		Interactive: true,
+//	}
+//	paramsb, err := json.Marshal(params)
+//	assert.NoError(t, err)
+//	err = ws.WriteRaw(paramsb)
+//	assert.NoError(t, err)
+//
+//	msgString := []byte("Hello Milpa\n") // don't forget newline, we are line based
+//	err = ws.WriteMsg(wsstream.StdinChan, msgString)
+//	assert.NoError(t, err)
+//
+//	timeout := 3 * time.Second
+//	select {
+//	case f := <-ws.ReadMsg():
+//		c, m, err := wsstream.UnpackMessage(f)
+//		assert.NoError(t, err)
+//		assert.Equal(t, 1, c)
+//		assert.Equal(t, msgString, m)
+//	case <-time.After(timeout):
+//		assert.FailNow(t, "reading timed out")
+//	}
+//}
 
 func TestRunCmd(t *testing.T) {
+	if *testAgainstPodman {
+		return
+	}
 	cmdParams := api.RunCmdParams{
 		Command: []string{"/bin/cat", "/proc/cpuinfo"},
 	}

@@ -83,7 +83,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 			writeWSErrorExitcode(ws, "%v\n", errmsg)
 			return
 		}
-		pid, exists := s.unitMgr.GetPid(unitName)
+		pid, exists := s.podController.GetPid(unitName)
 		if !exists {
 			glog.Errorf("Error getting pid for unit %s", unitName)
 			writeWSErrorExitcode(ws, "Could not find running process for unit named %s\n", unitName)

@@ -16,6 +16,8 @@ limitations under the License.
 
 package api
 
+const PodName string = "itzopod"
+
 func IsHostNetwork(securityContext *PodSecurityContext) bool {
 	if securityContext == nil {
 		return false
@@ -37,5 +39,18 @@ func MakeStillCreatingStatus(name, image, reason string) *UnitStatus {
 		},
 		RestartCount: 0,
 		Image:        image,
+	}
+}
+
+func MakeFailedUpdateStatus(name, image, reason string) *UnitStatus {
+	return &UnitStatus{
+		Name: name,
+		State: UnitState{
+			Waiting: &UnitStateWaiting{
+				Reason:       reason,
+				StartFailure: true,
+			},
+		},
+		Image: image,
 	}
 }

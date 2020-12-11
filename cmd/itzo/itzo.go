@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/server"
@@ -47,6 +48,7 @@ func main() {
 	var workingdir = flag.String("workingdir", "", "Working directory for unit")
 	var netns = flag.String("netns", "", "Pod network namespace name")
 	// todo, ability to log to a file instead of stdout
+	var usePodman = flag.Bool("use-podman", false, "use podman.io as container runtime")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
@@ -55,6 +57,10 @@ func main() {
 
 	if *appcmdline != "" {
 		policy := api.RestartPolicy(*apprestartpolicy)
+		if *usePodman {
+			glog.Errorf("Unexpected behavior, unitmanager called itzo runtime with use podman flag")
+			os.Exit(1)
+		}
 		glog.Infof("Starting %s for pod %s unit %s; restart policy is %v",
 			*appcmdline, *podname, *appunit, policy)
 		cmdargs, err := quote.Split(*appcmdline)
@@ -76,8 +82,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	glog.Info("Starting up agent")
-	server := server.New(*rootdir)
+	glog.Infof("Starting up agent, is podman used? %s", strconv.FormatBool(*usePodman))
+	// TODO if podman flag is set, ensure that podman service is running
+	server := server.New(*rootdir, *usePodman)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
 }

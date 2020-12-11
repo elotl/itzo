@@ -593,6 +593,11 @@ type VolumeMount struct {
 	Name string `json:"name"`
 	// Path where this volume will be attached inside the unit.
 	MountPath string `json:"mountPath"`
+	// Path within the volume from which the container's volume should be mounted.
+	// Defaults to "" (volume's root).
+	// +optional
+	SubPath string `json:"subPath,omitempty" protobuf:"bytes,4,opt,name=subPath"`
+
 }
 
 // Environment variables.

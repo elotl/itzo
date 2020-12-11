@@ -19,10 +19,14 @@ set -e
 PATH=$PATH:$HOME/.local/bin
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR=$SCRIPT_DIR/..
+GO_EXECUTABLE=$(which go)
 
 cd $ROOT_DIR
 make
-go test ./...
+$GO_EXECUTABLE test ./...
+
+echo "running podman e2e-tests"
+sudo $GO_EXECUTABLE test ./pkg/server/   -v -args -podman=true
 
 CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)
 
