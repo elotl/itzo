@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	packagePathBaseDirectory 			 = "/tmp/itzo/packages"
+	packagePathBaseDirectory = "/tmp/itzo/packages"
 )
-
 
 func MilpaToK8sVolume(vol api.Volume) *v1.Volume {
 	convertKeyToPath := func(milpa []api.KeyToPath) []v1.KeyToPath {
@@ -266,7 +265,6 @@ func ContainerStateToUnit(ctrData define.InspectContainerData) (api.UnitState, b
 		StartFailure: false,
 	}}, false
 }
-
 
 func convertPackagePathToHostPath(hostPath api.PackagePath, itzoPackagesPath string) (v1.HostPathVolumeSource, error) {
 	path := filepath.Join(itzoPackagesPath, hostPath.Path)

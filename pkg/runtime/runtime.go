@@ -9,15 +9,12 @@ type PodSandbox interface {
 	RunPodSandbox(spec *api.PodSpec) error
 	StopPodSandbox(spec *api.PodSpec) error
 	RemovePodSandbox(spec *api.PodSpec) error
-	PodSandboxStatus() error
-	//ListPodSandbox() error
 }
 
 type ContainerService interface {
 	CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error)
 	StartContainer(unit api.Unit, spec *api.PodSpec, podName string) (*api.UnitStatus, error)
 	RemoveContainer(unit *api.Unit) error
-	ListContainers() error
 	ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error)
 	//ExecSync()
 	//Exec()
@@ -39,13 +36,8 @@ type RuntimeService interface {
 	PodSandbox
 	ContainerService
 	//UpdateRuntimeConfig()
-	Status()
-
 }
 
 type ImageService interface {
-	ListImages()
-	ImageStatus(rootdir, image string) error
 	PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error
-	RemoveImage(rootdir, image string) error
 }

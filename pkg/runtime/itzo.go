@@ -37,18 +37,6 @@ type UnitRunner interface {
 type ImagePuller struct {
 }
 
-func (ip *ImagePuller) ListImages() {
-	panic("implement me")
-}
-
-func (ip *ImagePuller) ImageStatus(rootdir, image string) error {
-	panic("implement me")
-}
-
-func (ip *ImagePuller) RemoveImage(rootdir, image string) error {
-	panic("implement me")
-}
-
 func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error {
 	server, _, err := util.ParseImageSpec(image)
 	if err != nil {
@@ -131,10 +119,6 @@ func (i *ItzoRuntime) RemovePodSandbox(spec *api.PodSpec) error {
 	return nil
 }
 
-func (i *ItzoRuntime) PodSandboxStatus() error {
-	panic("implement me")
-}
-
 func (i *ItzoRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
 	// pull image
 	err := i.ImgPuller.PullImage(i.rootdir, unit.Name, unit.Image, registryCredentials, useOverlayfs)
@@ -210,10 +194,6 @@ func (i *ItzoRuntime) RemoveContainer(unit *api.Unit) error {
 	return err
 }
 
-func (i *ItzoRuntime) ListContainers() error {
-	panic("implement me")
-}
-
 func (i *ItzoRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {
 	if i.UnitMgr.UnitRunning(unitName) {
 		return &api.UnitStatus{
@@ -244,10 +224,6 @@ func (i *ItzoRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStat
 			unitName, unitImage, reason), nil
 	}
 	return us, nil
-}
-
-func (i ItzoRuntime) Status() {
-	panic("implement me")
 }
 
 func (i *ItzoRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {

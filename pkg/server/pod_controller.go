@@ -75,6 +75,7 @@ func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 	if usePodman {
 		podRuntime, err = runtime.NewPodmanRuntime(rootdir)
 		if err != nil {
+			glog.Errorf("error creating podman runtime: %v", err)
 			return &PodController{}, err
 		}
 	} else {
@@ -115,15 +116,18 @@ func (pc *PodController) runUpdateLoop() {
 		}
 		podParams := <-pc.updateChan
 		glog.Infof("New pod update")
-		pc.podName = podParams.PodName
-		pc.podHostname = podParams.PodHostname
-		spec := &podParams.Spec
-		MergeSecretsIntoSpec(podParams.Secrets, spec.Units)
-		MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
-		pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
-		pc.podStatus = spec
-		pc.annotations = podParams.Annotations
+		pc.doUpdate(podParams)
 	}
+}
+
+func (pc *PodController) doUpdate(podParams *api.PodParameters) {
+	pc.podName = podParams.PodName
+	pc.podHostname = podParams.PodHostname
+	spec := &podParams.Spec
+	MergeSecretsIntoSpec(podParams.Secrets, spec.Units)
+	MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
+	pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
+	pc.podStatus = spec
 }
 
 func (pc *PodController) Start() {
@@ -270,6 +274,7 @@ func (pc *PodController) SyncPodUnits(spec *api.PodSpec, status *api.PodSpec, al
 		initsToStart, unitsToStart = []api.Unit{}, addUnits
 	case UpdateTypePodCreate:
 		// start pod
+
 		err := pc.CreatePod(spec)
 		if err != nil {
 			glog.Errorf("error creating pod: %v", err)

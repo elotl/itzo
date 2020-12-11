@@ -16,7 +16,9 @@ import (
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -61,6 +63,17 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	// those two are important as we deploy and mount resolv.conf and /etc/hosts
 	podSpec.NoManageResolvConf = true
 	podSpec.NoManageHosts = true
+	portMappings := make([]specgen.PortMapping, 0)
+	for _, unit := range spec.Units {
+		for _, port := range unit.Ports {
+			portMappings = append(portMappings, specgen.PortMapping{
+				ContainerPort: uint16(port.ContainerPort),
+				HostPort:      uint16(port.HostPort),
+				Protocol:      string(port.Protocol),
+			})
+		}
+	}
+	podSpec.PortMappings = portMappings
 	_, err := pods.CreatePodFromSpec(ps.connText, podSpec)
 	if err != nil {
 		glog.Errorf("error creating pod from spec: %v", err)
@@ -82,25 +95,9 @@ func (ps *PodmanSandbox) RemovePodSandbox(spec *api.PodSpec) error {
 	}
 	return err
 }
-func (ps *PodmanSandbox) PodSandboxStatus() error {
-	_, err := pods.Inspect(ps.connText, api.PodName)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 
 type PodmanImageService struct {
 	connText context.Context
-}
-
-func (p *PodmanImageService) ListImages() {
-	return
-}
-
-func (p *PodmanImageService) ImageStatus(rootdir, image string) error {
-	return nil
 }
 
 func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error {
@@ -153,6 +150,7 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	containerSpec := specgen.NewSpecGenerator(container.Image, false)
 	containerSpec.Name = convert.UnitNameToContainerName(unit.Name)
 	containerSpec.Pod = api.PodName
+	containerSpec.Terminal = true
 	containerSpec.Command = unit.Command
 	containerSpec.RestartPolicy = restartPolicyMap[spec.RestartPolicy]
 	containerSpec.Env = make(map[string]string)
@@ -214,7 +212,6 @@ func (pcs *PodmanContainerService) RemoveContainer(unit *api.Unit) error {
 	return err
 }
 
-func (pcs *PodmanContainerService) ListContainers() error { return nil }
 func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {
 	containerName := convert.UnitNameToContainerName(unitName)
 	ctrData, err := containers.Inspect(pcs.imgPuller.connText, containerName, nil)
@@ -244,43 +241,41 @@ type PodmanRuntime struct {
 	PodmanContainerService
 }
 
-func (p *PodmanRuntime) Status() {
-	return
-}
-
 func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
 	return nil, nil
 }
 
 func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
 	containerName := convert.UnitNameToContainerName(unit)
-	stdoutChan := make(chan string)
-	stdErrChan := make(chan string)
-	defer close(stdoutChan)
-	defer close(stdErrChan)
-	addTimestamps := true
+	yes := true
+	tail := strconv.Itoa(n)
+	out := make(chan string)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 	opts := containers.LogOptions{
-		Timestamps: &addTimestamps,
+		Stderr:     &yes,
+		Stdout:     &yes,
+		Tail:       &tail,
+		Timestamps: &yes,
 	}
-	glog.Infof("trying to get logs from podman for container: %s", containerName)
-	err := containers.Logs(p.imgPuller.connText, containerName, opts, stdoutChan, stdErrChan)
-	if err != nil {
-		glog.Errorf("error getting logs from podman for container %s :%v", containerName, err)
-		return nil, err
-	}
-	logs := make([]logbuf.LogEntry, 0)
-	// TODO add stderr
-	for logLine := range stdoutChan {
-		glog.Infof("raw log line from podman: %s", logLine)
-		log := strings.Split(logLine, " ")
-		logMsg := strings.Join(log[1:], " ")
-		logEntry := logbuf.LogEntry{
-			Timestamp: log[0],
-			Source:    logbuf.StdoutLogSource,
-			Line:      logMsg,
+	var logs []logbuf.LogEntry
+	go func(wg *sync.WaitGroup) {
+		err := containers.Logs(p.connText, containerName, opts, out, out)
+		if err != nil {
+			glog.Errorf("cannot get logs for container %s : %v", containerName, err)
 		}
-		logs = append(logs, logEntry)
+		wg.Done()
+		close(out)
+	}(wg)
+	for msg := range out {
+		logLine := strings.Split(msg, " ")
+		logs = append(logs, logbuf.LogEntry{
+			Timestamp: logLine[0],
+			Source:    logbuf.StdoutLogSource,
+			Line:      strings.Join(logLine[1:], " "),
+		})
 	}
+	wg.Wait()
 	return logs, nil
 }
 

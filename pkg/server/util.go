@@ -27,7 +27,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/golang/glog"
@@ -311,4 +313,74 @@ func doDeployPackage(filename, destdir string) (err error) {
 	}
 
 	return nil
+}
+
+// This will ensure all the helper processes and their children get terminated
+// before the main process exits.
+func KillChildren() {
+	// Set of pids.
+	var pids map[int]interface{} = make(map[int]interface{})
+	pids[os.Getpid()] = nil
+
+	d, err := os.Open("/proc")
+	if err != nil {
+		return
+	}
+	defer d.Close()
+
+	for {
+		fis, err := d.Readdir(10)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return
+		}
+
+		for _, fi := range fis {
+			if !fi.IsDir() {
+				continue
+			}
+			name := fi.Name()
+			if name[0] < '0' || name[0] > '9' {
+				continue
+			}
+			pid64, err := strconv.ParseInt(name, 10, 0)
+			if err != nil {
+				continue
+			}
+			pid := int(pid64)
+			statPath := fmt.Sprintf("/proc/%s/stat", name)
+			dataBytes, err := ioutil.ReadFile(statPath)
+			if err != nil {
+				continue
+			}
+			data := string(dataBytes)
+			binStart := strings.IndexRune(data, '(') + 1
+			binEnd := strings.IndexRune(data[binStart:], ')')
+			data = data[binStart+binEnd+2:]
+			var state int
+			var ppid int
+			var pgrp int
+			var sid int
+			_, _ = fmt.Sscanf(data, "%c %d %d %d", &state, &ppid, &pgrp, &sid)
+			_, ok := pids[ppid]
+			if ok {
+				syscall.Kill(pid, syscall.SIGKILL)
+				// Kill any children of this process too.
+				pids[pid] = nil
+			}
+		}
+	}
+}
+
+func NewTestServer(store EnvStore, rootdir string, podCtl *PodController) Server {
+	s := Server{
+		env:            store,
+		installRootdir: rootdir,
+		podController:  podCtl,
+	}
+	s.getHandlers()
+	s.primaryIP = "fake-ip"
+	return s
 }
