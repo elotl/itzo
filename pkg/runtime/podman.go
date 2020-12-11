@@ -139,11 +139,7 @@ func NewPodmanContainerService(ctx context.Context, rootdir string) *PodmanConta
 }
 
 func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
-	container := convert.UnitToK8sContainer(unit)
-	var k8sVolumes []v1.Volume
-	for _, vol := range spec.Volumes {
-		k8sVolumes = append(k8sVolumes, convert.VolumeToK8sVolume(vol))
-	}
+	container := convert.UnitToContainer(unit, nil)
 	// TODO: ignore this failure for now, it seems that there's response serialization bug on podman site
 
 	_ = pcs.imgPuller.PullImage(pcs.rootdir, unit.Name, unit.Image, registryCredentials, false)
@@ -170,7 +166,8 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 		var volume v1.Volume
 		for _, vol := range spec.Volumes {
 			if vol.Name == mount.Name {
-				volume = convert.VolumeToK8sVolume(vol)
+				volumePtr := convert.MilpaToK8sVolume(vol)
+				volume = *volumePtr
 				break
 			}
 		}
