@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 const (
@@ -66,11 +65,14 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	portMappings := make([]specgen.PortMapping, 0)
 	for _, unit := range spec.Units {
 		for _, port := range unit.Ports {
-			portMappings = append(portMappings, specgen.PortMapping{
-				ContainerPort: uint16(port.ContainerPort),
-				HostPort:      uint16(port.HostPort),
-				Protocol:      string(port.Protocol),
-			})
+			portMapping := specgen.PortMapping{ContainerPort: uint16(port.ContainerPort)}
+			if string(port.Protocol) != "" {
+				portMapping.Protocol = string(port.Protocol)
+			}
+			if port.HostPort != 0 {
+				portMapping.HostPort = uint16(port.HostPort)
+			}
+			portMappings = append(portMappings, portMapping)
 		}
 	}
 	podSpec.PortMappings = portMappings
@@ -150,7 +152,6 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 	containerSpec := specgen.NewSpecGenerator(container.Image, false)
 	containerSpec.Name = convert.UnitNameToContainerName(unit.Name)
 	containerSpec.Pod = api.PodName
-	containerSpec.Terminal = true
 	containerSpec.Command = unit.Command
 	containerSpec.RestartPolicy = restartPolicyMap[spec.RestartPolicy]
 	containerSpec.Env = make(map[string]string)
@@ -250,8 +251,6 @@ func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, er
 	yes := true
 	tail := strconv.Itoa(n)
 	out := make(chan string)
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
 	opts := containers.LogOptions{
 		Stderr:     &yes,
 		Stdout:     &yes,
@@ -259,23 +258,25 @@ func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, er
 		Timestamps: &yes,
 	}
 	var logs []logbuf.LogEntry
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		err := containers.Logs(p.connText, containerName, opts, out, out)
 		if err != nil {
 			glog.Errorf("cannot get logs for container %s : %v", containerName, err)
 		}
-		wg.Done()
 		close(out)
-	}(wg)
+	}()
 	for msg := range out {
 		logLine := strings.Split(msg, " ")
+		line := ""
+		if len(logLine) > 1 {
+			line = strings.Join(logLine[1:], "")
+		}
 		logs = append(logs, logbuf.LogEntry{
 			Timestamp: logLine[0],
 			Source:    logbuf.StdoutLogSource,
-			Line:      strings.Join(logLine[1:], " "),
+			Line:       line + "\n",
 		})
 	}
-	wg.Wait()
 	return logs, nil
 }
 
