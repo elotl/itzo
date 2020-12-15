@@ -17,7 +17,7 @@ before_script:
 script:
 - set -e
 - make
-- scripts/run_tests.sh
+- GO_BIN=$(which go) sudo -E ./scripts/run_tests.sh
 env:
   global:
   - GOOGLE_APPLICATION_CREDENTIALS=.account.json

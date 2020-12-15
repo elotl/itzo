@@ -144,13 +144,7 @@ func TestGetLogsWithPodman(t *testing.T) {
 				{
 					Name: "unit1",
 					Image: "busybox:latest",
-					Command: []string{
-						"printf",
-						"1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n",
-						"&&",
-						"sleep",
-						"1000",
-					},
+					Command: []string{"sh", "-c", "yes | head -n 10"},
 				},
 			},
 			InitUnits: []api.Unit{},
@@ -180,7 +174,7 @@ func TestGetLogsWithPodman(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	responseBody := rr.Body.String()
 	lines := strings.Split(responseBody, "\n")
-	assert.Equal(t, []string{"6", "7", "8", "9", "10", ""}, lines)
+	assert.Equal(t, []string{"y", "y", "y", "y", "y", ""}, lines)
 }
 
 func TestGetStatusWithPodman(t *testing.T)  {

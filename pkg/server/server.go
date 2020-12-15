@@ -178,8 +178,6 @@ func (s *Server) startNetworkAgent(IP, nodeName string) {
 func (s *Server) updateHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
-		glog.Infof("got update request")
-
 		var params api.PodParameters
 		err := json.NewDecoder(r.Body).Decode(&params)
 		if err != nil {
@@ -259,7 +257,6 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 		// client (http.Client) the query params are already parsed
 		// out into URL.RawQuery.  Lets look into the URL and see what
 		// we need to parse...  Yuck!
-		glog.Infof("got log request")
 
 		var parsedURL *url.URL
 		var err error

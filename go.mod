@@ -10,14 +10,11 @@ require (
 	github.com/containers/buildah v1.17.0 // indirect
 	github.com/containers/libpod/v2 v2.0.4
 	github.com/elotl/wsstream v0.0.0-20180531183345-a88a26dd5a78
-	github.com/ghodss/yaml v1.0.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
-	github.com/golangplus/testing v0.0.0-20180327235837-af21d9c3145e
 	github.com/gorilla/schema v1.2.0 // indirect
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/go-multierror v1.1.0
-	github.com/instrumenta/kubeval v0.0.0-20201005082916-38668c6c5b23
 	github.com/jandre/procfs v0.0.0-20150609131925-f645421657bb
 	github.com/justnoise/genny v0.0.0-20170328200008-9127e812e1e9
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51

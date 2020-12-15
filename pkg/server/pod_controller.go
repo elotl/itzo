@@ -76,7 +76,7 @@ func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 		podRuntime, err = runtime.NewPodmanRuntime(rootdir)
 		if err != nil {
 			glog.Errorf("error creating podman runtime: %v", err)
-			return &PodController{}, err
+			return nil, err
 		}
 	} else {
 		mounter := mount.NewOSMounter(rootdir)
@@ -128,6 +128,7 @@ func (pc *PodController) doUpdate(podParams *api.PodParameters) {
 	MergeSecretsIntoSpec(podParams.Secrets, spec.InitUnits)
 	pc.SyncPodUnits(spec, pc.podStatus, podParams.Credentials)
 	pc.podStatus = spec
+	pc.annotations = podParams.Annotations
 }
 
 func (pc *PodController) Start() {
