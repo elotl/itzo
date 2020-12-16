@@ -253,11 +253,11 @@ func (um *UnitManager) CaptureLogs(podName, unitName string, lp *LogPipe) {
 	writer := containerlog.NewLogger(logFileName, 100, 1, 7, nil)
 	um.LogBuf.Set(unitName, logbuf.NewLogBuffer(logBuffSize))
 	lp.StartReader(PIPE_UNIT_STDOUT, func(line string) {
-		um.LogBuf.Get(unitName).Write(logbuf.StdoutLogSource, line)
+		um.LogBuf.Get(unitName).Write(logbuf.StdoutLogSource, line, nil)
 		writer.Write(containerlog.Stdout, line)
 	})
 	lp.StartReader(PIPE_UNIT_STDERR, func(line string) {
-		um.LogBuf.Get(unitName).Write(logbuf.StderrLogSource, line)
+		um.LogBuf.Get(unitName).Write(logbuf.StderrLogSource, line, nil)
 		writer.Write(containerlog.Stderr, line)
 	})
 }

@@ -230,10 +230,6 @@ func (i *ItzoRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
 	return i.UnitMgr.GetLogBuffer(unitName)
 }
 
-func (i *ItzoRuntime) ReadLogBuffer(unitName string, n int) ([]logbuf.LogEntry, error) {
-	return i.UnitMgr.ReadLogBuffer(unitName, n)
-}
-
 func (i *ItzoRuntime) UnitRunning(unitName string) bool {
 	return i.UnitMgr.UnitRunning(unitName)
 }

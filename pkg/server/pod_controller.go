@@ -512,10 +512,6 @@ func (pc *PodController) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error
 	return pc.runtime.GetLogBuffer(unitName)
 }
 
-func (pc *PodController) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
-	return pc.runtime.ReadLogBuffer(unit, n)
-}
-
 func (pc *PodController) UnitRunning(unit string) bool {
 	return pc.runtime.UnitRunning(unit)
 }

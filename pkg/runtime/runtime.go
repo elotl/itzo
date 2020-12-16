@@ -22,7 +22,6 @@ type ContainerService interface {
 	//PortForward()
 	// TODO:: those below are needed for server handlers, we should think about ways to remove them from this interface
 	GetLogBuffer(unitName string) (*logbuf.LogBuffer, error)
-	ReadLogBuffer(unitName string, n int) ([]logbuf.LogEntry, error)
 	UnitRunning(unitName string) bool
 	GetPid(unitName string) (int, bool)
 	SetPodNetwork(netNS, podIP string)

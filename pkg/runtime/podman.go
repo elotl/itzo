@@ -243,13 +243,10 @@ type PodmanRuntime struct {
 }
 
 func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	return nil, nil
-}
-
-func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
-	containerName := convert.UnitNameToContainerName(unit)
+	logBuf := logbuf.NewLogBuffer(4096) // TODO figure out correct number here
+	containerName := convert.UnitNameToContainerName(unitName)
 	yes := true
-	tail := strconv.Itoa(n)
+	tail := strconv.Itoa(4096) // TODO ... and here
 	out := make(chan string)
 	opts := containers.LogOptions{
 		Stderr:     &yes,
@@ -257,7 +254,6 @@ func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, er
 		Tail:       &tail,
 		Timestamps: &yes,
 	}
-	var logs []logbuf.LogEntry
 	go func() {
 		err := containers.Logs(p.connText, containerName, opts, out, out)
 		if err != nil {
@@ -271,13 +267,9 @@ func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, er
 		if len(logLine) > 1 {
 			line = strings.Join(logLine[1:], "")
 		}
-		logs = append(logs, logbuf.LogEntry{
-			Timestamp: logLine[0],
-			Source:    logbuf.StdoutLogSource,
-			Line:       line + "\n",
-		})
+		logBuf.Write(logbuf.StdoutLogSource, line +"\n", &logLine[0])
 	}
-	return logs, nil
+	return logBuf, nil
 }
 
 func (p *PodmanRuntime) UnitRunning(unitName string) bool {

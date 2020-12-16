@@ -255,35 +255,21 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, err.Error())
 			return
 		}
-		if logOptions.Follow {
-			// Bug: if the unit gets closed or quits, we don't know
-			// about the closure
-			unitName, err := s.podController.GetUnitName(logOptions.UnitName)
-			if err != nil {
-				badRequest(w, err.Error())
-				return
-			}
-			logBuffer, err := s.podController.GetLogBuffer(unitName)
-			if err != nil {
-				badRequest(w, err.Error())
-				return
-			}
-			s.RunLogTailer(w, r, unitName, logOptions.WithMetadata, logBuffer)
-			return
-		}
-
 		unitName, err := s.podController.GetUnitName(logOptions.UnitName)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
 		}
-
-		logs, err := s.podController.ReadLogBuffer(unitName, logOptions.LineNum)
+		logBuffer, err := s.podController.GetLogBuffer(unitName)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
-
 		}
+		if logOptions.Follow {
+			s.RunLogTailer(w, r, unitName, logOptions.WithMetadata, logBuffer)
+			return
+		}
+		logs := logBuffer.Read(logOptions.LineNum)
 		var buffer bytes.Buffer
 		for _, entry := range logs {
 			buffer.WriteString(entry.Format(logOptions.WithMetadata))

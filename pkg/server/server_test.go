@@ -557,7 +557,7 @@ func TestGetLogs(t *testing.T) {
 	lb := logbuf.NewLogBuffer(1000)
 	um.LogBuf.Set(unitName, lb)
 	for i := 0; i < 10; i++ {
-		lb.Write("somesource", fmt.Sprintf("%d\n", i))
+		lb.Write("somesource", fmt.Sprintf("%d\n", i), nil)
 	}
 	nLines := 5
 	path := fmt.Sprintf("/rest/v1/logs/%s?lines=%d&bytes=0", unitName, nLines)
