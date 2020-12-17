@@ -114,7 +114,7 @@ func MilpaToK8sVolume(vol api.Volume) *v1.Volume {
 			},
 		}
 	} else if vol.PackagePath != nil {
-		hostPathSource, err := convertPackagePathToHostPath(*vol.PackagePath, packagePathBaseDirectory)
+		hostPathSource, err := convertPackagePathToHostPath(*vol.PackagePath, packagePathBaseDirectory, vol.Name)
 		if err != nil {
 			glog.Errorf("failed to convert vol.PackagePath %v to hostPath : %v", *vol.PackagePath, err)
 		}
@@ -266,8 +266,14 @@ func ContainerStateToUnit(ctrData define.InspectContainerData) (api.UnitState, b
 	}}, false
 }
 
-func convertPackagePathToHostPath(hostPath api.PackagePath, itzoPackagesPath string) (v1.HostPathVolumeSource, error) {
-	path := filepath.Join(itzoPackagesPath, hostPath.Path)
+func convertPackagePathToHostPath(hostPath api.PackagePath, itzoPackagesPath, volumeName string) (v1.HostPathVolumeSource, error) {
+	// Volumes are deployed as files (or dirs) into
+	// /tmp/itzo/packages/<volume-name>/<packagePath.Path>
+	// to build correct host path, we need:
+	// 1. itzoPackagePath, which is const (/tmp/itzo/packages) but to ease testing we pass it as first arg
+	// 2. packagePath.Path
+	// 3. volumeName
+	path := filepath.Join(itzoPackagesPath, volumeName, hostPath.Path)
 	info, err := os.Stat(path)
 	if err != nil {
 		return v1.HostPathVolumeSource{}, err
