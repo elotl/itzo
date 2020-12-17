@@ -71,6 +71,9 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 			}
 			if port.HostPort != 0 {
 				portMapping.HostPort = uint16(port.HostPort)
+			} else {
+				// if no host port is specified, we will allocate same port on host as in container
+				portMapping.HostPort = uint16(port.ContainerPort)
 			}
 			portMappings = append(portMappings, portMapping)
 		}
