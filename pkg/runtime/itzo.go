@@ -226,8 +226,8 @@ func (i *ItzoRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStat
 	return us, nil
 }
 
-func (i *ItzoRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	return i.UnitMgr.GetLogBuffer(unitName)
+func (i *ItzoRuntime) GetLogBuffer(options LogOptions) (*logbuf.LogBuffer, error) {
+	return i.UnitMgr.GetLogBuffer(options.UnitName)
 }
 
 func (i *ItzoRuntime) UnitRunning(unitName string) bool {

@@ -164,7 +164,7 @@ func TestGetLogsWithPodman(t *testing.T) {
 	assert.NoError(t, err)
 
 	// WHEN
-	req, err := http.NewRequest("GET", "/rest/v1/logs/unit1?lines=5&bytes=0", nil)
+	req, err := http.NewRequest("GET", "/rest/v1/logs/unit1?lines=5&bytes=0&metadata=1", nil)
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "text/plain")
 	rr := httptest.NewRecorder()
@@ -174,7 +174,14 @@ func TestGetLogsWithPodman(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	responseBody := rr.Body.String()
 	lines := strings.Split(responseBody, "\n")
-	assert.Equal(t, []string{"y", "y", "y", "y", "y", ""}, lines)
+	for _, line := range lines[:len(lines)-1] {
+		l := strings.Split(line, " ")
+		assert.Equal(t,"stdout", l[1])
+		assert.Equal(t, "F", l[2])
+		assert.Equal(t, "y", l[3])
+		_, err = time.Parse(time.RFC3339Nano, l[0])
+		assert.NoError(t, err)
+	}
 }
 
 func TestGetStatusWithPodman(t *testing.T)  {

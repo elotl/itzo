@@ -260,7 +260,7 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, err.Error())
 			return
 		}
-		logBuffer, err := s.podController.GetLogBuffer(unitName)
+		logBuffer, err := s.podController.GetLogBuffer(*logOptions)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
@@ -501,8 +501,8 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 		writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
 		return
 	}
-
-	logBuffer, err := s.podController.GetLogBuffer(unitName)
+	logOpts := runtime.LogOptions{UnitName: unitName}
+	logBuffer, err := s.podController.GetLogBuffer(logOpts)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return

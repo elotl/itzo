@@ -246,16 +246,21 @@ type PodmanRuntime struct {
 	PodmanContainerService
 }
 
-func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	logBuf := logbuf.NewLogBuffer(4096) // TODO figure out correct number here
-	containerName := convert.UnitNameToContainerName(unitName)
+func (p *PodmanRuntime) GetLogBuffer(options LogOptions) (*logbuf.LogBuffer, error) {
+	tail := 4096
+	if options.LineNum != 0 {
+		tail = options.LineNum
+	}
+	logBuf := logbuf.NewLogBuffer(tail)
+	containerName := convert.UnitNameToContainerName(options.UnitName)
 	yes := true
-	tail := strconv.Itoa(4096) // TODO ... and here
+	tailStr := strconv.Itoa(tail)
 	out := make(chan string)
 	opts := containers.LogOptions{
+		Follow:     &options.Follow,
 		Stderr:     &yes,
 		Stdout:     &yes,
-		Tail:       &tail,
+		Tail:       &tailStr,
 		Timestamps: &yes,
 	}
 	go func() {
@@ -270,6 +275,8 @@ func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error)
 		line := ""
 		if len(logLine) > 1 {
 			line = strings.Join(logLine[1:], "")
+		} else {
+			continue
 		}
 		logBuf.Write(logbuf.StdoutLogSource, line +"\n", &logLine[0])
 	}

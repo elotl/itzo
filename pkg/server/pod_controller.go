@@ -508,8 +508,8 @@ func (pc *PodController) useImageOverlayRootfs() bool {
 }
 
 // TODO
-func (pc *PodController) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	return pc.runtime.GetLogBuffer(unitName)
+func (pc *PodController) GetLogBuffer(options runtime.LogOptions) (*logbuf.LogBuffer, error) {
+	return pc.runtime.GetLogBuffer(options)
 }
 
 func (pc *PodController) UnitRunning(unit string) bool {
