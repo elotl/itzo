@@ -174,7 +174,7 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 		}
 		path := filepath.Join("/tmp/itzo/packages", volume.Name)
 		if volume.HostPath != nil {
-			path = filepath.Join("/tmp/itzo/packages", volume.HostPath.Path)
+			path = volume.HostPath.Path
 		}
 
 		if mount.SubPath != "" {
