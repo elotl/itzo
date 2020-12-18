@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"github.com/containers/libpod/v2/pkg/specgen"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
@@ -25,4 +26,81 @@ func TestConvertPackagePathToHostPath(t *testing.T) {
 	expectedType := v1.HostPathFile
 	assert.Equal(t, expectedType, *hostPath.Type)
 	assert.Equal(t, tmpFile.Name(), hostPath.Path)
+}
+
+
+func TestUnitPortsToPodmanPortMapping(t *testing.T) {
+	testCases := []struct{
+		name string
+		unitPorts []api.ContainerPort
+		portMappings []specgen.PortMapping
+		shouldErr bool
+	}{
+		{
+			name: "only container port set",
+			unitPorts: []api.ContainerPort{
+				{
+					ContainerPort: 5000,
+				},
+			},
+			portMappings: []specgen.PortMapping{
+				{
+					ContainerPort: 5000,
+					HostPort: 5000,
+				},
+			},
+		},
+		{
+			name: "container and host ports set",
+			unitPorts: []api.ContainerPort{
+				{
+					ContainerPort: 5000,
+					HostPort: 8000,
+				},
+			},
+			portMappings: []specgen.PortMapping{
+				{
+					ContainerPort: 5000,
+					HostPort: 8000,
+				},
+			},
+		},
+		{
+			name: "with proto",
+			unitPorts: []api.ContainerPort{
+				{
+					ContainerPort: 5000,
+					HostPort: 8000,
+					Protocol: "TCP",
+				},
+			},
+			portMappings: []specgen.PortMapping{
+				{
+					ContainerPort: 5000,
+					HostPort: 8000,
+					Protocol: "tcp",
+				},
+			},
+		},
+		{
+			name: "container port not set err",
+			unitPorts: []api.ContainerPort{
+				{
+					HostPort: 8000,
+					Protocol: "TCP",
+				},
+			},
+			portMappings: nil,
+			shouldErr: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			portMappings, err := UnitPortsToPodmanPortMapping(testCase.unitPorts)
+			if testCase.shouldErr {
+				assert.Error(t, err)
+			}
+			assert.Equal(t, testCase.portMappings, portMappings)
+		})
+	}
 }

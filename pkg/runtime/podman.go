@@ -64,19 +64,12 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	podSpec.NoManageHosts = true
 	portMappings := make([]specgen.PortMapping, 0)
 	for _, unit := range spec.Units {
-		for _, port := range unit.Ports {
-			portMapping := specgen.PortMapping{ContainerPort: uint16(port.ContainerPort)}
-			if string(port.Protocol) != "" {
-				portMapping.Protocol = string(port.Protocol)
-			}
-			if port.HostPort != 0 {
-				portMapping.HostPort = uint16(port.HostPort)
-			} else {
-				// if no host port is specified, we will allocate same port on host as in container
-				portMapping.HostPort = uint16(port.ContainerPort)
-			}
-			portMappings = append(portMappings, portMapping)
+		unitPortMappings, err := convert.UnitPortsToPodmanPortMapping(unit.Ports)
+		if err != nil {
+			return err
 		}
+		// TODO we should ensure there's no port collision on host
+		portMappings = append(portMappings, unitPortMappings...)
 	}
 	podSpec.PortMappings = portMappings
 	_, err := pods.CreatePodFromSpec(ps.connText, podSpec)

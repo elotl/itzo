@@ -1,13 +1,16 @@
 package convert
 
 import (
+	"fmt"
 	"github.com/containers/libpod/v2/libpod/define"
+	"github.com/containers/libpod/v2/pkg/specgen"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -287,4 +290,25 @@ func convertPackagePathToHostPath(hostPath api.PackagePath, itzoPackagesPath, vo
 		Path: path,
 		Type: &HostPathType,
 	}, nil
+}
+
+func UnitPortsToPodmanPortMapping(unitPorts []api.ContainerPort) ([]specgen.PortMapping, error) {
+	portMappings := make([]specgen.PortMapping, 0)
+	for _, port := range unitPorts {
+		if port.ContainerPort == 0 {
+			return nil, fmt.Errorf("container port has to be set")
+		}
+		portMapping := specgen.PortMapping{ContainerPort: uint16(port.ContainerPort)}
+		if proto := string(port.Protocol); proto != "" {
+			portMapping.Protocol = strings.ToLower(proto)
+		}
+		if port.HostPort != 0 {
+			portMapping.HostPort = uint16(port.HostPort)
+		} else {
+			// if no host port is specified, we will allocate same port on host as in container
+			portMapping.HostPort = uint16(port.ContainerPort)
+		}
+		portMappings = append(portMappings, portMapping)
+	}
+	return portMappings, nil
 }
