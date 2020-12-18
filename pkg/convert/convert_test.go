@@ -83,6 +83,21 @@ func TestUnitPortsToPodmanPortMapping(t *testing.T) {
 			},
 		},
 		{
+			name: "with hostPort:0",
+			unitPorts: []api.ContainerPort{
+				{
+					ContainerPort: 5000,
+					HostPort: 0,
+				},
+			},
+			portMappings: []specgen.PortMapping{
+				{
+					ContainerPort: 5000,
+					HostPort: 5000,
+				},
+			},
+		},
+		{
 			name: "container port not set err",
 			unitPorts: []api.ContainerPort{
 				{
