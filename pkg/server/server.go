@@ -591,7 +591,16 @@ func (s *Server) serveExec(w http.ResponseWriter, r *http.Request) {
 		glog.Errorf("getting initial parameters for exec: %v", err)
 		return
 	}
+	// validate ExecParams here, fail here
+	if len(params.Command) == 0 {
+		glog.Errorf("No command specified for exec")
+		writeWSErrorExitcode(ws, "No command specified")
+		return
+	}
 
+	// EXEC refactor: this can stay as is.
+	// inside this method we should call s.podCtl.runtime.Exec()
+	//
 	s.runExec(ws, params)
 }
 

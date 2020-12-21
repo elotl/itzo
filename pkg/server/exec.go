@@ -17,8 +17,8 @@ limitations under the License.
 package server
 
 import (
+	"bufio"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os/exec"
 	"strconv"
@@ -26,12 +26,8 @@ import (
 	"syscall"
 
 	"github.com/elotl/itzo/pkg/api"
-	"github.com/elotl/itzo/pkg/helper"
-	"github.com/elotl/itzo/pkg/unit"
-	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
-	"github.com/jandre/procfs"
 	"github.com/kr/pty"
 )
 
@@ -39,101 +35,135 @@ const (
 	wsTTYControlChan = 4
 )
 
+type WriterWrapper struct {
+	ws *wsstream.WSWriter
+}
+
+func (w WriterWrapper) Write(p []byte) (int,  error) {
+	return w.ws.Write(p)
+}
+
+func (w WriterWrapper) Close() error {
+	// TODO ensure that this is correct
+	return w.ws.CloseAndCleanup()
+}
+
+func NewWriterWrapper(ws *wsstream.WSReadWriter, ch int) *WriterWrapper {
+	writer := ws.CreateWriter(ch)
+	return &WriterWrapper{ws: writer}
+}
+
 func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
-	if len(params.Command) == 0 {
-		glog.Errorf("No command specified for exec")
-		writeWSErrorExitcode(ws, "No command specified")
-		return
+	stdOutWriteWrapper := NewWriterWrapper(ws, wsstream.StdoutChan)
+	stdErrWriteWrapper := NewWriterWrapper(ws, wsstream.StderrChan)
+	var bufReader *bufio.Reader
+	if params.Interactive {
+		wsStdinReader := ws.CreateReader(0)
+		bufReader = bufio.NewReader(wsStdinReader)
 	}
-
-	unitName, err := s.podController.GetUnitName(params.UnitName)
-	if err != nil {
-		glog.Errorf("Getting unit %s: %v", params.UnitName, err)
-		writeWSErrorExitcode(ws, err.Error())
-		return
-	}
-
-	command := params.Command
-
-	var env []string
-
-	// allow us to skip entering namespace for testing
-	if !params.SkipNSEnter {
-		unit, err := unit.OpenUnit(s.installRootdir, unitName)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := s.podController.runtime.Exec(params, stdOutWriteWrapper, stdErrWriteWrapper, bufReader)
 		if err != nil {
-			errmsg := fmt.Errorf("Error opening unit %s for exec: %v",
-				unitName, err)
-			glog.Errorf("%v", errmsg)
-			writeWSErrorExitcode(ws, "%v\n", errmsg)
-			return
+			writeWSErrorExitcode(ws, err.Error())
 		}
-		userLookup, err := util.NewPasswdUserLookup(unit.GetRootfs())
-		if err != nil {
-			errmsg := fmt.Errorf(
-				"Error creating user lookup in %s for exec: %v", unitName, err)
-			glog.Errorf("%v", errmsg)
-			writeWSErrorExitcode(ws, "%v\n", errmsg)
-			return
-		}
-		uid, gid, _, homedir, err := unit.GetUser(userLookup)
-		if err != nil {
-			errmsg := fmt.Errorf("Error getting unit %s user for exec: %v",
-				unitName, err)
-			glog.Errorf("%v", errmsg)
-			writeWSErrorExitcode(ws, "%v\n", errmsg)
-			return
-		}
-		pid, exists := s.podController.GetPid(unitName)
-		if !exists {
-			glog.Errorf("Error getting pid for unit %s", unitName)
-			writeWSErrorExitcode(ws, "Could not find running process for unit named %s\n", unitName)
-			return
-		}
-		proc, err := procfs.NewProcess(pid, false)
-		if err != nil {
-			glog.Errorf("Error getting process for unit %s", unitName)
-			writeWSErrorExitcode(ws, "Could not find process %d for unit named %s\n",
-				pid, unitName)
-			return
-		}
-		for k, v := range proc.Environ {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
-		env = helper.EnsureDefaultEnviron(env, params.PodName, homedir)
-		nsenterCmd := []string{
-			"/usr/bin/nsenter",
-			"-t",
-			strconv.Itoa(pid),
-			"-p",
-			"-u",
-			"-m",
-			"-n",
-		}
-		if uid != 0 || gid != 0 {
-			userSpec := []string{
-				"-S",
-				fmt.Sprintf("%d", uid),
-				"-G",
-				fmt.Sprintf("%d", gid),
-			}
-			nsenterCmd = append(nsenterCmd, userSpec...)
-		}
-		command = append(nsenterCmd, command...)
-	}
+	}()
 
-	glog.Infof("Exec command: %s", command[0])
-	cmd := exec.Command(command[0], command[1:]...)
-	cmd.Env = env
-	if params.TTY {
-		err = s.runExecTTY(ws, cmd, params.Interactive)
-	} else {
-		err = s.runExecCmd(ws, cmd, params.Interactive)
-	}
-	if err != nil {
-		glog.Errorf("Error running exec command %s: %v", command[0], err)
-		writeWSErrorExitcode(ws, err.Error())
-		return
-	}
+
+	go ws.RunDispatch()
+	//waitForFinished()
+
+	//
+	//unitName, err := s.podController.GetUnitName(params.UnitName)
+	//if err != nil {
+	//	glog.Errorf("Getting unit %s: %v", params.UnitName, err)
+	//	writeWSErrorExitcode(ws, err.Error())
+	//	return
+	//}
+	//
+	//command := params.Command
+	//
+	//var env []string
+	//
+	//// allow us to skip entering namespace for testing
+	//if !params.SkipNSEnter {
+	//	unit, err := unit.OpenUnit(s.installRootdir, unitName)
+	//	if err != nil {
+	//		errmsg := fmt.Errorf("Error opening unit %s for exec: %v",
+	//			unitName, err)
+	//		glog.Errorf("%v", errmsg)
+	//		writeWSErrorExitcode(ws, "%v\n", errmsg)
+	//		return
+	//	}
+	//	userLookup, err := util.NewPasswdUserLookup(unit.GetRootfs())
+	//	if err != nil {
+	//		errmsg := fmt.Errorf(
+	//			"Error creating user lookup in %s for exec: %v", unitName, err)
+	//		glog.Errorf("%v", errmsg)
+	//		writeWSErrorExitcode(ws, "%v\n", errmsg)
+	//		return
+	//	}
+	//	uid, gid, _, homedir, err := unit.GetUser(userLookup)
+	//	if err != nil {
+	//		errmsg := fmt.Errorf("Error getting unit %s user for exec: %v",
+	//			unitName, err)
+	//		glog.Errorf("%v", errmsg)
+	//		writeWSErrorExitcode(ws, "%v\n", errmsg)
+	//		return
+	//	}
+	//	pid, exists := s.podController.GetPid(unitName)
+	//	if !exists {
+	//		glog.Errorf("Error getting pid for unit %s", unitName)
+	//		writeWSErrorExitcode(ws, "Could not find running process for unit named %s\n", unitName)
+	//		return
+	//	}
+	//	proc, err := procfs.NewProcess(pid, false)
+	//	if err != nil {
+	//		glog.Errorf("Error getting process for unit %s", unitName)
+	//		writeWSErrorExitcode(ws, "Could not find process %d for unit named %s\n",
+	//			pid, unitName)
+	//		return
+	//	}
+	//	for k, v := range proc.Environ {
+	//		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	//	}
+	//	env = helper.EnsureDefaultEnviron(env, params.PodName, homedir)
+	//	nsenterCmd := []string{
+	//		"/usr/bin/nsenter",
+	//		"-t",
+	//		strconv.Itoa(pid),
+	//		"-p",
+	//		"-u",
+	//		"-m",
+	//		"-n",
+	//	}
+	//	if uid != 0 || gid != 0 {
+	//		userSpec := []string{
+	//			"-S",
+	//			fmt.Sprintf("%d", uid),
+	//			"-G",
+	//			fmt.Sprintf("%d", gid),
+	//		}
+	//		nsenterCmd = append(nsenterCmd, userSpec...)
+	//	}
+	//	command = append(nsenterCmd, command...)
+	//}
+	//
+	//glog.Infof("Exec command: %s", command[0])
+	//cmd := exec.Command(command[0], command[1:]...)
+	//cmd.Env = env
+	//if params.TTY {
+	//	err = s.runExecTTY(ws, cmd, params.Interactive)
+	//} else {
+	//	err = s.runExecCmd(ws, cmd, params.Interactive)
+	//}
+	//if err != nil {
+	//	glog.Errorf("Error running exec command %s: %v", command[0], err)
+	//	writeWSErrorExitcode(ws, err.Error())
+	//	return
+	//}
 }
 
 func (s *Server) runExecCmd(ws *wsstream.WSReadWriter, cmd *exec.Cmd, interactive bool) error {

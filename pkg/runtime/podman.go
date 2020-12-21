@@ -1,19 +1,24 @@
 package runtime
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"github.com/containers/libpod/v2/libpod/define"
+	"github.com/containers/libpod/v2/pkg/api/handlers"
 	"github.com/containers/libpod/v2/pkg/bindings"
 	"github.com/containers/libpod/v2/pkg/bindings/containers"
 	"github.com/containers/libpod/v2/pkg/bindings/images"
 	"github.com/containers/libpod/v2/pkg/bindings/pods"
 	"github.com/containers/libpod/v2/pkg/domain/entities"
 	"github.com/containers/libpod/v2/pkg/specgen"
+	"github.com/docker/docker/api/types"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/convert"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
+	"io"
 	v1 "k8s.io/api/core/v1"
 	"path/filepath"
 	"strconv"
@@ -81,6 +86,7 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 
 func (ps *PodmanSandbox) StopPodSandbox(spec *api.PodSpec) error {
 	report, err := pods.Stop(ps.connText, api.PodName, nil)
+
 	if report != nil && len(report.Errs) > 0 {
 		return errors.New("TODO")
 	}
@@ -234,6 +240,7 @@ func (pcs *PodmanContainerService) ContainerStatus(unitName, unitImage string) (
 		Image:        unitImage,
 		Ready:        ready,
 	}
+
 	return status, nil
 }
 
@@ -315,4 +322,43 @@ func GetPodmanConnection() (context.Context, error) {
 	// Connect to Podman socket
 	connText, err := bindings.NewConnection(context.Background(), PodmanSocketPath)
 	return connText, err
+}
+
+func (p *PodmanRuntime) Exec(params api.ExecParams, stdOutWriter, stdErrWriter io.WriteCloser, reader *bufio.Reader) error {
+
+	containerName := convert.UnitNameToContainerName(params.UnitName)
+
+	attachErr := false
+	if stdErrWriter != nil {
+		attachErr = true
+	}
+	attachOut := false
+	if stdOutWriter != nil {
+		attachOut = true
+	}
+	cfg := &types.ExecConfig{
+		Cmd: params.Command,
+		Tty: params.TTY,
+		AttachStderr: attachErr,
+		AttachStdout: attachOut,
+		AttachStdin: params.Interactive,
+	}
+	sessionCreateCfg := handlers.ExecCreateConfig{ExecConfig: *cfg}
+	session, err := containers.ExecCreate(p.connText, containerName, &sessionCreateCfg)
+	if err != nil {
+		return err
+	}
+	err = containers.ExecStartAndAttach(p.connText, session, &define.AttachStreams{
+		OutputStream: stdOutWriter,
+		ErrorStream:  stdErrWriter,
+		InputStream:  reader,
+		AttachOutput: attachOut,
+		AttachError:  attachErr,
+		AttachInput:  params.Interactive,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

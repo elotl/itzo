@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"bufio"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"io"
 )
 
 type PodSandbox interface {
@@ -17,7 +19,7 @@ type ContainerService interface {
 	RemoveContainer(unit *api.Unit) error
 	ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error)
 	//ExecSync()
-	//Exec()
+	Exec(params api.ExecParams, stdOutWriter, stdErrWriter io.WriteCloser, reader *bufio.Reader) error
 	//Attach()
 	//PortForward()
 	// TODO:: those below are needed for server handlers, we should think about ways to remove them from this interface
