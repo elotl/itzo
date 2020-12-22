@@ -25,11 +25,11 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"github.com/elotl/itzo/pkg/runtime"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -250,46 +250,15 @@ func (s *Server) versionHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		// EVERYTHING IS TERRIBLE! If the request came from our
-		// websocket library, the query params are in the path and
-		// r.URL.String() doesn't decode them correctly (they get
-		// escaped).  However, if the request came from a standard web
-		// client (http.Client) the query params are already parsed
-		// out into URL.RawQuery.  Lets look into the URL and see what
-		// we need to parse...  Yuck!
-
-		var parsedURL *url.URL
-		var err error
-		if r.URL.RawQuery != "" {
-			parsedURL, err = r.URL.Parse(r.URL.String())
-		} else {
-			parsedURL, err = r.URL.Parse(r.URL.Path)
-		}
-
+		logOptions, err := runtime.NewLogOptionsFromURL(r.URL)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
 		}
-
-		path := strings.TrimPrefix(parsedURL.Path, "/")
-		parts := strings.Split(path, "/")
-		unit := ""
-		if len(parts) > 3 {
-			unit = strings.Join(parts[3:], "/")
-		}
-
-		// todo, this is a bit messy here, break it out if possible
-		q := parsedURL.Query()
-		follow := q.Get("follow")
-		withMetadata := false
-		if q.Get("metadata") == "1" {
-			withMetadata = true
-		}
-		if follow != "" {
+		if logOptions.Follow {
 			// Bug: if the unit gets closed or quits, we don't know
 			// about the closure
-			glog.Info("got logs -f request")
-			unitName, err := s.podController.GetUnitName(unit)
+			unitName, err := s.podController.GetUnitName(logOptions.UnitName)
 			if err != nil {
 				badRequest(w, err.Error())
 				return
@@ -299,49 +268,31 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 				badRequest(w, err.Error())
 				return
 			}
-			s.RunLogTailer(w, r, unitName, withMetadata, logBuffer)
+			s.RunLogTailer(w, r, unitName, logOptions.WithMetadata, logBuffer)
 			return
 		}
 
-		n := 0
-		numBytes := 0
-		lines := q.Get("lines")
-		strBytes := q.Get("bytes")
-		if lines != "" {
-			if i, err := strconv.Atoi(lines); err == nil {
-				n = i
-			}
-		}
-		if strBytes != "" {
-			if i, err := strconv.Atoi(strBytes); err == nil {
-				numBytes = i
-			}
-		}
-
-		unitName, err := s.podController.GetUnitName(unit)
+		unitName, err := s.podController.GetUnitName(logOptions.UnitName)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
 		}
-		glog.Infof("trying to read log buffer for unit: %s", unitName)
 
-		logs, err := s.podController.ReadLogBuffer(unitName, n)
-		glog.Infof("got logs from podController: %s", logs)
+		logs, err := s.podController.ReadLogBuffer(unitName, logOptions.LineNum)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
 
 		}
 		var buffer bytes.Buffer
-		glog.Info("trying to write logs to buffer")
 		for _, entry := range logs {
-			buffer.WriteString(entry.Format(withMetadata))
+			buffer.WriteString(entry.Format(logOptions.WithMetadata))
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
 		buffStr := buffer.String()
-		if numBytes > 0 && len(buffStr) > numBytes {
-			startOffset := len(buffStr) - numBytes
+		if logOptions.BytesNum > 0 && len(buffStr) > logOptions.BytesNum {
+			startOffset := len(buffStr) - logOptions.BytesNum
 			buffStr = buffStr[startOffset:]
 		}
 		fmt.Fprintf(w, "%s", buffStr)
