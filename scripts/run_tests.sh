@@ -75,6 +75,9 @@ fi
 #
 echo "Uploading itzo build $CURRENT_BUILD_NUMBER"
 aws s3 cp --acl public-read itzo s3://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
+echo "Uploading itzo mac build $CURRENT_BUILD_NUMBER"
+aws s3 cp --acl public-read itzo-mac s3://$itzo_dev_bucket/itzo-mac-$CURRENT_BUILD_NUMBER
+
 gsutil copy itzo gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER && \
     gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
 if [[ $CURRENT_BRANCH == "master" ]]; then

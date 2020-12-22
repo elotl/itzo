@@ -1,4 +1,6 @@
-package runtime
+// +build !darwin
+
+package podman
 
 import (
 	"context"

@@ -1,3 +1,5 @@
+// +build !darwin
+
 /*
 Copyright 2020 Elotl Inc
 

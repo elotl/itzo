@@ -7,7 +7,7 @@ import (
 	"github.com/containers/libpod/v2/pkg/bindings/containers"
 	"github.com/containers/libpod/v2/pkg/bindings/pods"
 	"github.com/elotl/itzo/pkg/api"
-	"github.com/elotl/itzo/pkg/runtime"
+	"github.com/elotl/itzo/pkg/runtime/podman"
 	"github.com/elotl/wsstream"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
@@ -52,7 +52,7 @@ func tearDownSeverAndController() {
 }
 
 func removeContainersAndPod(containersNames []string) {
-	conn, err := runtime.GetPodmanConnection()
+	conn, err := podman.GetPodmanConnection()
 	if err != nil {
 		panic(err)
 	}
@@ -119,7 +119,7 @@ func TestCreatePodWithPodman(t *testing.T) {
 	createdUnit := podCtl.podStatus.Units[0]
 	assert.Equal(t, createdUnit.Name, "unit1")
 	assert.Equal(t, createdUnit.Image, "alpine:latest")
-	conn, err := runtime.GetPodmanConnection()
+	conn, err := podman.GetPodmanConnection()
 	assert.NoError(t, err)
 	runningState := define.ContainerStateRunning
 	_, err = containers.Wait(conn, "itzopod-unit1", &runningState)
@@ -158,7 +158,7 @@ func TestGetLogsWithPodman(t *testing.T) {
 	createdUnit := podCtl.podStatus.Units[0]
 	assert.Equal(t, createdUnit.Name, "unit1")
 	assert.Equal(t, createdUnit.Image, "busybox:latest")
-	conn, err := runtime.GetPodmanConnection()
+	conn, err := podman.GetPodmanConnection()
 	assert.NoError(t, err)
 	_, err = containers.Wait(conn, "itzopod-unit1", &stateStopped)
 	assert.NoError(t, err)
@@ -228,7 +228,7 @@ func TestGetStatusWithPodman(t *testing.T)  {
 	createdUnit := podCtl.podStatus.Units[0]
 	assert.Equal(t, "unit1", createdUnit.Name)
 	assert.Equal(t,  "busybox:latest", createdUnit.Image)
-	conn, err := runtime.GetPodmanConnection()
+	conn, err := podman.GetPodmanConnection()
 	assert.NoError(t, err)
 	_, err = containers.Wait(conn, "itzopod-unit1", &stateRunning)
 	assert.NoError(t, err)
@@ -294,7 +294,7 @@ func TestPortForwardWithPodman(t *testing.T) {
 	createdUnit := podCtl.podStatus.Units[0]
 	assert.Equal(t, "unit1", createdUnit.Name)
 	assert.Equal(t,  "jmalloc/echo-server", createdUnit.Image)
-	conn, err := runtime.GetPodmanConnection()
+	conn, err := podman.GetPodmanConnection()
 	assert.NoError(t, err)
 	_, err = containers.Wait(conn, "itzopod-unit1", &stateRunning)
 	assert.NoError(t, err)
