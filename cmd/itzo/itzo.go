@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/elotl/itzo/pkg/runtime"
 	"os"
 	"strconv"
 
@@ -49,6 +50,7 @@ func main() {
 	var netns = flag.String("netns", "", "Pod network namespace name")
 	// todo, ability to log to a file instead of stdout
 	var usePodman = flag.Bool("use-podman", false, "use podman.io as container runtime")
+	var useAnka = flag.Bool("use-anka", false, "use Veertu's anka as a VM runtime")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
@@ -81,10 +83,17 @@ func main() {
 		fmt.Println("itzo version:", util.Version())
 		os.Exit(0)
 	}
+	runtimeName := runtime.ItzoRuntimeName
+	if *usePodman {
+		runtimeName = runtime.PodmanRuntimeName
+	}
+	if *useAnka {
+		runtimeName = runtime.AnkaRuntimeName
+	}
 
 	glog.Infof("Starting up agent, is podman used? %s", strconv.FormatBool(*usePodman))
 	// TODO if podman flag is set, ensure that podman service is running
-	server := server.New(*rootdir, *usePodman)
+	server := server.New(*rootdir, runtimeName)
 	endpoint := fmt.Sprintf("0.0.0.0:%d", *port)
 	server.ListenAndServe(endpoint, *disableTLS)
 }

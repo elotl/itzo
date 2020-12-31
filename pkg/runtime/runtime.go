@@ -22,6 +22,12 @@ import (
 	"github.com/elotl/itzo/pkg/metrics"
 )
 
+const (
+	ItzoRuntimeName   = "itzo"
+	PodmanRuntimeName = "podman"
+	AnkaRuntimeName   = "anka"
+)
+
 type PodSandbox interface {
 	RunPodSandbox(spec *api.PodSpec) error
 	StopPodSandbox(spec *api.PodSpec) error

@@ -80,7 +80,7 @@ func TestMain(m *testing.M) {
 		panic("Error creating temporary directory")
 	}
 	defer os.RemoveAll(tmpdir)
-	podctl, _ := NewPodController(tmpdir, false)
+	podctl, _ := NewPodController(tmpdir, "itzo")
 	s = Server{
 		env:            EnvStore{},
 		installRootdir: tmpdir,
@@ -485,7 +485,7 @@ func TestDeployPackage(t *testing.T) {
 	rootdir, err := ioutil.TempDir("", "itzo-pkg-test")
 	assert.Nil(t, err)
 
-	srv := New(rootdir, false)
+	srv := New(rootdir, "itzo")
 	srv.getHandlers()
 
 	content := createTarGzBuf(t)
@@ -539,7 +539,7 @@ func TestDeployInvalidPackage(t *testing.T) {
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
-	srv := New("/tmp/itzo-pkg-test", false)
+	srv := New("/tmp/itzo-pkg-test", "itzo")
 	srv.getHandlers()
 	srv.ServeHTTP(rr, req)
 
@@ -578,7 +578,7 @@ func runServer() (*Server, func(), int) {
 		panic("Error creating temporary directory")
 	}
 	closer := func() { os.RemoveAll(tmpdir) }
-	podCtl, _ := NewPodController(tmpdir, false)
+	podCtl, _ := NewPodController(tmpdir, "itzo")
 	s := &Server{
 		installRootdir: tmpdir,
 		podController:  podCtl,

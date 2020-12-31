@@ -24,4 +24,3 @@ type MetricsProvider interface {
 	ReadSystemMetrics(string) api.ResourceMetrics
 	ReadUnitMetrics(string) api.ResourceMetrics
 }
-

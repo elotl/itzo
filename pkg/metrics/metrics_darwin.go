@@ -40,3 +40,12 @@ func (m *Metrics) GetSystemMetrics(netif string) api.ResourceMetrics {
 func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
 	return api.ResourceMetrics{}
 }
+
+type AnkaMetricsProvider struct {
+	GenericSystemMetricsProvider
+}
+
+func (a *AnkaMetricsProvider) ReadUnitMetrics(ifname string) api.ResourceMetrics {
+	// TODO
+	return api.ResourceMetrics{}
+}

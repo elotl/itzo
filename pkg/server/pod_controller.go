@@ -22,6 +22,7 @@ import (
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/runtime"
 	"github.com/elotl/itzo/pkg/runtime/podman"
+	"github.com/elotl/itzo/pkg/runtime/mac"
 	"github.com/elotl/itzo/pkg/util/conmap"
 	"strconv"
 	"sync"
@@ -54,49 +55,53 @@ type PodController struct {
 	runtime     runtime.RuntimeService
 	podStatus   *api.PodSpec
 	updateChan  chan *api.PodParameters
-	allCreds   map[string]api.RegistryCredentials
+	allCreds    map[string]api.RegistryCredentials
 	// We keep syncErrors in the map between syncs until a sync works
 	// and we clear or overwrite the error
-	syncErrors      map[string]api.UnitStatus
-	cancelFunc      context.CancelFunc
-	waitGroup       sync.WaitGroup
-	netNS           string
-	podIP           string
-	podRestartCount int32
-	usePodman  bool
+	syncErrors               map[string]api.UnitStatus
+	cancelFunc               context.CancelFunc
+	waitGroup                sync.WaitGroup
+	netNS                    string
+	podIP                    string
+	podRestartCount          int32
+	runtimeName              string
 	currentlyRestartingUnits *conmap.KeyTypeValueType
 	// these are annotations with prefix of "pod.elotl.co/"
 	// which are passed from kip
 	annotations map[string]string
 }
 
-func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
+func NewPodController(rootdir string, runtimeName string) (*PodController, error) {
 	var podRuntime runtime.RuntimeService
 	var err error
-	if usePodman {
-		podRuntime, err = podman.NewPodmanRuntime(rootdir)
+	switch runtimeName {
+	case runtime.PodmanRuntimeName:
+		podRuntime, err = runtime.NewPodmanRuntime(rootdir)
 		if err != nil {
 			glog.Errorf("error creating podman runtime: %v", err)
 			return nil, err
 		}
-	} else {
+	case runtime.AnkaRuntimeName:
+		ankaRegistryClient := mac.NewAnkaRegistryClient()
+		podRuntime = mac.NewMacRuntime(ankaRegistryClient)
+	default:
 		mounter := mount.NewOSMounter(rootdir)
 		unitMgr := itzounit.NewUnitManager(rootdir)
 		imgPuller := runtime.ImagePuller{}
 		podRuntime = runtime.NewItzoRuntime(rootdir, unitMgr, mounter, &imgPuller)
 	}
 	return &PodController{
-		rootdir:     rootdir,
-		runtime: 	 podRuntime,
-		updateChan:  make(chan *api.PodParameters, specChanSize),
-		syncErrors:  make(map[string]api.UnitStatus),
+		rootdir:    rootdir,
+		runtime:    podRuntime,
+		updateChan: make(chan *api.PodParameters, specChanSize),
+		syncErrors: make(map[string]api.UnitStatus),
 		podStatus: &api.PodSpec{
 			Phase:         api.PodRunning,
 			RestartPolicy: api.RestartPolicyAlways,
 		},
-		cancelFunc:      nil,
-		podRestartCount: 0,
-		usePodman: usePodman,
+		cancelFunc:               nil,
+		podRestartCount:          0,
+		runtimeName:              runtimeName,
 		currentlyRestartingUnits: conmap.NewKeyTypeValueType(),
 	}, nil
 }
@@ -516,7 +521,7 @@ func (pc *PodController) ReadSystemMetrics(ifname string) api.ResourceMetrics {
 }
 
 func (pc *PodController) ReadUnitMetrics(ifname string) api.ResourceMetrics {
-    return pc.runtime.ReadUnitMetrics(ifname)
+	return pc.runtime.ReadUnitMetrics(ifname)
 }
 
 // TODO

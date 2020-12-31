@@ -56,7 +56,7 @@ func setUpServerAndController() (*Server, *PodController, error) {
 		panic("Error creating temporary directory")
 	}
 	defer os.RemoveAll(tmpdir)
-	podctl, err := NewPodController(tmpdir, true)
+	podctl, err := NewPodController(tmpdir, runtime.PodmanRuntimeName)
 	testServer := NewTestServer(EnvStore{}, tmpdir, podctl)
 	podctl.Start()
 	return &testServer, podctl, err
