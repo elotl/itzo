@@ -12,6 +12,7 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/convert"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
@@ -40,6 +41,8 @@ var (
 )
 
 type PodmanSandbox struct {
+	metrics.PodmanMetricsProvider
+
 	connText context.Context
 }
 

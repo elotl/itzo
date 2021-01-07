@@ -3,6 +3,7 @@ package runtime
 import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/metrics"
 )
 
 type PodSandbox interface {
@@ -32,10 +33,9 @@ type ContainerService interface {
 // Methods we don't really need are commented out.
 // Having it that similar to CRI opens a door for using it in the future.
 type RuntimeService interface {
-	//Version()
 	PodSandbox
 	ContainerService
-	//UpdateRuntimeConfig()
+	metrics.MetricsProvider
 }
 
 type ImageService interface {

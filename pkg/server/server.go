@@ -40,7 +40,6 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/host"
 	"github.com/elotl/itzo/pkg/logbuf"
-	"github.com/elotl/itzo/pkg/metrics"
 	itzonet "github.com/elotl/itzo/pkg/net"
 	"github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
@@ -85,7 +84,6 @@ type Server struct {
 	wsUpgrader          websocket.Upgrader
 	installRootdir      string
 	lastMetricTime      time.Time
-	metrics             *metrics.Metrics
 	primaryIP           string
 	secondaryIP         string
 	podIP               string
@@ -109,7 +107,6 @@ func New(rootdir string, usePodman bool) *Server {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		},
-		metrics:        metrics.New(),
 		lastMetricTime: time.Now().Add(-minMetricPeriod),
 	}
 }
@@ -124,9 +121,9 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var resourceUsage api.ResourceMetrics
 		if time.Since(s.lastMetricTime) > minMetricPeriod {
-			resourceUsage = s.metrics.GetSystemMetrics(s.podNetworkInterface)
+			resourceUsage = s.podController.ReadSystemMetrics(s.podNetworkInterface)
 			for _, us := range append(status, initStatus...) {
-				unitResourceUsage := s.metrics.GetUnitMetrics(us.Name)
+				unitResourceUsage := s.podController.ReadUnitMetrics(us.Name)
 				for k, v := range unitResourceUsage {
 					// Add unit resource usage to the main map. Keys are in the
 					// form of "unitname.metric", e.g. "foobar.cpuUsage",
