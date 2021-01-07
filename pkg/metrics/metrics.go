@@ -28,13 +28,19 @@ import (
 	psnet "github.com/shirou/gopsutil/net"
 )
 
-type Metrics struct {
-	prevBusy float32
-	prevAll  float32
+// A metrics provider gather system and unit information on the host system and
+// return a mapping of the successfully processed metrics.
+type MetricsProvider interface {
+	ReadSystemMetrics(string) api.ResourceMetrics
+	ReadUnitMetrics(string) api.ResourceMetrics
 }
 
-func New() *Metrics {
-	return &Metrics{}
+// The Itzo metrics provider uses cgroups v1, and psutil to gather information
+// about the host.
+type ItzoMetricsProvider struct {
+	// used to calculate cpu utilization percentage
+	prevBusy float32
+	prevAll  float32
 }
 
 // There are a couple of measurements of CPU we could use
@@ -42,8 +48,7 @@ func New() *Metrics {
 // 2. Max CPU% across all CPUs
 // 3. cpuUtilization(): percent of the machine's reported power that
 //    is actually used. Not reported correctly on Azure
-
-func (m *Metrics) cpuUtilization() float32 {
+func (m *ItzoMetricsProvider) cpuUtilization() float32 {
 	cpuTimes, err := cpu.Times(false)
 	if err != nil || len(cpuTimes) == 0 {
 		return 0.0
@@ -64,7 +69,7 @@ func (m *Metrics) cpuUtilization() float32 {
 	return utilizationPercent
 }
 
-func (m *Metrics) cpuPercent() float64 {
+func (m *ItzoMetricsProvider) cpuPercent() float64 {
 	percents, err := cpu.Percent(0, true)
 	if err != nil || len(percents) == 0 {
 		return 0.0
@@ -74,7 +79,7 @@ func (m *Metrics) cpuPercent() float64 {
 
 // GetSystemMetrics returns a ResourceMetrics map with various pod and system
 // level metrics.
-func (m *Metrics) GetSystemMetrics(netif string) api.ResourceMetrics {
+func (m *ItzoMetricsProvider) ReadSystemMetrics(netif string) api.ResourceMetrics {
 	metrics := api.ResourceMetrics{}
 	if memoryStats, err := mem.VirtualMemory(); err == nil {
 		metrics["memory"] = memoryStats.UsedPercent
@@ -114,7 +119,7 @@ func (m *Metrics) GetSystemMetrics(netif string) api.ResourceMetrics {
 
 // GetUnitMetrics returns a ResourceMetrics map with various container level
 // metrics.
-func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
+func (m *ItzoMetricsProvider) ReadUnitMetrics(name string) api.ResourceMetrics {
 	metrics := api.ResourceMetrics{}
 	control, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/"+name))
 	if err != nil {
@@ -161,4 +166,16 @@ func isMemoryUnlimited(v uint64) bool {
 	// Size after which we consider memory to be "unlimited". This is not MaxInt64 due to rounding by the kernel.
 	const maxMemorySize = uint64(1 << 62)
 	return v > maxMemorySize
+}
+
+type PodmanMetricsProvider struct {}
+
+func (p *PodmanMetricsProvider) ReadSystemMetrics(ifname string) api.ResourceMetrics {
+	// TODO
+	return api.ResourceMetrics{}
+}
+
+func (p *PodmanMetricsProvider) ReadUnitMetrics(ifname string) api.ResourceMetrics {
+	// TODO
+	return api.ResourceMetrics{}
 }

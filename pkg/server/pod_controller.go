@@ -507,6 +507,17 @@ func (pc *PodController) useImageOverlayRootfs() bool {
 	return true
 }
 
+// Metrics
+//
+// These methods are just passthrough to the underlying runtime implementation
+func (pc *PodController) ReadSystemMetrics(ifname string) api.ResourceMetrics {
+    return pc.runtime.ReadSystemMetrics(ifname)
+}
+
+func (pc *PodController) ReadUnitMetrics(ifname string) api.ResourceMetrics {
+    return pc.runtime.ReadUnitMetrics(ifname)
+}
+
 // TODO
 func (pc *PodController) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
 	return pc.runtime.GetLogBuffer(unitName)
