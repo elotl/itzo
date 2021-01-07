@@ -35,9 +35,9 @@ type MetricsProvider interface {
 	ReadUnitMetrics(string) api.ResourceMetrics
 }
 
-// The Itzo metrics provider uses cgroups v1, and psutil to gather information
-// about the host.
-type ItzoMetricsProvider struct {
+// The generic system metrics provider uses psutil to gather data from the
+// host system.
+type GenericSystemMetricsProvider struct {
 	// used to calculate cpu utilization percentage
 	prevBusy float32
 	prevAll  float32
@@ -48,7 +48,7 @@ type ItzoMetricsProvider struct {
 // 2. Max CPU% across all CPUs
 // 3. cpuUtilization(): percent of the machine's reported power that
 //    is actually used. Not reported correctly on Azure
-func (m *ItzoMetricsProvider) cpuUtilization() float32 {
+func (m *GenericSystemMetricsProvider) cpuUtilization() float32 {
 	cpuTimes, err := cpu.Times(false)
 	if err != nil || len(cpuTimes) == 0 {
 		return 0.0
@@ -69,7 +69,7 @@ func (m *ItzoMetricsProvider) cpuUtilization() float32 {
 	return utilizationPercent
 }
 
-func (m *ItzoMetricsProvider) cpuPercent() float64 {
+func cpuPercent() float64 {
 	percents, err := cpu.Percent(0, true)
 	if err != nil || len(percents) == 0 {
 		return 0.0
@@ -79,7 +79,7 @@ func (m *ItzoMetricsProvider) cpuPercent() float64 {
 
 // GetSystemMetrics returns a ResourceMetrics map with various pod and system
 // level metrics.
-func (m *ItzoMetricsProvider) ReadSystemMetrics(netif string) api.ResourceMetrics {
+func (m *GenericSystemMetricsProvider) ReadSystemMetrics(netif string) api.ResourceMetrics {
 	metrics := api.ResourceMetrics{}
 	if memoryStats, err := mem.VirtualMemory(); err == nil {
 		metrics["memory"] = memoryStats.UsedPercent
@@ -113,8 +113,14 @@ func (m *ItzoMetricsProvider) ReadSystemMetrics(netif string) api.ResourceMetric
 			break
 		}
 	}
-	metrics["cpu"] = m.cpuPercent()
+	metrics["cpu"] = cpuPercent()
 	return metrics
+}
+
+// The Itzo metrics provider uses cgroups v1, and psutil to gather information
+// about the host.
+type ItzoMetricsProvider struct {
+    GenericSystemMetricsProvider
 }
 
 // GetUnitMetrics returns a ResourceMetrics map with various container level
@@ -168,11 +174,10 @@ func isMemoryUnlimited(v uint64) bool {
 	return v > maxMemorySize
 }
 
-type PodmanMetricsProvider struct {}
-
-func (p *PodmanMetricsProvider) ReadSystemMetrics(ifname string) api.ResourceMetrics {
-	// TODO
-	return api.ResourceMetrics{}
+// The Podman metrics provider uses psutil to gather system level metrics.
+// XXX: The unit metrics hasn’t been implemented yet.
+type PodmanMetricsProvider struct {
+    GenericSystemMetricsProvider
 }
 
 func (p *PodmanMetricsProvider) ReadUnitMetrics(ifname string) api.ResourceMetrics {
