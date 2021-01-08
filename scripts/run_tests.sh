@@ -28,6 +28,11 @@ make
 $GO_EXECUTABLE test ./...
 
 echo "running podman e2e-tests"
+# Use rootless podman if this script doesn't have root.
+if [ $(id -u) != 0 ]
+then
+    export PODMAN_SOCKET_PATH=unix:/run/user/$(id -u)/podman/podman.sock
+fi
 $GO_EXECUTABLE test ./pkg/server/ -v -args -podman=true
 
 CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)

@@ -15,6 +15,7 @@ import (
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -313,7 +314,10 @@ func NewPodmanRuntime(rootdir string) (*PodmanRuntime, error) {
 }
 
 func GetPodmanConnection() (context.Context, error) {
-	// Connect to Podman socket
-	connText, err := bindings.NewConnection(context.Background(), PodmanSocketPath)
+	var podmanSocketPath = os.Getenv("PODMAN_SOCKET_PATH")
+	if podmanSocketPath == "" {
+		podmanSocketPath = defaultPodmanSocketPath
+	}
+	connText, err := bindings.NewConnection(context.Background(), podmanSocketPath)
 	return connText, err
 }
