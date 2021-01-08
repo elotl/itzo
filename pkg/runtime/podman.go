@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	PodmanSocketPath string = "unix:/run/podman/podman.sock"
-	defaultTimeout   uint   = 30
-	RestartPolicyNo = "no"
+	defaultPodmanSocketPath string = "unix:/run/podman/podman.sock"
+	defaultTimeout          uint   = 30
+	RestartPolicyNo                = "no"
 	// RestartPolicyAlways unconditionally restarts the container.
 	RestartPolicyAlways = "always"
 	// RestartPolicyOnFailure restarts the container on non-0 exit code,
@@ -33,9 +33,9 @@ const (
 
 var (
 	restartPolicyMap = map[api.RestartPolicy]string{
-		api.RestartPolicyAlways: RestartPolicyAlways,
+		api.RestartPolicyAlways:    RestartPolicyAlways,
 		api.RestartPolicyOnFailure: RestartPolicyOnFailure,
-		api.RestartPolicyNever: RestartPolicyNo,
+		api.RestartPolicyNever:     RestartPolicyNo,
 	}
 )
 
@@ -274,7 +274,7 @@ func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, er
 		logs = append(logs, logbuf.LogEntry{
 			Timestamp: logLine[0],
 			Source:    logbuf.StdoutLogSource,
-			Line:       line + "\n",
+			Line:      line + "\n",
 		})
 	}
 	return logs, nil
