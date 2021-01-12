@@ -3,14 +3,8 @@ package runtime
 import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/metrics"
 )
-
-// A metrics provider gather system and unit information on the host system and
-// return a mapping of the successfully processed metrics.
-type MetricsProvider interface {
-	ReadSystemMetrics(string) api.ResourceMetrics
-	ReadUnitMetrics(string) api.ResourceMetrics
-}
 
 type PodSandbox interface {
 	RunPodSandbox(spec *api.PodSpec) error
@@ -40,7 +34,7 @@ type ContainerService interface {
 type RuntimeService interface {
 	PodSandbox
 	ContainerService
-	MetricsProvider
+	metrics.MetricsProvider
 }
 
 type ImageService interface {
