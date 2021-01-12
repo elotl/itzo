@@ -4,9 +4,22 @@ import (
 	"context"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/runtime"
 )
 
 type NoOpPodmanRuntime struct {}
+
+func (n NoOpPodmanRuntime) GetLogBuffer(options runtime.LogOptions) (*logbuf.LogBuffer, error) {
+	panic("implement me")
+}
+
+func (n NoOpPodmanRuntime) ReadSystemMetrics(s string) api.ResourceMetrics {
+	panic("implement me")
+}
+
+func (n NoOpPodmanRuntime) ReadUnitMetrics(s string) api.ResourceMetrics {
+	panic("implement me")
+}
 
 func (n NoOpPodmanRuntime) RunPodSandbox(spec *api.PodSpec) error {
 	return nil
@@ -33,14 +46,6 @@ func (n NoOpPodmanRuntime) RemoveContainer(unit *api.Unit) error {
 }
 
 func (n NoOpPodmanRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {
-	return nil, nil
-}
-
-func (n NoOpPodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	return nil, nil
-}
-
-func (noop NoOpPodmanRuntime) ReadLogBuffer(unitName string, n int) ([]logbuf.LogEntry, error) {
 	return nil, nil
 }
 

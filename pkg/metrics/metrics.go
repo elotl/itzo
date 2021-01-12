@@ -30,13 +30,6 @@ import (
 	psnet "github.com/shirou/gopsutil/net"
 )
 
-// A metrics provider gather system and unit information on the host system and
-// return a mapping of the successfully processed metrics.
-type MetricsProvider interface {
-	ReadSystemMetrics(string) api.ResourceMetrics
-	ReadUnitMetrics(string) api.ResourceMetrics
-}
-
 // The generic system metrics provider uses psutil to gather data from the
 // host system.
 type GenericSystemMetricsProvider struct {

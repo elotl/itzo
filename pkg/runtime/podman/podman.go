@@ -15,6 +15,7 @@ import (
 	"github.com/elotl/itzo/pkg/convert"
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/metrics"
+	"github.com/elotl/itzo/pkg/runtime"
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
@@ -248,7 +249,7 @@ type PodmanRuntime struct {
 	PodmanContainerService
 }
 
-func (p *PodmanRuntime) GetLogBuffer(options LogOptions) (*logbuf.LogBuffer, error) {
+func (p *PodmanRuntime) GetLogBuffer(options runtime.LogOptions) (*logbuf.LogBuffer, error) {
 	tail := 4096
 	if options.LineNum != 0 {
 		tail = options.LineNum
