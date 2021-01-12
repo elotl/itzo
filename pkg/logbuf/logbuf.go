@@ -79,9 +79,13 @@ func (lb *LogBuffer) GetOffset() int64 {
 	return lb.offset
 }
 
-func (lb *LogBuffer) Write(source LogSource, line string) {
+func (lb *LogBuffer) Write(source LogSource, line string, timestamp *string) {
+	Timestamp := time.Now().UTC().Format(time.RFC3339Nano)
+	if timestamp != nil {
+		Timestamp = *timestamp
+	}
 	e := LogEntry{
-		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Timestamp: Timestamp,
 		Source:    source,
 		Line:      line,
 	}

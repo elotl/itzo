@@ -252,35 +252,21 @@ func (s *Server) logsHandler(w http.ResponseWriter, r *http.Request) {
 			badRequest(w, err.Error())
 			return
 		}
-		if logOptions.Follow {
-			// Bug: if the unit gets closed or quits, we don't know
-			// about the closure
-			unitName, err := s.podController.GetUnitName(logOptions.UnitName)
-			if err != nil {
-				badRequest(w, err.Error())
-				return
-			}
-			logBuffer, err := s.podController.GetLogBuffer(unitName)
-			if err != nil {
-				badRequest(w, err.Error())
-				return
-			}
-			s.RunLogTailer(w, r, unitName, logOptions.WithMetadata, logBuffer)
-			return
-		}
-
 		unitName, err := s.podController.GetUnitName(logOptions.UnitName)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
 		}
-
-		logs, err := s.podController.ReadLogBuffer(unitName, logOptions.LineNum)
+		logBuffer, err := s.podController.GetLogBuffer(*logOptions)
 		if err != nil {
 			badRequest(w, err.Error())
 			return
-
 		}
+		if logOptions.Follow {
+			s.RunLogTailer(w, r, unitName, logOptions.WithMetadata, logBuffer)
+			return
+		}
+		logs := logBuffer.Read(logOptions.LineNum)
 		var buffer bytes.Buffer
 		for _, entry := range logs {
 			buffer.WriteString(entry.Format(logOptions.WithMetadata))
@@ -512,8 +498,8 @@ func (s *Server) runAttach(ws *wsstream.WSReadWriter, params api.AttachParams) {
 		writeWSError(ws, "Could not find running process for unit named %s\n", unitName)
 		return
 	}
-
-	logBuffer, err := s.podController.GetLogBuffer(unitName)
+	logOpts := runtime.LogOptions{UnitName: unitName}
+	logBuffer, err := s.podController.GetLogBuffer(logOpts)
 	if err != nil {
 		writeWSError(ws, err.Error())
 		return

@@ -68,16 +68,12 @@ func (ps *PodmanSandbox) RunPodSandbox(spec *api.PodSpec) error {
 	podSpec.NoManageHosts = true
 	portMappings := make([]specgen.PortMapping, 0)
 	for _, unit := range spec.Units {
-		for _, port := range unit.Ports {
-			portMapping := specgen.PortMapping{ContainerPort: uint16(port.ContainerPort)}
-			if string(port.Protocol) != "" {
-				portMapping.Protocol = string(port.Protocol)
-			}
-			if port.HostPort != 0 {
-				portMapping.HostPort = uint16(port.HostPort)
-			}
-			portMappings = append(portMappings, portMapping)
+		unitPortMappings, err := convert.UnitPortsToPodmanPortMapping(unit.Ports)
+		if err != nil {
+			return err
 		}
+		// TODO we should ensure there's no port collision on host
+		portMappings = append(portMappings, unitPortMappings...)
 	}
 	podSpec.PortMappings = portMappings
 	_, err := pods.CreatePodFromSpec(ps.connText, podSpec)
@@ -176,7 +172,11 @@ func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodS
 				break
 			}
 		}
-		path := volume.HostPath.Path
+		path := filepath.Join("/tmp/itzo/packages", volume.Name)
+		if volume.HostPath != nil {
+			path = volume.HostPath.Path
+		}
+
 		if mount.SubPath != "" {
 			path = filepath.Join(path, mount.SubPath)
 		}
@@ -246,22 +246,23 @@ type PodmanRuntime struct {
 	PodmanContainerService
 }
 
-func (p *PodmanRuntime) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	return nil, nil
-}
-
-func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
-	containerName := convert.UnitNameToContainerName(unit)
+func (p *PodmanRuntime) GetLogBuffer(options LogOptions) (*logbuf.LogBuffer, error) {
+	tail := 4096
+	if options.LineNum != 0 {
+		tail = options.LineNum
+	}
+	logBuf := logbuf.NewLogBuffer(tail)
+	containerName := convert.UnitNameToContainerName(options.UnitName)
 	yes := true
-	tail := strconv.Itoa(n)
+	tailStr := strconv.Itoa(tail)
 	out := make(chan string)
 	opts := containers.LogOptions{
+		Follow:     &options.Follow,
 		Stderr:     &yes,
 		Stdout:     &yes,
-		Tail:       &tail,
+		Tail:       &tailStr,
 		Timestamps: &yes,
 	}
-	var logs []logbuf.LogEntry
 	go func() {
 		err := containers.Logs(p.connText, containerName, opts, out, out)
 		if err != nil {
@@ -274,14 +275,12 @@ func (p *PodmanRuntime) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, er
 		line := ""
 		if len(logLine) > 1 {
 			line = strings.Join(logLine[1:], "")
+		} else {
+			continue
 		}
-		logs = append(logs, logbuf.LogEntry{
-			Timestamp: logLine[0],
-			Source:    logbuf.StdoutLogSource,
-			Line:      line + "\n",
-		})
+		logBuf.Write(logbuf.StdoutLogSource, line +"\n", &logLine[0])
 	}
-	return logs, nil
+	return logBuf, nil
 }
 
 func (p *PodmanRuntime) UnitRunning(unitName string) bool {

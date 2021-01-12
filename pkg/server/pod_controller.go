@@ -519,12 +519,8 @@ func (pc *PodController) ReadUnitMetrics(ifname string) api.ResourceMetrics {
 }
 
 // TODO
-func (pc *PodController) GetLogBuffer(unitName string) (*logbuf.LogBuffer, error) {
-	return pc.runtime.GetLogBuffer(unitName)
-}
-
-func (pc *PodController) ReadLogBuffer(unit string, n int) ([]logbuf.LogEntry, error) {
-	return pc.runtime.ReadLogBuffer(unit, n)
+func (pc *PodController) GetLogBuffer(options runtime.LogOptions) (*logbuf.LogBuffer, error) {
+	return pc.runtime.GetLogBuffer(options)
 }
 
 func (pc *PodController) UnitRunning(unit string) bool {
