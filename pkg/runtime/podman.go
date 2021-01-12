@@ -12,18 +12,20 @@ import (
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/convert"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 const (
-	PodmanSocketPath string = "unix:/run/podman/podman.sock"
-	defaultTimeout   uint   = 30
-	RestartPolicyNo = "no"
+	defaultPodmanSocketPath string = "unix:/run/podman/podman.sock"
+	defaultTimeout          uint   = 30
+	RestartPolicyNo                = "no"
 	// RestartPolicyAlways unconditionally restarts the container.
 	RestartPolicyAlways = "always"
 	// RestartPolicyOnFailure restarts the container on non-0 exit code,
@@ -33,13 +35,15 @@ const (
 
 var (
 	restartPolicyMap = map[api.RestartPolicy]string{
-		api.RestartPolicyAlways: RestartPolicyAlways,
+		api.RestartPolicyAlways:    RestartPolicyAlways,
 		api.RestartPolicyOnFailure: RestartPolicyOnFailure,
-		api.RestartPolicyNever: RestartPolicyNo,
+		api.RestartPolicyNever:     RestartPolicyNo,
 	}
 )
 
 type PodmanSandbox struct {
+	metrics.PodmanMetricsProvider
+
 	connText context.Context
 }
 
@@ -316,7 +320,10 @@ func NewPodmanRuntime(rootdir string) (*PodmanRuntime, error) {
 }
 
 func GetPodmanConnection() (context.Context, error) {
-	// Connect to Podman socket
-	connText, err := bindings.NewConnection(context.Background(), PodmanSocketPath)
+	var podmanSocketPath = os.Getenv("PODMAN_SOCKET_PATH")
+	if podmanSocketPath == "" {
+		podmanSocketPath = defaultPodmanSocketPath
+	}
+	connText, err := bindings.NewConnection(context.Background(), podmanSocketPath)
 	return connText, err
 }

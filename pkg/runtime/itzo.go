@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/logbuf"
+	"github.com/elotl/itzo/pkg/metrics"
 	itzounit "github.com/elotl/itzo/pkg/unit"
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
@@ -67,6 +68,8 @@ func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredential
 }
 
 type ItzoRuntime struct {
+	metrics.ItzoMetricsProvider
+
 	rootdir   string
 	UnitMgr   UnitRunner
 	MountCtl  Mounter
