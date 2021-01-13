@@ -8,13 +8,13 @@ GO_BIN?="go"
 
 LDFLAGS=-ldflags "-X github.com/elotl/itzo/pkg/util.VERSION=$(VERSION) -X github.com/elotl/itzo/pkg/util.GIT_REVISION=$(GIT_REVISION)"
 
-all: itzo itzo-mac
+all: itzo itzo-darwin
 
 itzo: $(PKG_SRC) $(ITZO_SRC) go.mod go.sum
 	$(GO_BIN) build $(LDFLAGS) -o $(TOP_DIR)$@ $(TOP_DIR)cmd/itzo
 
-itzo-mac: $(PKG_SRC) $(ITZO_SRC) go.mod go.sum
-	GOOS=darwin GOARCH=amd64 $(GO_BIN) build $(LDFLAGS) -o $(TOP_DIR)itzo-mac $(TOP_DIR)cmd/itzo
+itzo-darwin: $(PKG_SRC) $(ITZO_SRC) go.mod go.sum
+	GOOS=darwin GOARCH=amd64 $(GO_BIN) build $(LDFLAGS) -o $(TOP_DIR)itzo-darwin $(TOP_DIR)cmd/itzo
 
 clean:
 	rm -f itzo
