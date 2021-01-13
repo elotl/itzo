@@ -28,6 +28,63 @@ import (
 	psnet "github.com/shirou/gopsutil/net"
 )
 
+// The Itzo metrics provider uses cgroups v1, and psutil to gather information
+// about the host.
+type ItzoMetricsProvider struct {
+    GenericSystemMetricsProvider
+}
+
+// GetUnitMetrics returns a ResourceMetrics map with various container level
+// metrics.
+func (m *ItzoMetricsProvider) ReadUnitMetrics(name string) api.ResourceMetrics {
+	metrics := api.ResourceMetrics{}
+	control, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/"+name))
+	if err != nil {
+		glog.Errorf("Loading cgroup control for %q: %v", name, err)
+		return metrics
+	}
+	cm, err := control.Stat(cgroups.IgnoreNotExist)
+	if err != nil {
+		glog.Errorf("Getting cgroup metrics for %q: %v", name, err)
+		return metrics
+	}
+	if cm.CPU != nil && cm.CPU.Usage != nil {
+		metrics[name+".cpuUsage"] = float64(cm.CPU.Usage.Total)
+	}
+	if cm.Memory != nil && cm.Memory.Usage != nil {
+		m := cm.Memory
+		metrics[name+".memoryRSS"] = float64(m.TotalRSS)
+		metrics[name+".memoryPageFaults"] = float64(m.TotalPgFault)
+		metrics[name+".memoryMajorPageFaults"] = float64(m.TotalPgMajFault)
+		metrics[name+".memoryUsage"] = float64(m.Usage.Usage)
+		workingSet := getWorkingSet(m)
+		metrics[name+".memoryWorkingSet"] = float64(workingSet)
+		limit := m.Usage.Limit
+		if !isMemoryUnlimited(limit) {
+			metrics[name+".memoryAvailable"] = float64(limit - workingSet)
+		} else {
+			if sysMem, err := mem.VirtualMemory(); err == nil {
+				metrics[name+".memoryAvailable"] = float64(sysMem.Available)
+			}
+		}
+	}
+	return metrics
+}
+
+func getWorkingSet(memory *cgroupsv1.MemoryStat) uint64 {
+	workingSet := memory.Usage.Usage
+	if memory.TotalInactiveFile < memory.Usage.Usage {
+		workingSet = memory.Usage.Usage - memory.TotalInactiveFile
+	}
+	return workingSet
+}
+
+func isMemoryUnlimited(v uint64) bool {
+	// Size after which we consider memory to be "unlimited". This is not MaxInt64 due to rounding by the kernel.
+	const maxMemorySize = uint64(1 << 62)
+	return v > maxMemorySize
+}
+
 // The generic system metrics provider uses psutil to gather data from the
 // host system.
 type GenericSystemMetricsProvider struct {
@@ -110,63 +167,6 @@ func (m *GenericSystemMetricsProvider) ReadSystemMetrics(netif string) api.Resou
 	return metrics
 }
 
-// The Itzo metrics provider uses cgroups v1, and psutil to gather information
-// about the host.
-type ItzoMetricsProvider struct {
-    GenericSystemMetricsProvider
-}
-
-// GetUnitMetrics returns a ResourceMetrics map with various container level
-// metrics.
-func (m *ItzoMetricsProvider) ReadUnitMetrics(name string) api.ResourceMetrics {
-	metrics := api.ResourceMetrics{}
-	control, err := cgroups.Load(cgroups.V1, cgroups.StaticPath("/"+name))
-	if err != nil {
-		glog.Errorf("Loading cgroup control for %q: %v", name, err)
-		return metrics
-	}
-	cm, err := control.Stat(cgroups.IgnoreNotExist)
-	if err != nil {
-		glog.Errorf("Getting cgroup metrics for %q: %v", name, err)
-		return metrics
-	}
-	if cm.CPU != nil && cm.CPU.Usage != nil {
-		metrics[name+".cpuUsage"] = float64(cm.CPU.Usage.Total)
-	}
-	if cm.Memory != nil && cm.Memory.Usage != nil {
-		m := cm.Memory
-		metrics[name+".memoryRSS"] = float64(m.TotalRSS)
-		metrics[name+".memoryPageFaults"] = float64(m.TotalPgFault)
-		metrics[name+".memoryMajorPageFaults"] = float64(m.TotalPgMajFault)
-		metrics[name+".memoryUsage"] = float64(m.Usage.Usage)
-		workingSet := getWorkingSet(m)
-		metrics[name+".memoryWorkingSet"] = float64(workingSet)
-		limit := m.Usage.Limit
-		if !isMemoryUnlimited(limit) {
-			metrics[name+".memoryAvailable"] = float64(limit - workingSet)
-		} else {
-			if sysMem, err := mem.VirtualMemory(); err == nil {
-				metrics[name+".memoryAvailable"] = float64(sysMem.Available)
-			}
-		}
-	}
-	return metrics
-}
-
-func getWorkingSet(memory *cgroupsv1.MemoryStat) uint64 {
-	workingSet := memory.Usage.Usage
-	if memory.TotalInactiveFile < memory.Usage.Usage {
-		workingSet = memory.Usage.Usage - memory.TotalInactiveFile
-	}
-	return workingSet
-}
-
-func isMemoryUnlimited(v uint64) bool {
-	// Size after which we consider memory to be "unlimited". This is not MaxInt64 due to rounding by the kernel.
-	const maxMemorySize = uint64(1 << 62)
-	return v > maxMemorySize
-}
-
 // The Podman metrics provider uses psutil to gather system level metrics.
 // XXX: The unit metrics hasn’t been implemented yet.
 type PodmanMetricsProvider struct {
@@ -174,6 +174,15 @@ type PodmanMetricsProvider struct {
 }
 
 func (p *PodmanMetricsProvider) ReadUnitMetrics(ifname string) api.ResourceMetrics {
+	// TODO
+	return api.ResourceMetrics{}
+}
+
+type AnkaMetricsProvider struct {
+	GenericSystemMetricsProvider
+}
+
+func (a *AnkaMetricsProvider) ReadUnitMetrics(ifname string) api.ResourceMetrics {
 	// TODO
 	return api.ResourceMetrics{}
 }

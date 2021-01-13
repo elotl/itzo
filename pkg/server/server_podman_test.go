@@ -23,6 +23,7 @@ import (
 	"github.com/containers/podman/v2/pkg/bindings/containers"
 	"github.com/containers/podman/v2/pkg/bindings/pods"
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/runtime"
 	"github.com/elotl/itzo/pkg/runtime/podman"
 	"github.com/elotl/wsstream"
 	"github.com/stretchr/testify/assert"

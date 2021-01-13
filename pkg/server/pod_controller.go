@@ -76,7 +76,7 @@ func NewPodController(rootdir string, runtimeName string) (*PodController, error
 	var err error
 	switch runtimeName {
 	case runtime.PodmanRuntimeName:
-		podRuntime, err = runtime.NewPodmanRuntime(rootdir)
+		podRuntime, err = podman.NewRuntime(rootdir)
 		if err != nil {
 			glog.Errorf("error creating podman runtime: %v", err)
 			return nil, err
