@@ -21,6 +21,7 @@ import (
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/mount"
 	"github.com/elotl/itzo/pkg/runtime"
+	"github.com/elotl/itzo/pkg/runtime/podman"
 	"github.com/elotl/itzo/pkg/util/conmap"
 	"strconv"
 	"sync"
@@ -73,7 +74,7 @@ func NewPodController(rootdir string, usePodman bool) (*PodController, error) {
 	var podRuntime runtime.RuntimeService
 	var err error
 	if usePodman {
-		podRuntime, err = runtime.NewPodmanRuntime(rootdir)
+		podRuntime, err = podman.NewPodmanRuntime(rootdir)
 		if err != nil {
 			glog.Errorf("error creating podman runtime: %v", err)
 			return nil, err
