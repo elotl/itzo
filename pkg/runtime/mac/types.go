@@ -101,3 +101,7 @@ type VMShowOutput struct {
 type VMPullOutput struct {
 	VMRespBase `json:",inline"`
 }
+
+type VMRunOutput struct {
+	VMRespBase `json:",inline"`
+}
