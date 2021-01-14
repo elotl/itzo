@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"flag"
-	"github.com/containers/libpod/v2/pkg/bindings/images"
+	"github.com/containers/podman/v2/pkg/bindings/images"
 	"io/ioutil"
 	"os"
 	"testing"

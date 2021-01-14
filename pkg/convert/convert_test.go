@@ -1,7 +1,7 @@
 package convert
 
 import (
-	"github.com/containers/libpod/v2/pkg/specgen"
+	"github.com/containers/podman/v2/pkg/specgen"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"

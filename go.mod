@@ -7,8 +7,7 @@ require (
 	github.com/aws/aws-sdk-go v1.28.2
 	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
 	github.com/containernetworking/cni v0.8.0 // indirect
-	github.com/containers/buildah v1.17.0 // indirect
-	github.com/containers/libpod/v2 v2.0.4
+	github.com/containers/podman/v2 v2.2.1
 	github.com/elotl/wsstream v0.0.0-20180531183345-a88a26dd5a78
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
@@ -36,7 +35,7 @@ require (
 	golang.org/x/sys v0.0.0-20201018230417-eeed37f84f13
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	k8s.io/api v0.18.4
-	k8s.io/apimachinery v0.19.2
+	k8s.io/apimachinery v0.19.4
 	k8s.io/kubernetes v1.18.4
 	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
 )
