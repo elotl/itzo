@@ -32,6 +32,7 @@ import (
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/runtime"
+	"github.com/elotl/itzo/pkg/util"
 	"github.com/golang/glog"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 	v1 "k8s.io/api/core/v1"
@@ -122,26 +123,28 @@ type PodmanImageService struct {
 }
 
 func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error {
-	//exists, err := images.Exists(p.connText, image)
-	//if exists {
-	//	return nil
-	//}
-	//if err != nil {
-	//	glog.Errorf("error checking if image %s already exists: %v", image, err)
-	//}
-	//_, _, err = util.ParseImageSpec(image)
-	//if err != nil {
-	//	return err
-	//}
-	// TODO handle registry creds
-	opts := entities.ImagePullOptions{}
-	//username, password := util.GetRepoCreds(server, registryCredentials)
-	////opts := entities.ImagePullOptions{
-	////	Username: username,
-	////	Password: password,
-	////}
+	var server, _, err = util.ParseImageSpec(image)
+	if err != nil {
+		glog.Errorf("error parsing image spec %s: %v", image, err)
+		return err
+	}
+	exists, err := images.Exists(p.connText, image)
+	if err != nil {
+		glog.Errorf("error checking if image %s already exists: %v", image, err)
+		return err
+	}
+	if exists {
+		glog.Infof("image %s already exists", image)
+		return nil
+	}
+
+	username, password := util.GetRepoCreds(server, registryCredentials)
+	opts := entities.ImagePullOptions{
+		Username: username,
+		Password: password,
+	}
 	glog.Infof("trying to pull image: %s for container: %s", image, name)
-	_, err := images.Pull(p.connText, image, opts)
+	_, err = images.Pull(p.connText, image, opts)
 	return err
 }
 
@@ -297,7 +300,7 @@ func (p *PodmanRuntime) GetLogBuffer(options runtime.LogOptions) (*logbuf.LogBuf
 		} else {
 			continue
 		}
-		logBuf.Write(logbuf.StdoutLogSource, line +"\n", &logLine[0])
+		logBuf.Write(logbuf.StdoutLogSource, line+"\n", &logLine[0])
 	}
 	return logBuf, nil
 }
