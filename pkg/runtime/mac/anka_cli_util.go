@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	ankaCLIPath = "/usr/bin/anka"
+	ankaCLIPath = "/usr/local/bin/anka"
 	outputFlag  = "--machine-readable"
 )
 
@@ -139,11 +139,13 @@ func (ac *AnkaCLI) run(cmd *exec.Cmd) ([]byte, error) {
 
 func (ac *AnkaCLI) buildCmd(ankaCommand string, extraArgs []string) *exec.Cmd {
 	args := []string{
+		ankaCLIPath,
 		outputFlag,
 		ankaCommand,
 	}
 	args = append(args, extraArgs...)
-	cmd := exec.Command(ankaCLIPath, args...)
+	// anka throws an error if we run without sudo
+	cmd := exec.Command("sudo", args...)
 	return cmd
 }
 
@@ -156,7 +158,7 @@ func (ac *AnkaCLI) parseOutput(data []byte, outStruct interface{}) (interface{},
 }
 
 func (ac *AnkaCLI) EnsureAnkaBin() error {
-	cmd := exec.Command(ankaCLIPath, "version")
+	cmd := exec.Command("sudo", ankaCLIPath, "version")
 	err := cmd.Run()
 	return err
 }
