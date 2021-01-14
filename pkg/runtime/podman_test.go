@@ -20,13 +20,12 @@ func image_exists(conn context.Context, imageName string) bool {
 }
 
 // This test takes a long time to execute. Around 14 second on my computer.
-func TestPullImageNoCredentials(t *testing.T) {
+func TestPodmanPullImageNoCredentials(t *testing.T) {
 	if !*testPodman {
 		return
 	}
 
-	// XXX find a smaller image
-	const imageName = "registry.access.redhat.com/rhel7"
+	const imageName = "docker.io/library/hello-world"
 
 	tmpdir, err := ioutil.TempDir("", "podman-test")
 	if err != nil {
