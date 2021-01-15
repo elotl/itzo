@@ -23,10 +23,10 @@ import (
 	"errors"
 	"github.com/containers/podman/v2/pkg/bindings"
 	"github.com/containers/podman/v2/pkg/bindings/containers"
-	"github.com/containers/podman/v2/pkg/bindings/pods"
-	"github.com/containers/podman/v2/pkg/specgen"
 	"github.com/containers/podman/v2/pkg/bindings/images"
+	"github.com/containers/podman/v2/pkg/bindings/pods"
 	"github.com/containers/podman/v2/pkg/domain/entities"
+	"github.com/containers/podman/v2/pkg/specgen"
 	"github.com/elotl/itzo/pkg/api"
 	"github.com/elotl/itzo/pkg/convert"
 	"github.com/elotl/itzo/pkg/logbuf"
@@ -164,7 +164,6 @@ func NewPodmanContainerService(ctx context.Context, rootdir string) *PodmanConta
 
 func (pcs *PodmanContainerService) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
 	container := convert.UnitToContainer(unit, nil)
-	// TODO: ignore this failure for now, it seems that there's response serialization bug on podman site
 
 	var err = pcs.imgPuller.PullImage(pcs.rootdir, unit.Name, unit.Image, registryCredentials, false)
 	if err != nil {

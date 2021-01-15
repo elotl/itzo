@@ -34,7 +34,7 @@ then
     export PODMAN_SOCKET_PATH=unix:/run/user/$(id -u)/podman/podman.sock
 fi
 $GO_EXECUTABLE test ./pkg/server/ -v -args -podman=true
-$GO_EXECUTABLE test ./pkg/runtime/ -run TestPodman -v -args -podman=true
+$GO_EXECUTABLE test ./pkg/runtime/podman/ -v -args -podman=true
 
 CURRENT_TAG=$(git tag -l --points-at HEAD | head -n 1)
 
