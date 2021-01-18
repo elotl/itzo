@@ -36,6 +36,7 @@ func NewMacRuntime(registryClient RegistryClient) *MacRuntime {
 }
 
 func (m *MacRuntime) RunPodSandbox(spec *api.PodSpec) error {
+	// ensure anka bin
 	return m.cliClient.EnsureAnkaBin()
 }
 
@@ -48,6 +49,7 @@ func (m *MacRuntime) RemovePodSandbox(spec *api.PodSpec) error {
 }
 
 func (m *MacRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
+	// add registry
 	// check if image exists in registry
 	imageID, err := getVMImageIDFromUnitImage(unit)
 	if err != nil {
@@ -78,6 +80,7 @@ func (m *MacRuntime) StartContainer(unit api.Unit, spec *api.PodSpec, podName st
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMStartFailed"), fmt.Errorf("cannot start vm: %s", unitStatus.Message)
 	}
 	started := true
+	// run unit.command ?
 	return &api.UnitStatus{
 		Name: unit.Name,
 		State: api.UnitState{
