@@ -6,12 +6,18 @@ import (
 	"github.com/elotl/itzo/pkg/logbuf"
 	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/runtime"
+	"github.com/golang/glog"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
 	vmImagePrefix = "mac-anka-img"
+)
+
+var (
+	datetimeAnkaLayout = "2006-01-02T15:04:05.000000Z"
 )
 
 type MacRuntime struct {
@@ -132,17 +138,29 @@ func (m *MacRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatu
 	case "suspended":
 		// vm is suspended
 		return api.MakeFailedUpdateStatus(unitName, unitImage, "VMSuspended"), nil
-	case "running":
-		return &api.UnitStatus{
-			Name:  unitName,
-			State: api.UnitState{Running: &api.UnitStateRunning{}},
-			Image: unitImage,
-		}, nil
 	case "failed":
 		return api.MakeFailedUpdateStatus(unitName, unitImage, "VMFailed"), nil
-
+	case "running":
+		startedAt, err := time.Parse(datetimeAnkaLayout, showOutput.Body.CreationDate)
+		var unitState api.UnitState
+		started := true
+		if err != nil {
+			glog.Warningf("cannot parse anka vm creation date: %v", err)
+			unitState.Running = &api.UnitStateRunning{}
+		} else {
+			unitState.Running = &api.UnitStateRunning{StartedAt: api.Time{Time: startedAt}}
+		}
+		return &api.UnitStatus{
+			Name:                 unitName,
+			State:                unitState,
+			Image:                unitImage,
+			Ready:                true,
+			Started:              &started,
+		}, nil
+	default:
+		return api.MakeStillCreatingStatus(unitName, unitImage, showOutput.Message), nil
 	}
-	return nil, nil
+
 }
 
 func (m *MacRuntime) GetLogBuffer(options runtime.LogOptions) (*logbuf.LogBuffer, error) {
