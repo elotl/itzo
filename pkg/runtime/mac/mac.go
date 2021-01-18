@@ -55,11 +55,6 @@ func (m *MacRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName s
 	if err != nil {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMTemplatePullFailed"), err
 	}
-
-	_, err = m.cliClient.Create(imageID)
-	if err != nil {
-		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMCreateFailed"), err
-	}
 	return api.MakeStillCreatingStatus(unit.Name, unit.Image, "VMTemplatePulled"), nil
 }
 
