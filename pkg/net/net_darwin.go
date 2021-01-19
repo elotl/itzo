@@ -16,6 +16,12 @@ limitations under the License.
 
 package net
 
+import (
+	"fmt"
+	"github.com/elotl/itzo/pkg/cloud"
+	"github.com/golang/glog"
+)
+
 const (
 	NetnsPath = "/var/run/netns"
 	Veth0     = "veth0"
@@ -49,4 +55,22 @@ func (n *NoopNetNamespacer) CreateVeth(ipaddr string) error {
 
 func NewNoopNetNamespacer() NetNamespacer {
 	return &NoopNetNamespacer{}
+}
+
+func SetupNetNamespace(podIP string) (string, string, string, error) {
+	cloudInfo, err := cloud.NewCloudInfo()
+	if err != nil {
+		return "", "", "", fmt.Errorf("creating metadata client: %v", err)
+	}
+	mainIP, err := cloudInfo.GetMainIPv4Address()
+	if err != nil {
+		glog.Errorf("unable to determine main IP address: %v", err)
+		return "", "", "", err
+	}
+	// TODO: consider if it's correct
+	return mainIP, mainIP, "", nil
+}
+
+func GetPrimaryNetworkInterface() (string, error) {
+	return "", fmt.Errorf("")
 }
