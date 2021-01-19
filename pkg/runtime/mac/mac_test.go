@@ -19,10 +19,10 @@ func (m *MockExecWrapper) Run(cmd *exec.Cmd, output *bytes.Buffer) error {
 }
 
 type RegistryMock struct {
-	GetVmTemplateFunc func(vmTemplateID string) error
+	GetVmTemplateFunc func(vmTemplateID string) (string, error)
 }
 
-func (rm *RegistryMock) GetVMTemplate(vmTemplateID string) error {
+func (rm *RegistryMock) GetVMTemplate(vmTemplateID string) (string, error) {
 	return rm.GetVmTemplateFunc(vmTemplateID)
 }
 
@@ -195,33 +195,10 @@ func TestMacRuntime_StartContainer(t *testing.T) {
 	}
 }
 
-func TestMacRuntime_CreateContainerInvalidImageFormat(t *testing.T) {
-	registryClient := &RegistryMock{
-		GetVmTemplateFunc: func(vmTemplateID string) error {
-			return nil
-		},
-	}
-	macRuntime := &MacRuntime{
-		registryClient: registryClient,
-		cliClient: NewAnkaCLI(func(cmd *exec.Cmd, output *bytes.Buffer) error {
-			output.Write([]byte(""))
-			return nil
-		}),
-		UnitsVMIDs: new(sync.Map),
-	}
-	unitStatus, err := macRuntime.CreateContainer(api.Unit{
-		Name:  "dummy",
-		Image: "invalidimg:format",
-	}, &api.PodSpec{}, "", map[string]api.RegistryCredentials{}, false)
-	assert.Error(t, err)
-	assert.NotNil(t, unitStatus.State.Waiting)
-	assert.Equal(t, "InvalidImgFormat", unitStatus.State.Waiting.Reason)
-}
-
 func TestMacRuntime_CreateContainerVMTemplateNotFound(t *testing.T) {
 	registryClient := &RegistryMock{
-		GetVmTemplateFunc: func(vmTemplateID string) error {
-			return fmt.Errorf("err")
+		GetVmTemplateFunc: func(vmTemplateID string) (string, error) {
+			return "", fmt.Errorf("err")
 		},
 	}
 	macRuntime := &MacRuntime{
@@ -243,8 +220,8 @@ func TestMacRuntime_CreateContainerVMTemplateNotFound(t *testing.T) {
 
 func TestMacRuntime_CreateContainerPullingFailed(t *testing.T) {
 	registryClient := &RegistryMock{
-		GetVmTemplateFunc: func(vmTemplateID string) error {
-			return nil
+		GetVmTemplateFunc: func(vmTemplateID string) (string, error) {
+			return "", nil
 		},
 	}
 	macRuntime := &MacRuntime{
@@ -266,8 +243,8 @@ func TestMacRuntime_CreateContainerPullingFailed(t *testing.T) {
 
 func TestMacRuntime_CreateContainerHappyPath(t *testing.T) {
 	registryClient := &RegistryMock{
-		GetVmTemplateFunc: func(vmTemplateID string) error {
-			return nil
+		GetVmTemplateFunc: func(vmTemplateID string) (string, error) {
+			return "", nil
 		},
 	}
 	macRuntime := &MacRuntime{
@@ -289,8 +266,8 @@ func TestMacRuntime_CreateContainerHappyPath(t *testing.T) {
 
 func TestMacRuntime_RemoveContainerHappyPath(t *testing.T) {
 	registryClient := &RegistryMock{
-		GetVmTemplateFunc: func(vmTemplateID string) error {
-			return nil
+		GetVmTemplateFunc: func(vmTemplateID string) (string, error) {
+			return "", nil
 		},
 	}
 	macRuntime := &MacRuntime{

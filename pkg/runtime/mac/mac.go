@@ -7,7 +7,6 @@ import (
 	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/runtime"
 	"github.com/golang/glog"
-	"strings"
 	"sync"
 	"time"
 )
@@ -51,15 +50,11 @@ func (m *MacRuntime) RemovePodSandbox(spec *api.PodSpec) error {
 func (m *MacRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
 	// add registry
 	// check if image exists in registry
-	imageID, err := getVMImageIDFromUnitImage(unit)
-	if err != nil {
-		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "InvalidImgFormat"), err
-	}
-	err = m.registryClient.GetVMTemplate(imageID)
+	vmId, err := m.registryClient.GetVMTemplate(unit.Image)
 	if err != nil {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMTemplateNotFound"), err
 	}
-	err = m.cliClient.PullImage(imageID)
+	err = m.cliClient.PullImage(vmId)
 	if err != nil {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMTemplatePullFailed"), err
 	}
@@ -90,20 +85,6 @@ func (m *MacRuntime) StartContainer(unit api.Unit, spec *api.PodSpec, podName st
 		Ready:   true,
 		Started: &started,
 	}, nil
-}
-
-func getVMImageIDFromUnitImage(unit api.Unit) (string, error) {
-	// Let's set a convention that if container image has prefix mac-anka-img:
-	// then we'll treat suffix as anka VM Image ID.
-	// e.g. mac-anka-img:<vm-id>
-	vmImgName := strings.Split(unit.Image, ":")
-	if len(vmImgName) < 2 {
-		return "", fmt.Errorf("image has to be in format %s:vm-id", vmImagePrefix)
-	}
-	if vmImgName[0] != vmImagePrefix {
-		return "", fmt.Errorf("image has to be in format %s:vm-id", vmImagePrefix)
-	}
-	return vmImgName[1], nil
 }
 
 func (m *MacRuntime) RemoveContainer(unit *api.Unit) error {
