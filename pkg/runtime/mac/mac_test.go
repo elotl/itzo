@@ -211,7 +211,7 @@ func TestMacRuntime_CreateContainerVMTemplateNotFound(t *testing.T) {
 	}
 	unitStatus, err := macRuntime.CreateContainer(api.Unit{
 		Name:  "dummy",
-		Image: "mac-anka-img:not-existing-vm-template-id",
+		Image: "registry:8089/not-existing-vm-template-id",
 	}, &api.PodSpec{}, "", map[string]api.RegistryCredentials{}, false)
 	assert.Error(t, err)
 	assert.NotNil(t, unitStatus.State.Waiting)
@@ -234,7 +234,7 @@ func TestMacRuntime_CreateContainerPullingFailed(t *testing.T) {
 	}
 	unitStatus, err := macRuntime.CreateContainer(api.Unit{
 		Name:  "dummy",
-		Image: "mac-anka-img:vm-template-id",
+		Image: "registry:8089/vm-template-id",
 	}, &api.PodSpec{}, "", map[string]api.RegistryCredentials{}, false)
 	assert.Error(t, err)
 	assert.NotNil(t, unitStatus.State.Waiting)
@@ -244,7 +244,7 @@ func TestMacRuntime_CreateContainerPullingFailed(t *testing.T) {
 func TestMacRuntime_CreateContainerHappyPath(t *testing.T) {
 	registryClient := &RegistryMock{
 		GetVmTemplateFunc: func(vmTemplateID string) (string, error) {
-			return "", nil
+			return "vm-template-id", nil
 		},
 	}
 	macRuntime := &MacRuntime{
@@ -257,11 +257,15 @@ func TestMacRuntime_CreateContainerHappyPath(t *testing.T) {
 	}
 	unitStatus, err := macRuntime.CreateContainer(api.Unit{
 		Name:  "dummy",
-		Image: "mac-anka-img:vm-template-id",
+		Image: "registry:8089/vm-template-id",
 	}, &api.PodSpec{}, "", map[string]api.RegistryCredentials{}, false)
 	assert.NoError(t, err)
 	assert.NotNil(t, unitStatus.State.Waiting)
 	assert.Equal(t, "VMTemplatePulled", unitStatus.State.Waiting.Reason)
+	savedVmIdInterface, ok := macRuntime.UnitsVMIDs.Load("dummy")
+	assert.True(t, ok)
+	savedVmId := savedVmIdInterface.(string)
+	assert.Equal(t, "vm-template-id", savedVmId)
 }
 
 func TestMacRuntime_RemoveContainerHappyPath(t *testing.T) {

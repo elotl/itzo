@@ -58,6 +58,7 @@ func (m *MacRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName s
 	if err != nil {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMTemplatePullFailed"), err
 	}
+	m.UnitsVMIDs.Store(unit.Name, vmId)
 	return api.MakeStillCreatingStatus(unit.Name, unit.Image, "VMTemplatePulled"), nil
 }
 
@@ -68,10 +69,7 @@ func (m *MacRuntime) StartContainer(unit api.Unit, spec *api.PodSpec, podName st
 	}
 	vmID := vmIDInterface.(string)
 	unitStatus, err := m.cliClient.Start(vmID)
-	if err != nil {
-		return nil, err
-	}
-	if unitStatus.Status != AnkaStatusOK {
+	if err != nil || unitStatus.Status != AnkaStatusOK {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMStartFailed"), fmt.Errorf("cannot start vm: %s", unitStatus.Message)
 	}
 	started := true
