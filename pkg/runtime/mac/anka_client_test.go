@@ -34,8 +34,8 @@ func TestParseImageUrl(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			gotVMId, got := parseImageUrl(testCase.inputUrl)
-			assert.Equal(t, testCase.expectedUrl, got)
+			gotVMId, gotTemplateUrl := parseImageUrl(testCase.inputUrl)
+			assert.Equal(t, testCase.expectedUrl, gotTemplateUrl)
 			assert.Equal(t, "vm-id", gotVMId)
 		})
 	}
