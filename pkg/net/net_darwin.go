@@ -18,12 +18,16 @@ package net
 
 import (
 	"fmt"
+	"github.com/elotl/itzo/pkg/cloud"
+	"github.com/golang/glog"
 )
 
 const (
 	NetnsPath = "/var/run/netns"
 	Veth0     = "veth0"
 	Veth1     = "veth1"
+	PodNetNamespaceName = "pod"
+
 )
 
 type NetNamespacer interface {
