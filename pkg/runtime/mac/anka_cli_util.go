@@ -134,6 +134,45 @@ func (ac *AnkaCLI) Exec(vmID string, command []string) error {
 	return nil
 }
 
+func (ac *AnkaCLI) ActivateLicense(licenseKey string) error {
+	// {"status": "OK", "body": {}, "message": "License activated"}
+	cmd := ac.buildCmd("license", []string{"activate", "-f", licenseKey})
+	activateOutput, err := ac.run(cmd)
+	if err != nil {
+		return err
+	}
+	var output VMRespBase
+	err = json.Unmarshal(activateOutput, &output)
+	if err != nil {
+		return err
+	}
+	if output.Status != AnkaStatusOK {
+		return fmt.Errorf("activating failed: %s", output.Message)
+	}
+	if output.Message == "License activated" {
+		return nil
+	}
+	return fmt.Errorf("activating failed: %s", output.Message)
+}
+
+func (ac *AnkaCLI) ValidateLicense() error {
+	// {"status": "OK", "body": {}, "message": "License is valid!"}
+	cmd := ac.buildCmd("license", []string{"validate"})
+	validateOutput, err := ac.run(cmd)
+	if err != nil {
+		return err
+	}
+	var output VMRespBase
+	err = json.Unmarshal(validateOutput, &output)
+	if err != nil {
+		return err
+	}
+	if output.Message == "License is valid!" && output.Status == AnkaStatusOK {
+		return nil
+	}
+	return fmt.Errorf("license not valid: %s", output.Message)
+}
+
 func (ac *AnkaCLI) run(cmd *exec.Cmd) ([]byte, error) {
 	var out bytes.Buffer
 	err := ac.executor(cmd, &out)

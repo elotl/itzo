@@ -36,7 +36,19 @@ func NewMacRuntime(registryClient RegistryClient) *MacRuntime {
 
 func (m *MacRuntime) RunPodSandbox(spec *api.PodSpec) error {
 	// ensure anka bin
-	return m.cliClient.EnsureAnkaBin()
+	err := m.cliClient.EnsureAnkaBin()
+	if err != nil {
+		return err
+	}
+	err = m.cliClient.ActivateLicense("6179-0056-6376-2638") // TODO
+	if err != nil {
+		return err
+	}
+	err = m.cliClient.ValidateLicense()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *MacRuntime) StopPodSandbox(spec *api.PodSpec) error {
