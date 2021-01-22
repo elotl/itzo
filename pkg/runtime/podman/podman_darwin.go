@@ -77,7 +77,7 @@ func (n NoOpPodmanRuntime) SetPodNetwork(netNS, podIP string) {
 	return
 }
 
-func NewPodmanRuntime(rootdir string) (*NoOpPodmanRuntime, error) {
+func NewRuntime(rootdir string) (*NoOpPodmanRuntime, error) {
 	return &NoOpPodmanRuntime{}, nil
 }
 

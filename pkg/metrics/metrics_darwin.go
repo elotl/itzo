@@ -29,6 +29,19 @@ func New() *Metrics {
 	return &Metrics{}
 }
 
+// The generic system metrics provider uses psutil to gather data from the
+// host system.
+type GenericSystemMetricsProvider struct {
+	// used to calculate cpu utilization percentage
+	prevBusy float32
+	prevAll  float32
+}
+
+func (m *GenericSystemMetricsProvider) ReadSystemMetrics(netif string) api.ResourceMetrics {
+	// TODO
+	return nil
+}
+
 // GetSystemMetrics returns a ResourceMetrics map with various pod and system
 // level metrics.
 func (m *Metrics) GetSystemMetrics(netif string) api.ResourceMetrics {
@@ -38,5 +51,14 @@ func (m *Metrics) GetSystemMetrics(netif string) api.ResourceMetrics {
 // GetUnitMetrics returns a ResourceMetrics map with various container level
 // metrics.
 func (m *Metrics) GetUnitMetrics(name string) api.ResourceMetrics {
+	return api.ResourceMetrics{}
+}
+
+type AnkaMetricsProvider struct {
+	GenericSystemMetricsProvider
+}
+
+func (a *AnkaMetricsProvider) ReadUnitMetrics(ifname string) api.ResourceMetrics {
+	// TODO
 	return api.ResourceMetrics{}
 }

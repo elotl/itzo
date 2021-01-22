@@ -32,6 +32,7 @@ echo "running podman e2e-tests"
 if [ $(id -u) != 0 ]
 then
     export PODMAN_SOCKET_PATH=unix:/run/user/$(id -u)/podman/podman.sock
+    echo "using $PODMAN_SOCKET_PATH for podman tests"
 fi
 $GO_EXECUTABLE test ./pkg/server/ -v -args -podman=true
 $GO_EXECUTABLE test ./pkg/runtime/podman/ -v -args -podman=true
@@ -83,15 +84,24 @@ gsutil copy itzo gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER && \
     gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
 if [[ $CURRENT_BRANCH == "master" ]]; then
 	aws s3 cp --acl public-read itzo s3://$itzo_dev_bucket/itzo-latest
+	aws s3 cp --acl public-read itzo-darwin s3://$itzo_dev_bucket/itzo-darwin-latest
     gsutil copy itzo gs://$itzo_dev_bucket/itzo-latest && \
         gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-latest
+    gsutil copy itzo-darwin gs://$itzo_dev_bucket/itzo-darwin-latest && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-darwin-latest
 fi
 if $itzo_release; then
     echo "Making an itzo release at $CURRENT_TAG"
 	aws s3 cp --acl public-read itzo s3://$itzo_bucket/itzo-$CURRENT_TAG
+	aws s3 cp --acl public-read itzo-darwin s3://$itzo_bucket/itzo-darwin-$CURRENT_TAG
     gsutil copy itzo gs://$itzo_bucket/itzo-$CURRENT_TAG && \
         gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-$CURRENT_TAG
+    gsutil copy itzo-darwin gs://$itzo_bucket/itzo-darwin-$CURRENT_TAG && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-darwin-$CURRENT_TAG
 	aws s3 cp --acl public-read itzo s3://$itzo_bucket/itzo-latest
+	aws s3 cp --acl public-read itzo-darwin s3://$itzo_bucket/itzo-darwin-latest
     gsutil copy itzo gs://$itzo_bucket/itzo-latest && \
         gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-latest
+    gsutil copy itzo-darwin gs://$itzo_bucket/itzo-darwin-latest && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-darwin-latest
 fi

@@ -91,11 +91,11 @@ type Server struct {
 	networkAgentCmd     *exec.Cmd
 }
 
-func New(rootdir string, usePodman bool) *Server {
+func New(rootdir string, runtime string) *Server {
 	if rootdir == "" {
 		rootdir = DEFAULT_ROOTDIR
 	}
-	pc, err := NewPodController(rootdir, usePodman)
+	pc, err := NewPodController(rootdir, runtime)
 	glog.Error(err)
 	pc.Start()
 	return &Server{

@@ -23,6 +23,7 @@ import (
 	"github.com/containers/podman/v2/pkg/bindings/containers"
 	"github.com/containers/podman/v2/pkg/bindings/pods"
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/elotl/itzo/pkg/runtime"
 	"github.com/elotl/itzo/pkg/runtime/podman"
 	"github.com/elotl/wsstream"
 	"github.com/stretchr/testify/assert"
@@ -56,7 +57,7 @@ func setUpServerAndController() (*Server, *PodController, error) {
 		panic("Error creating temporary directory")
 	}
 	defer os.RemoveAll(tmpdir)
-	podctl, err := NewPodController(tmpdir, true)
+	podctl, err := NewPodController(tmpdir, runtime.PodmanRuntimeName)
 	testServer := NewTestServer(EnvStore{}, tmpdir, podctl)
 	podctl.Start()
 	return &testServer, podctl, err

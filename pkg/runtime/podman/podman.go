@@ -324,7 +324,7 @@ func (p *PodmanRuntime) SetPodNetwork(netNS, podIP string) {
 	return
 }
 
-func NewPodmanRuntime(rootdir string) (*PodmanRuntime, error) {
+func NewRuntime(rootdir string) (*PodmanRuntime, error) {
 	connText, err := GetPodmanConnection()
 	if err != nil {
 		return nil, err

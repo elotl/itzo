@@ -805,7 +805,6 @@ func TestPodControllerStatus(t *testing.T) {
 	podCtl := &PodController{
 		rootdir:    rootdir,
 		runtime:    runtime,
-		usePodman:  false,
 		syncErrors: make(map[string]api.UnitStatus),
 		currentlyRestartingUnits: conmap.NewKeyTypeValueType(),
 	}
