@@ -40,14 +40,15 @@ func (m *MacRuntime) RunPodSandbox(spec *api.PodSpec) error {
 	if err != nil {
 		return err
 	}
-	err = m.cliClient.ActivateLicense("6179-0056-6376-2638") // TODO
-	if err != nil {
-		return err
-	}
-	err = m.cliClient.ValidateLicense()
-	if err != nil {
-		return err
-	}
+	// Not needed anymore since we now have license that doesn't require activating
+	//err = m.cliClient.ActivateLicense("") // TODO
+	//if err != nil {
+	//	return err
+	//}
+	//err = m.cliClient.ValidateLicense()
+	//if err != nil {
+	//	return err
+	//}
 	return nil
 }
 
