@@ -32,6 +32,7 @@ echo "running podman e2e-tests"
 if [ $(id -u) != 0 ]
 then
     export PODMAN_SOCKET_PATH=unix:/run/user/$(id -u)/podman/podman.sock
+    echo "using $PODMAN_SOCKET_PATH for podman tests"
 fi
 $GO_EXECUTABLE test ./pkg/server/ -v -args -podman=true
 $GO_EXECUTABLE test ./pkg/runtime/podman/ -v -args -podman=true
