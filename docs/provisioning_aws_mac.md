@@ -18,37 +18,6 @@ sudo diskutil repairDisk $PDISK
 sudo diskutil apfs resizeContainer $APFSCONT 0
 ```
 
-### Setting up Xcode
-
-Download the latest versions of Xcode and Command Line Tools for Xcode from
-https://developer.apple.com/download/more/
-
-You’ll need to be logged in with your Apple ID to be able to download the
-binaries. There are big: 10+GB for both of them. Once the archives are
-downloaded install them on the host.
-
-First the Command line tools:
-
-    $ hdiutil attach Command_Line_Tools_for_Xcode_12.3.dmg
-    $ cd /Volumes/Command\ Line\ Developer\ Tools/
-    $ sudo installer -pkg Command\ Line\ Tools.pkg -target /
-    ...
-    installer: The upgrade was successful.
-
-Second Xcode itself:
-
-    $ pkgutil --check-signature Xcode_12.3.xip |
-        grep \"Status: signed Apple Software\"
-    # Clean up existing Xcode installation if needed
-    $ rm -rf /Applications/Xcode.app
-    # Install Xcode from XIP file Location
-    $ (cd /Applications; xip --expand /Users/wc2-user/Xcode_12.3.xip)
-    # Accept License Agreement
-    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -license accept
-    /Applications/Xcode.app -license accept
-    # Run Xcode first launch
-    /Applications/Xcode.app -runFirstLaunch
-
 ### Installing Anka
 
 Veertu provides a repository called `getting-started` which can be found [here](https://github.com/veertuinc/getting-started).
@@ -72,6 +41,37 @@ cd getting-started
 # this will generate the vm template
 ./create-vm-template.bash
 ```
+
+### Setting up Xcode on the anka VM
+
+Download the latest versions of Xcode and Command Line Tools for Xcode from
+https://developer.apple.com/download/more/ . Command line tools for Xcode
+aren’t enough. One must install the full Xcode.
+
+
+You’ll need to be logged in with your Apple ID to be able to download the
+binaries. There are big: 10+GB for both of them. NOTE: there are ways to
+generate a cookie that developer.apple.com will accept. If you try it out
+please update this document.
+
+Once the archives are downloaded install them on the VM. You can either copy
+the Xcode package to the VM with `sudo anka cp VMID XcodeXX.X.xip` or mount
+the directory where it is located on the host with `sudo anka mount dir/`.
+
+All these commands should be run through `sudo anka run VMID ...`:
+
+    $ pkgutil --check-signature Xcode_12.3.xip |
+        grep \"Status: signed Apple Software\"
+    # Clean up existing Xcode installation if needed
+    $ rm -rf /Applications/Xcode.app
+    # Install Xcode from XIP file Location
+    $ (cd /Applications; xip --expand /Users/wc2-user/Xcode_12.3.xip)
+    # Accept License Agreement
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -license accept
+    # Run Xcode first launch
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -runFirstLaunch
+    # Make sure to use the right toolset
+    sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
 ### Creating an AMI
 
