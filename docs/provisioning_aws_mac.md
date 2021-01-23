@@ -42,6 +42,37 @@ cd getting-started
 ./create-vm-template.bash
 ```
 
+### Setting up Xcode on the anka VM
+
+Download the latest versions of Xcode and Command Line Tools for Xcode from
+https://developer.apple.com/download/more/ . Command line tools for Xcode
+aren’t enough. One must install the full Xcode.
+
+
+You’ll need to be logged in with your Apple ID to be able to download the
+binaries. There are big: 10+GB for both of them. NOTE: there are ways to
+generate a cookie that developer.apple.com will accept. If you try it out
+please update this document.
+
+Once the archives are downloaded install them on the VM. You can either copy
+the Xcode package to the VM with `sudo anka cp VMID XcodeXX.X.xip` or mount
+the directory where it is located on the host with `sudo anka mount dir/`.
+
+All these commands should be run through `sudo anka run VMID ...`:
+
+    $ pkgutil --check-signature Xcode_12.3.xip |
+        grep \"Status: signed Apple Software\"
+    # Clean up existing Xcode installation if needed
+    $ rm -rf /Applications/Xcode.app
+    # Install Xcode from XIP file Location
+    $ (cd /Applications; xip --expand /Users/wc2-user/Xcode_12.3.xip)
+    # Accept License Agreement
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -license accept
+    # Run Xcode first launch
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -runFirstLaunch
+    # Make sure to use the right toolset
+    sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
 ### Creating an AMI
 
 In order to allow us to boot an instance quickly without doing all of the above \
