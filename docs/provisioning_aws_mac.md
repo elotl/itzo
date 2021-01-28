@@ -73,22 +73,25 @@ All these commands should be run through `sudo anka run VMID ...`:
     # Make sure to use the right toolset
     sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
-There’s a Ruby Gem to install xcode: https://github.com/xcpretty/xcode-install
+There’s a gangsta Ruby Gem to install xcode: https://github.com/xcpretty/xcode-install
 
-It’s broken out of the box T_T with Xcode 12. Luckily these aren’t
-Apple devs, and they made it easy to install despite Apple’s shenanigans:
+It’s broken out of the box, luckily those folks aren’t Apple devs,
+and they made it easy to install despite Apple’s shenanigans:
 https://github.com/xcpretty/xcode-install#installation
 
-I installed Xcode 11 like that:
+Install Xcode 12.2 like that:
 
-    $ env XCODE_INSTALL_USER=*****@elotl.co XCODE_INSTALL_PASSWORD='******' xcversion install 11
+    $ env XCODE_INSTALL_USER=*****@elotl.co XCODE_INSTALL_PASSWORD='******' xcversion install 12.2
 
-This will download and unpack the Xcode 11 archive. It takes more than
-1 hour to complete. I also had to install the iOS simulators 13.0 and
-14.2... Simulators aren’t included in Xcode’s 15GB package...
+This will download and unpack the Xcode 11 archive. It takes about an hour to
+complete. I also had to install the iOS simulators 13.0 and 14.2... Simulators
+aren’t included in Xcode’s 15GB package... You can install the right version
+like that:
 
-NOTE: when installing the iOS 13.0 simulator. You will get a message "Please
-authenticate to install iOS 13.0 Simulator...", just wait for a few minutes
+    $ env XCODE_INSTALL_USER=*****@elotl.co XCODE_INSTALL_PASSWORD='******' xcversion simulators --install=14.2
+
+NOTE: when installing the iOS simulator. You will get a message "Please
+authenticate to install iOS ... Simulator...", just wait for a few minutes
 and the simulator will be installed.
 
 ### Creating an AMI
