@@ -94,6 +94,18 @@ NOTE: when installing the iOS simulator. You will get a message "Please
 authenticate to install iOS ... Simulator...", just wait for a few minutes
 and the simulator will be installed.
 
+### Cleaning up the host
+
+Disable spotlight to improve performance:
+
+    # Disable indexing volumes
+    sudo defaults write ~/.Spotlight-V100/VolumeConfiguration.plist Exclusions -array "/Volumes"
+    sudo defaults write ~/.Spotlight-V100/VolumeConfiguration.plist Exclusions -array "/Network"
+    sudo killall mds
+    # Make sure indexing is DISABLED for the main volume
+    sudo mdutil -a -i off /
+    sudo mdutil -a -i off
+
 ### Creating an AMI
 
 In order to allow us to boot an instance quickly without doing all of the above \
