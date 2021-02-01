@@ -61,9 +61,15 @@ func (m *MacRuntime) RemovePodSandbox(spec *api.PodSpec) error {
 }
 
 func (m *MacRuntime) CreateContainer(unit api.Unit, spec *api.PodSpec, podName string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) (*api.UnitStatus, error) {
-	// add registry
-	// check if image exists in registry
-	vmId, err := m.registryClient.GetVMTemplate(unit.Image)
+	// check if vm already exist
+	// if it doesn't, check if vm template exists in registry
+	vmId, _ := parseImageUrl(unit.Image)
+	_, err := m.cliClient.Show(vmId)
+	if err == nil {
+		m.UnitsVMIDs.Store(unit.Name, vmId)
+		return api.MakeStillCreatingStatus(unit.Name, unit.Image, "VMCreated"), nil
+	}
+	vmId, err = m.registryClient.GetVMTemplate(unit.Image)
 	if err != nil {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMTemplateNotFound"), err
 	}

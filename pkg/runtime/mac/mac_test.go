@@ -261,7 +261,7 @@ func TestMacRuntime_CreateContainerHappyPath(t *testing.T) {
 	}, &api.PodSpec{}, "", map[string]api.RegistryCredentials{}, false)
 	assert.NoError(t, err)
 	assert.NotNil(t, unitStatus.State.Waiting)
-	assert.Equal(t, "VMTemplatePulled", unitStatus.State.Waiting.Reason)
+	assert.Equal(t, "VMCreated", unitStatus.State.Waiting.Reason)
 	savedVmIdInterface, ok := macRuntime.UnitsVMIDs.Load("dummy")
 	assert.True(t, ok)
 	savedVmId := savedVmIdInterface.(string)

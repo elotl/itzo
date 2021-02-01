@@ -62,6 +62,9 @@ func (ac *AnkaCLI) Show(vmID string) (VMShowOutput, error) {
 	if err != nil {
 		return VMShowOutput{}, err
 	}
+	if output.Status != AnkaStatusOK {
+		return VMShowOutput{}, fmt.Errorf("vm %s not found", vmID)
+	}
 	return output, nil
 }
 
