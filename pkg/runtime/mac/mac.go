@@ -91,6 +91,14 @@ func (m *MacRuntime) StartContainer(unit api.Unit, spec *api.PodSpec, podName st
 	if err != nil || unitStatus.Status != AnkaStatusOK {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMStartFailed"), fmt.Errorf("cannot start vm: %s", unitStatus.Message)
 	}
+	// todo: temporary workaround
+	_, err = m.cliClient.Reboot(vmID)
+	unitStatus, err = m.cliClient.Start(vmID)
+	if err != nil || unitStatus.Status != AnkaStatusOK {
+		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMStartFailed"), fmt.Errorf("cannot start vm: %s", unitStatus.Message)
+	}
+	// end of temporary workaround
+
 	started := true
 	// run unit.command ?
 	return &api.UnitStatus{

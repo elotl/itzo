@@ -99,6 +99,20 @@ func (ac *AnkaCLI) Stop(vmId string) (VMStopOutput, error) {
 	return output, nil
 }
 
+func (ac *AnkaCLI) Reboot(vmId string) (VMRespBase, error) {
+	cmd := ac.buildCmd("reboot", []string{vmId})
+	var output VMRespBase
+	bytesOutput, err := ac.run(cmd)
+	if err != nil {
+		return VMRespBase{}, err
+	}
+	err = json.Unmarshal(bytesOutput, &output)
+	if err != nil {
+		return VMRespBase{}, err
+	}
+	return output, nil
+}
+
 func (ac *AnkaCLI) PullImage(vmTemplateID string) error {
 	// anka registry pull -l <vm-id>
 	// {"status": "OK", "body": {"uuid": "c0847bc9-5d2d-4dbc-ba6a-240f7ff08032"}, "message": "vm pulled successfully"}
