@@ -35,57 +35,57 @@ func TestMacRuntime_ContainerStatus(t *testing.T) {
 		initialUnitVMIDsStore map[interface{}]interface{}
 		expectedUnitStatus    *api.UnitStatus
 	}{
-		{
-			name:                  "vm failed",
-			cmdOutput:             "{\"status\": \"OK\", \"body\": {\"uuid\": \"617c1ddf-5645-4947-90f0-e8f82dd1c9fb\", \"name\": \"test-vm\", \"creation_date\": \"2021-01-07T12:05:58Z\", \"cpu_cores\": 1, \"cpu_frequency\": 0, \"cpu_htt\": false, \"ram\": \"1G\", \"ram_size\": 1073741824, \"frame_buffers\": 1, \"hard_drive\": 137438953472, \"image_size\": 11014144, \"encrypted\": false, \"status\": \"failed\", \"stop_date\": \"2021-01-07T17:57:24.552773Z\"}, \"message\": \"\"}",
-			unitName:              "dummy",
-			unitImage:             "dummy-img",
-			initialUnitVMIDsStore: map[interface{}]interface{}{"dummy": "617c1ddf-5645-4947-90f0-e8f82dd1c9fb"},
-			expectedUnitStatus: &api.UnitStatus{
-				Name: "dummy",
-				State: api.UnitState{
-					Waiting: &api.UnitStateWaiting{
-						Reason:       "VMFailed",
-						StartFailure: true,
-					},
-				},
-				Image: "dummy-img",
-			},
-		},
-		{
-			name:                  "vm stopped",
-			cmdOutput:             "{\"status\": \"OK\", \"body\": {\"uuid\": \"617c1ddf-5645-4947-90f0-e8f82dd1c9fb\", \"name\": \"test-vm\", \"creation_date\": \"2021-01-07T12:05:58Z\", \"cpu_cores\": 1, \"cpu_frequency\": 0, \"cpu_htt\": false, \"ram\": \"1G\", \"ram_size\": 1073741824, \"frame_buffers\": 1, \"hard_drive\": 137438953472, \"image_size\": 11014144, \"encrypted\": false, \"status\": \"stopped\", \"stop_date\": \"2021-01-07T12:05:58.040770Z\"}, \"message\": \"\"}",
-			unitName:              "dummy",
-			unitImage:             "dummy-img",
-			initialUnitVMIDsStore: map[interface{}]interface{}{"dummy": "617c1ddf-5645-4947-90f0-e8f82dd1c9fb"},
-			expectedUnitStatus: &api.UnitStatus{
-				Name: "dummy",
-				State: api.UnitState{
-					Waiting: &api.UnitStateWaiting{
-						Reason:       "VMStopped",
-						StartFailure: true,
-					},
-				},
-				Image: "dummy-img",
-			},
-		},
-		{
-			name:                  "vm suspended",
-			cmdOutput:             "{\"status\": \"OK\", \"body\": {\"uuid\": \"c0847bc9-5d2d-4dbc-ba6a-240f7ff08032\", \"name\": \"10.15.7\", \"version\": \"base:port-forward-22:brew-git\", \"creation_date\": \"2020-12-23T03:35:08.270776Z\", \"cpu_cores\": 3, \"cpu_frequency\": 0, \"cpu_htt\": false, \"ram\": \"8G\", \"ram_size\": 8589934592, \"frame_buffers\": 1, \"hard_drive\": 107374182400, \"image_size\": 18381783040, \"encrypted\": false, \"addons_version\": \"2.3.1.124\", \"status\": \"suspended\", \"stop_date\": \"2020-12-23T03:40:07.109526Z\"}, \"message\": \"\"}",
-			unitName:              "dummy",
-			unitImage:             "dummy-img",
-			initialUnitVMIDsStore: map[interface{}]interface{}{"dummy": "c0847bc9-5d2d-4dbc-ba6a-240f7ff08032"},
-			expectedUnitStatus: &api.UnitStatus{
-				Name: "dummy",
-				State: api.UnitState{
-					Waiting: &api.UnitStateWaiting{
-						Reason:       "VMSuspended",
-						StartFailure: true,
-					},
-				},
-				Image: "dummy-img",
-			},
-		},
+		//{
+		//	name:                  "vm failed",
+		//	cmdOutput:             "{\"status\": \"OK\", \"body\": {\"uuid\": \"617c1ddf-5645-4947-90f0-e8f82dd1c9fb\", \"name\": \"test-vm\", \"creation_date\": \"2021-01-07T12:05:58Z\", \"cpu_cores\": 1, \"cpu_frequency\": 0, \"cpu_htt\": false, \"ram\": \"1G\", \"ram_size\": 1073741824, \"frame_buffers\": 1, \"hard_drive\": 137438953472, \"image_size\": 11014144, \"encrypted\": false, \"status\": \"failed\", \"stop_date\": \"2021-01-07T17:57:24.552773Z\"}, \"message\": \"\"}",
+		//	unitName:              "dummy",
+		//	unitImage:             "dummy-img",
+		//	initialUnitVMIDsStore: map[interface{}]interface{}{"dummy": "617c1ddf-5645-4947-90f0-e8f82dd1c9fb"},
+		//	expectedUnitStatus: &api.UnitStatus{
+		//		Name: "dummy",
+		//		State: api.UnitState{
+		//			Waiting: &api.UnitStateWaiting{
+		//				Reason:       "VMFailed",
+		//				StartFailure: true,
+		//			},
+		//		},
+		//		Image: "dummy-img",
+		//	},
+		//},
+		//{
+		//	name:                  "vm stopped",
+		//	cmdOutput:             "{\"status\": \"OK\", \"body\": {\"uuid\": \"617c1ddf-5645-4947-90f0-e8f82dd1c9fb\", \"name\": \"test-vm\", \"creation_date\": \"2021-01-07T12:05:58Z\", \"cpu_cores\": 1, \"cpu_frequency\": 0, \"cpu_htt\": false, \"ram\": \"1G\", \"ram_size\": 1073741824, \"frame_buffers\": 1, \"hard_drive\": 137438953472, \"image_size\": 11014144, \"encrypted\": false, \"status\": \"stopped\", \"stop_date\": \"2021-01-07T12:05:58.040770Z\"}, \"message\": \"\"}",
+		//	unitName:              "dummy",
+		//	unitImage:             "dummy-img",
+		//	initialUnitVMIDsStore: map[interface{}]interface{}{"dummy": "617c1ddf-5645-4947-90f0-e8f82dd1c9fb"},
+		//	expectedUnitStatus: &api.UnitStatus{
+		//		Name: "dummy",
+		//		State: api.UnitState{
+		//			Waiting: &api.UnitStateWaiting{
+		//				Reason:       "VMStopped",
+		//				StartFailure: true,
+		//			},
+		//		},
+		//		Image: "dummy-img",
+		//	},
+		//},
+		//{
+		//	name:                  "vm suspended",
+		//	cmdOutput:             "{\"status\": \"OK\", \"body\": {\"uuid\": \"c0847bc9-5d2d-4dbc-ba6a-240f7ff08032\", \"name\": \"10.15.7\", \"version\": \"base:port-forward-22:brew-git\", \"creation_date\": \"2020-12-23T03:35:08.270776Z\", \"cpu_cores\": 3, \"cpu_frequency\": 0, \"cpu_htt\": false, \"ram\": \"8G\", \"ram_size\": 8589934592, \"frame_buffers\": 1, \"hard_drive\": 107374182400, \"image_size\": 18381783040, \"encrypted\": false, \"addons_version\": \"2.3.1.124\", \"status\": \"suspended\", \"stop_date\": \"2020-12-23T03:40:07.109526Z\"}, \"message\": \"\"}",
+		//	unitName:              "dummy",
+		//	unitImage:             "dummy-img",
+		//	initialUnitVMIDsStore: map[interface{}]interface{}{"dummy": "c0847bc9-5d2d-4dbc-ba6a-240f7ff08032"},
+		//	expectedUnitStatus: &api.UnitStatus{
+		//		Name: "dummy",
+		//		State: api.UnitState{
+		//			Waiting: &api.UnitStateWaiting{
+		//				Reason:       "VMSuspended",
+		//				StartFailure: true,
+		//			},
+		//		},
+		//		Image: "dummy-img",
+		//	},
+		//},
 	}
 
 	for _, testCase := range testCases {

@@ -137,7 +137,6 @@ func (m *MacRuntime) RemoveContainer(unit *api.Unit) error {
 }
 
 func (m *MacRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatus, error) {
-	// TODO
 	vmIDinterface, ok := m.UnitsVMIDs.Load(unitName)
 	if !ok {
 		return nil, fmt.Errorf("cannot find vm id for unit %s", unitName)
@@ -148,6 +147,7 @@ func (m *MacRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatu
 		return nil, err
 	}
 	switch showOutput.Body.Status {
+	/* TODO: temporary workaround
 	case "stopped":
 		// vm is stopped
 		return api.MakeFailedUpdateStatus(unitName, unitImage, "VMStopped"), nil
@@ -156,6 +156,8 @@ func (m *MacRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatu
 		return api.MakeFailedUpdateStatus(unitName, unitImage, "VMSuspended"), nil
 	case "failed":
 		return api.MakeFailedUpdateStatus(unitName, unitImage, "VMFailed"), nil
+
+	 */
 	case "running":
 		startedAt, err := time.Parse(datetimeAnkaLayout, showOutput.Body.CreationDate)
 		var unitState api.UnitState
