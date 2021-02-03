@@ -85,8 +85,13 @@ func (ac *AnkaCLI) Start(vmId string) (VMStartOutput, error) {
 	return output, nil
 }
 
-func (ac *AnkaCLI) Stop(vmId string) (VMStopOutput, error) {
-	cmd := ac.buildCmd("stop", []string{vmId})
+func (ac *AnkaCLI) Stop(vmId string, force bool) (VMStopOutput, error) {
+	var extraArgs []string
+	if force {
+		extraArgs = append(extraArgs, "-f")
+	}
+	extraArgs = append(extraArgs, vmId)
+	cmd := ac.buildCmd("stop", extraArgs)
 	var output VMStopOutput
 	bytesOutput, err := ac.run(cmd)
 	if err != nil {
