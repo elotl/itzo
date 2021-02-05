@@ -87,6 +87,11 @@ func (m *MacRuntime) StartContainer(unit api.Unit, spec *api.PodSpec, podName st
 		return nil, fmt.Errorf("cannot find vm id for unit %s", unit.Name)
 	}
 	vmID := vmIDInterface.(string)
+	unitStatus, err := m.cliClient.Start(vmID)
+	if err != nil || unitStatus.Status != AnkaStatusOK {
+		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMStartFailed"), fmt.Errorf("cannot start vm: %s", unitStatus.Message)
+	}
+
 	// workaround,
 	startFailure := true
 	for retryCount:=0;retryCount < 5; retryCount++ {
