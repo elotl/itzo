@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 const (
@@ -118,22 +119,28 @@ func (ac *AnkaCLI) PullImage(vmTemplateID string) error {
 	return nil
 }
 
-func (ac *AnkaCLI) Exec(vmID string, command []string) error {
-	extraArgs := []string{vmID}
+func (ac *AnkaCLI) Exec(vmID string, command []string, runFlags []string) error {
+	extraArgs := []string{}
+	extraArgs = append(extraArgs, runFlags...)
+	extraArgs = append(extraArgs, vmID)
 	extraArgs = append(extraArgs, command...)
 	cmd := ac.buildCmd("run", extraArgs)
 	runOutput, err := ac.run(cmd)
 	if err != nil {
 		return err
 	}
-	var output VMRunOutput
-	err = json.Unmarshal(runOutput, &output)
-	if err != nil {
-		return err
+	output := string(runOutput)
+	if strings.Contains(output, "communication timeout") || strings.Contains(output, "error") {
+		return fmt.Errorf("error executing command: %s", output)
 	}
-	if output.Status != AnkaStatusOK {
-		return fmt.Errorf("error running cmd in vm: %s", output.Message)
-	}
+	//var output VMRunOutput
+	//err = json.Unmarshal(runOutput, &output)
+	//if err != nil {
+	//	return err
+	//}
+	//if output.Status != AnkaStatusOK {
+	//	return fmt.Errorf("error running cmd in vm: %s", output.Message)
+	//}
 	return nil
 }
 

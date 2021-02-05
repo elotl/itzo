@@ -143,7 +143,7 @@ func TestMacRuntime_StartContainer(t *testing.T) {
 		},
 		{
 			name:      "error",
-			cmdOutput: "{\"status\": \"ERROR\", \"body\": {}, \"message\": \"Prohibited by license or license invalid\", \"code\": 35, \"exception_type\": \"AnkaLicenseException\"}",
+			cmdOutput: "communication timeout",
 			unit: api.Unit{
 				Name:  "dummy",
 				Image: "dummy-img",
