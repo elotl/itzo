@@ -174,7 +174,6 @@ func TestMacRuntime_StartContainer(t *testing.T) {
 					return nil
 				}),
 				UnitsVMIDs:            new(sync.Map),
-				additionalStatusCheck: false,
 			}
 			for k, v := range testCase.initialUnitVMIDsStore {
 				macRuntime.UnitsVMIDs.Store(k, v)

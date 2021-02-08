@@ -7,7 +7,6 @@ import (
 	"github.com/elotl/itzo/pkg/metrics"
 	"github.com/elotl/itzo/pkg/runtime"
 	"github.com/golang/glog"
-	"math/rand"
 	"sync"
 	"time"
 )
@@ -25,7 +24,6 @@ type MacRuntime struct {
 	registryClient        RegistryClient
 	cliClient             *AnkaCLI
 	UnitsVMIDs            *sync.Map
-	additionalStatusCheck bool
 }
 
 func NewMacRuntime(registryClient RegistryClient) *MacRuntime {
@@ -33,7 +31,6 @@ func NewMacRuntime(registryClient RegistryClient) *MacRuntime {
 		registryClient:        registryClient,
 		cliClient:             NewAnkaCLI(CMDExecWrapper),
 		UnitsVMIDs:            new(sync.Map),
-		additionalStatusCheck: true,
 	}
 }
 
@@ -95,12 +92,6 @@ func (m *MacRuntime) StartContainer(unit api.Unit, spec *api.PodSpec, podName st
 	if err != nil || unitStatus.Status != AnkaStatusOK {
 		return api.MakeFailedUpdateStatus(unit.Name, unit.Image, "VMStartFailed"), fmt.Errorf("cannot start vm: %s", unitStatus.Message)
 	}
-	if m.additionalStatusCheck {
-		err := m.cliClient.Exec(vmID, []string{"echo running"}, []string{"--wait-network"})
-		if err != nil {
-			return api.MakeStillCreatingStatus(unit.Name, unit.Image, "VMBooting"), nil
-		}
-	}
 	started := true
 	return &api.UnitStatus{
 		Name: unit.Name,
@@ -151,16 +142,6 @@ func (m *MacRuntime) ContainerStatus(unitName, unitImage string) (*api.UnitStatu
 	case "failed":
 		return api.MakeFailedUpdateStatus(unitName, unitImage, "VMFailed"), nil
 	case "running":
-
-		rand.Seed(time.Now().UnixNano())
-		randInt := rand.Intn(10)
-		if m.additionalStatusCheck && randInt%4 == 0 {
-			// run additional check ~ every 4 runs
-			err := m.cliClient.Exec(vmID, []string{"echo running"}, []string{"--wait-network"})
-			if err != nil {
-				return api.MakeStillCreatingStatus(unitName, unitImage, "VMBooting"), nil
-			}
-		}
 		startedAt, err := time.Parse(datetimeAnkaLayout, showOutput.Body.CreationDate)
 		var unitState api.UnitState
 		started := true
