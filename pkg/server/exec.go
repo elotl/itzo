@@ -1,4 +1,4 @@
-// +build !darwin
+// +build !darwin,!arm
 
 /*
 Copyright 2020 Elotl Inc

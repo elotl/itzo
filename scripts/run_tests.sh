@@ -79,29 +79,40 @@ echo "Uploading itzo build $CURRENT_BUILD_NUMBER"
 aws s3 cp --acl public-read itzo s3://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
 echo "Uploading itzo mac build $CURRENT_BUILD_NUMBER"
 aws s3 cp --acl public-read itzo-darwin s3://$itzo_dev_bucket/itzo-darwin-$CURRENT_BUILD_NUMBER
+echo "Uploading itzo arm build $CURRENT_BUILD_NUMBER"
+aws s3 cp --acl public-read itzo-arm s3://$itzo_dev_bucket/itzo-arm-$CURRENT_BUILD_NUMBER
 
 gsutil copy itzo gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER && \
     gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-$CURRENT_BUILD_NUMBER
 if [[ $CURRENT_BRANCH == "master" ]]; then
 	aws s3 cp --acl public-read itzo s3://$itzo_dev_bucket/itzo-latest
 	aws s3 cp --acl public-read itzo-darwin s3://$itzo_dev_bucket/itzo-darwin-latest
+	aws s3 cp --acl public-read itzo-arm s3://$itzo_dev_bucket/itzo-arm-latest
     gsutil copy itzo gs://$itzo_dev_bucket/itzo-latest && \
         gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-latest
     gsutil copy itzo-darwin gs://$itzo_dev_bucket/itzo-darwin-latest && \
         gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-darwin-latest
+    gsutil copy itzo-arm gs://$itzo_dev_bucket/itzo-arm-latest && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_dev_bucket/itzo-arm-latest
 fi
 if $itzo_release; then
     echo "Making an itzo release at $CURRENT_TAG"
 	aws s3 cp --acl public-read itzo s3://$itzo_bucket/itzo-$CURRENT_TAG
 	aws s3 cp --acl public-read itzo-darwin s3://$itzo_bucket/itzo-darwin-$CURRENT_TAG
+	aws s3 cp --acl public-read itzo-arm s3://$itzo_bucket/itzo-arm-$CURRENT_TAG
     gsutil copy itzo gs://$itzo_bucket/itzo-$CURRENT_TAG && \
         gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-$CURRENT_TAG
     gsutil copy itzo-darwin gs://$itzo_bucket/itzo-darwin-$CURRENT_TAG && \
         gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-darwin-$CURRENT_TAG
+    gsutil copy itzo-arm gs://$itzo_bucket/itzo-arm-$CURRENT_TAG && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-arm-$CURRENT_TAG
 	aws s3 cp --acl public-read itzo s3://$itzo_bucket/itzo-latest
 	aws s3 cp --acl public-read itzo-darwin s3://$itzo_bucket/itzo-darwin-latest
+	aws s3 cp --acl public-read itzo-arm s3://$itzo_bucket/itzo-arm-latest
     gsutil copy itzo gs://$itzo_bucket/itzo-latest && \
         gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-latest
     gsutil copy itzo-darwin gs://$itzo_bucket/itzo-darwin-latest && \
         gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-darwin-latest
+    gsutil copy itzo-arm gs://$itzo_bucket/itzo-arm-latest && \
+        gsutil acl ch -u AllUsers:R gs://$itzo_bucket/itzo-arm-latest
 fi
