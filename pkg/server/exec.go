@@ -1,4 +1,4 @@
-// +build !darwin,!arm
+// +build !darwin
 
 /*
 Copyright 2020 Elotl Inc
@@ -33,7 +33,7 @@ import (
 	"github.com/elotl/itzo/pkg/util"
 	"github.com/elotl/wsstream"
 	"github.com/golang/glog"
-	"github.com/jandre/procfs"
+	"github.com/prometheus/procfs"
 	"github.com/kr/pty"
 )
 
@@ -91,14 +91,21 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 			writeWSErrorExitcode(ws, "Could not find running process for unit named %s\n", unitName)
 			return
 		}
-		proc, err := procfs.NewProcess(pid, false)
+		proc, err := procfs.NewProc(pid)
+		if err != nil {
+			glog.Errorf("cannot read pseudofilesystem /proc")
+			writeWSErrorExitcode(ws, "Could not find process %d for unit named %s\n",
+				pid, unitName)
+			return
+		}
+		environ, err := proc.Environ()
 		if err != nil {
 			glog.Errorf("Error getting process for unit %s", unitName)
 			writeWSErrorExitcode(ws, "Could not find process %d for unit named %s\n",
 				pid, unitName)
 			return
 		}
-		for k, v := range proc.Environ {
+		for k, v := range environ {
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
 		env = helper.EnsureDefaultEnviron(env, params.PodName, homedir)
