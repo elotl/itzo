@@ -93,7 +93,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 		}
 		proc, err := procfs.NewProc(pid)
 		if err != nil {
-			glog.Errorf("cannot read pseudofilesystem /proc")
+			glog.Errorf("cannot read pseudofilesystem /proc %v", err)
 			writeWSErrorExitcode(ws, "Could not find process %d for unit named %s\n",
 				pid, unitName)
 			return
@@ -105,9 +105,7 @@ func (s *Server) runExec(ws *wsstream.WSReadWriter, params api.ExecParams) {
 				pid, unitName)
 			return
 		}
-		for k, v := range environ {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
+		env = append(env, environ...)
 		env = helper.EnsureDefaultEnviron(env, params.PodName, homedir)
 		nsenterCmd := []string{
 			"/usr/bin/nsenter",
