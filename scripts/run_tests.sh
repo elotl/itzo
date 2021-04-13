@@ -26,7 +26,7 @@ GO_EXECUTABLE=$(which go || true)
 cd $ROOT_DIR
 make
 $GO_EXECUTABLE test ./...
-
+export PODMAN_SOCKET_PATH=unix:/run/podman/podman.sock
 echo "running podman e2e-tests"
 # Use rootless podman if this script doesn't have root.
 if [ $(id -u) != 0 ]
@@ -34,6 +34,8 @@ then
     export PODMAN_SOCKET_PATH=unix:/run/user/$(id -u)/podman/podman.sock
     echo "using $PODMAN_SOCKET_PATH for podman tests"
 fi
+systemctl status podman.socket
+
 $GO_EXECUTABLE test ./pkg/server/ -v -args -podman=true
 $GO_EXECUTABLE test ./pkg/runtime/podman/ -v -args -podman=true
 

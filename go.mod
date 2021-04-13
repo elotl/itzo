@@ -20,7 +20,7 @@ require (
 	github.com/opencontainers/runc v1.0.0-rc91.0.20200708210054-ce54a9d4d79b
 	github.com/opencontainers/runtime-spec v1.0.3-0.20200817204227-f9c09b4ea1df
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/procfs v0.0.3
+	github.com/prometheus/procfs v0.0.5
 	github.com/ramr/go-reaper v0.2.0
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/stretchr/testify v1.6.1
