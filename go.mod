@@ -12,7 +12,6 @@ require (
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/go-multierror v1.1.0
-	github.com/jandre/procfs v0.0.0-20150609131925-f645421657bb
 	github.com/justnoise/genny v0.0.0-20170328200008-9127e812e1e9
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/kr/pty v1.1.5
@@ -21,6 +20,7 @@ require (
 	github.com/opencontainers/runc v1.0.0-rc91.0.20200708210054-ce54a9d4d79b
 	github.com/opencontainers/runtime-spec v1.0.3-0.20200817204227-f9c09b4ea1df
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus/procfs v0.0.5
 	github.com/ramr/go-reaper v0.2.0
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/stretchr/testify v1.6.1
