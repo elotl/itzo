@@ -18,8 +18,6 @@ package image
 
 import (
 	"fmt"
-	"github.com/golang/glog"
-
 	"github.com/elotl/itzo/pkg/util"
 )
 
@@ -109,6 +107,5 @@ func (t *Tosi) run(server, image, dest, configPath, username, password string) e
 		t.exe = tp
 	}
 	tosiArgs := t.buildTosiArgs(server, image, dest, configPath, username, password)
-	glog.Infof("executing: %s %v %v %s", tp, TosiOutputLimit, TosiMaxRetries, tosiArgs)
 	return util.RunProg(tp, TosiOutputLimit, TosiMaxRetries, tosiArgs...)
 }
