@@ -50,3 +50,48 @@ func TestGetRepoCreds(t *testing.T) {
 		assert.Equal(t, tc.p, pass, msg)
 	}
 }
+
+func TestParseImageSpec(t *testing.T)  {
+	cases := []struct{
+		name string
+		imageStr string
+		server string
+		repo string
+		shouldErr bool
+	}{
+		{
+			name: "ecr repo",
+			imageStr: "689494258501.dkr.ecr.us-east-1.amazonaws.com/buildscaler:latest",
+			server: "689494258501.dkr.ecr.us-east-1.amazonaws.com",
+			repo: "buildscaler:latest",
+			shouldErr: false,
+		},
+		{
+			name: "dockerhub with library",
+			imageStr: "library/nginx:stable",
+			server: "",
+			repo: "library/nginx:stable",
+			shouldErr: false,
+		},
+		{
+			name: "dockerhub without library",
+			imageStr: "nginx:stable",
+			server: "",
+			repo: "library/nginx:stable",
+			shouldErr: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, repo, err := ParseImageSpec(tc.imageStr)
+			if tc.shouldErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.server, server)
+				assert.Equal(t, tc.repo, repo)
+			}
+		})
+	}
+}
