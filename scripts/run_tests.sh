@@ -26,6 +26,11 @@ GO_EXECUTABLE=$(which go || true)
 cd $ROOT_DIR
 make
 $GO_EXECUTABLE test ./...
+echo "running itzo tosi integration tests"
+export TOSI_TEST_DOCKER_USERNAME=AWS
+export TOSI_TEST_DOCKER_PASS=$(aws ecr get-login --no-include-email --region us-east-1 | awk '{print $6}')
+$GO_EXECUTABLE test ./pkg/runtime -v -args -tosi-integration
+
 export PODMAN_SOCKET_PATH=unix:/run/podman/podman.sock
 echo "running podman e2e-tests"
 # Use rootless podman if this script doesn't have root.

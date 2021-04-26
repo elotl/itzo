@@ -23,7 +23,7 @@ func TestGetRepoCreds(t *testing.T) {
 		{
 			server: "",
 			creds: map[string]api.RegistryCredentials{
-				"index.docker.io": api.RegistryCredentials{
+				"index.docker.io": {
 					Username: "myuser",
 					Password: "mypass",
 				},
@@ -34,7 +34,7 @@ func TestGetRepoCreds(t *testing.T) {
 		{
 			server: "docker.io",
 			creds: map[string]api.RegistryCredentials{
-				"registry-1.docker.io": api.RegistryCredentials{
+				"registry-1.docker.io": {
 					Username: "myuser",
 					Password: "mypass",
 				},
@@ -51,33 +51,54 @@ func TestGetRepoCreds(t *testing.T) {
 	}
 }
 
-func TestParseImageSpec(t *testing.T)  {
-	cases := []struct{
-		name string
-		imageStr string
-		server string
-		repo string
+func TestParseImageSpec(t *testing.T) {
+	cases := []struct {
+		name      string
+		imageStr  string
+		server    string
+		repo      string
 		shouldErr bool
 	}{
 		{
-			name: "ecr repo",
-			imageStr: "689494258501.dkr.ecr.us-east-1.amazonaws.com/buildscaler:latest",
-			server: "689494258501.dkr.ecr.us-east-1.amazonaws.com",
-			repo: "buildscaler:latest",
+			name:      "ecr repo",
+			imageStr:  "689494258501.dkr.ecr.us-east-1.amazonaws.com/buildscaler:latest",
+			server:    "689494258501.dkr.ecr.us-east-1.amazonaws.com",
+			repo:      "buildscaler:latest",
 			shouldErr: false,
 		},
 		{
-			name: "dockerhub with library",
-			imageStr: "library/nginx:stable",
-			server: "",
-			repo: "library/nginx:stable",
+			name:      "dockerhub with library",
+			imageStr:  "library/nginx:stable",
+			server:    "",
+			repo:      "library/nginx:stable",
 			shouldErr: false,
 		},
 		{
-			name: "dockerhub without library",
-			imageStr: "nginx:stable",
-			server: "",
-			repo: "library/nginx:stable",
+			name:      "dockerhub without library",
+			imageStr:  "nginx:stable",
+			server:    "",
+			repo:      "library/nginx:stable",
+			shouldErr: false,
+		},
+		{
+			name:      "ecr repo without tag",
+			imageStr:  "689494258501.dkr.ecr.us-east-1.amazonaws.com/buildscaler",
+			server:    "689494258501.dkr.ecr.us-east-1.amazonaws.com",
+			repo:      "buildscaler",
+			shouldErr: false,
+		},
+		{
+			name:      "dockerhub with library without atg",
+			imageStr:  "library/nginx",
+			server:    "",
+			repo:      "library/nginx",
+			shouldErr: false,
+		},
+		{
+			name:      "dockerhub without library without tag",
+			imageStr:  "nginx",
+			server:    "",
+			repo:      "library/nginx",
 			shouldErr: false,
 		},
 	}

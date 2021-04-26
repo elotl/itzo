@@ -18,6 +18,7 @@ package util
 
 import (
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/golang/glog"
 	"strings"
 )
 
@@ -36,6 +37,7 @@ func ParseImageSpec(image string) (string, string, error) {
 		server = parts[0]
 		repo = strings.Join(parts[1:], "/")
 	}
+	glog.Infof("image: %s parsed to server: %s repo: %s", image, server, repo)
 	return server, repo, err
 }
 
