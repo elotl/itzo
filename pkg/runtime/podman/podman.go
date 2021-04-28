@@ -123,11 +123,7 @@ type PodmanImageService struct {
 }
 
 func (p *PodmanImageService) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error {
-	var server, _, err = util.ParseImageSpec(image)
-	if err != nil {
-		glog.Errorf("error parsing image spec %s: %v", image, err)
-		return err
-	}
+	var server, _ = util.ParseImageSpec(image)
 	exists, err := images.Exists(p.connText, image)
 	if err != nil {
 		glog.Errorf("error checking if image %s already exists: %v", image, err)
