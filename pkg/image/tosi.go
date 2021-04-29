@@ -18,7 +18,6 @@ package image
 
 import (
 	"fmt"
-
 	"github.com/elotl/itzo/pkg/util"
 )
 
@@ -73,14 +72,7 @@ func (t *Tosi) Unpack(image, dest, configPath string) error {
 	return t.run(t.server, t.image, dest, configPath, t.username, t.password)
 }
 
-func (t *Tosi) run(server, image, dest, configPath, username, password string) error {
-	tp, err := util.EnsureProg(t.exe, TosiURL, TosiMinimumVersion, "-version")
-	if err != nil {
-		return err
-	}
-	if t.exe != tp {
-		t.exe = tp
-	}
+func (t *Tosi) buildTosiArgs(server, image, dest, configPath, username, password string) []string {
 	imageExtractFlag := TosiDefaultImageExtractFlag
 	// If we are not using an overlayfs have tosi use the extractto flag
 	if !t.extractWithOverlay {
@@ -103,5 +95,17 @@ func (t *Tosi) run(server, image, dest, configPath, username, password string) e
 	if server != "" {
 		args = append(args, []string{"-url", server}...)
 	}
-	return util.RunProg(tp, TosiOutputLimit, TosiMaxRetries, args...)
+	return args
+}
+
+func (t *Tosi) run(server, image, dest, configPath, username, password string) error {
+	tp, err := util.EnsureProg(t.exe, TosiURL, TosiMinimumVersion, "-version")
+	if err != nil {
+		return err
+	}
+	if t.exe != tp {
+		t.exe = tp
+	}
+	tosiArgs := t.buildTosiArgs(server, image, dest, configPath, username, password)
+	return util.RunProg(tp, TosiOutputLimit, TosiMaxRetries, tosiArgs...)
 }

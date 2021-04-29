@@ -32,11 +32,7 @@ type ImagePuller struct {
 }
 
 func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredentials map[string]api.RegistryCredentials, useOverlayfs bool) error {
-	server, _, err := util.ParseImageSpec(image)
-	if err != nil {
-		msg := fmt.Sprintf("Bad image spec for unit %s: %v", name, err)
-		return errors.Wrapf(err, msg)
-	}
+	server, repo := util.ParseImageSpec(image)
 	username, password := util.GetRepoCreds(server, registryCredentials)
 
 	if server == "docker.io" {
@@ -53,7 +49,7 @@ func (ip *ImagePuller) PullImage(rootdir, name, image string, registryCredential
 		return errors.Wrapf(err, "opening unit %s for package deploy", name)
 	}
 	u.SetUnitConfigOverlayfs(useOverlayfs)
-	err = u.PullAndExtractImage(image, server, username, password)
+	err = u.PullAndExtractImage(repo, server, username, password)
 	if err != nil {
 		return errors.Wrapf(err, "pulling image %s", image)
 	}

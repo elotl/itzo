@@ -18,6 +18,7 @@ package util
 
 import (
 	"github.com/elotl/itzo/pkg/api"
+	"github.com/golang/glog"
 	"strings"
 )
 
@@ -25,10 +26,9 @@ import (
 // Example image specs:
 //   ECS: ACCOUNT.dkr.ecr.REGION.amazonaws.com/imagename:tag
 //   Docker Hub: imagename:tag or owner/imagename:tag
-func ParseImageSpec(image string) (string, string, error) {
+func ParseImageSpec(image string) (string, string) {
 	server := ""
 	repo := image
-	var err error
 	parts := strings.Split(image, "/")
 	if len(parts) == 1 {
 		repo = strings.Join([]string{"library", parts[0]}, "/")
@@ -36,7 +36,8 @@ func ParseImageSpec(image string) (string, string, error) {
 		server = parts[0]
 		repo = strings.Join(parts[1:], "/")
 	}
-	return server, repo, err
+	glog.Infof("image: %s parsed to server: %s repo: %s", image, server, repo)
+	return server, repo
 }
 
 // Dockerhub can go by several names that the user can specify in
