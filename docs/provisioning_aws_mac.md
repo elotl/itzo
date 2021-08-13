@@ -73,6 +73,39 @@ All these commands should be run through `sudo anka run VMID ...`:
     # Make sure to use the right toolset
     sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
+There’s a gangsta Ruby Gem to install xcode: https://github.com/xcpretty/xcode-install
+
+It’s broken out of the box, luckily those folks aren’t Apple devs,
+and they made it easy to install despite Apple’s shenanigans:
+https://github.com/xcpretty/xcode-install#installation
+
+Install Xcode 12.2 like that:
+
+    $ env XCODE_INSTALL_USER=*****@elotl.co XCODE_INSTALL_PASSWORD='******' xcversion install 12.2
+
+This will download and unpack the Xcode 11 archive. It takes about an hour to
+complete. I also had to install the iOS simulators 13.0 and 14.2... Simulators
+aren’t included in Xcode’s 15GB package... You can install the right version
+like that:
+
+    $ env XCODE_INSTALL_USER=*****@elotl.co XCODE_INSTALL_PASSWORD='******' xcversion simulators --install=14.2
+
+NOTE: when installing the iOS simulator. You will get a message "Please
+authenticate to install iOS ... Simulator...", just wait for a few minutes
+and the simulator will be installed.
+
+### Cleaning up the host
+
+Disable spotlight to improve performance:
+
+    # Disable indexing volumes
+    sudo defaults write ~/.Spotlight-V100/VolumeConfiguration.plist Exclusions -array "/Volumes"
+    sudo defaults write ~/.Spotlight-V100/VolumeConfiguration.plist Exclusions -array "/Network"
+    sudo killall mds
+    # Make sure indexing is DISABLED for the main volume
+    sudo mdutil -a -i off /
+    sudo mdutil -a -i off
+
 ### Creating an AMI
 
 In order to allow us to boot an instance quickly without doing all of the above \
