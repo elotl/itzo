@@ -27,13 +27,13 @@ require (
 	github.com/syndtr/gocapability v0.0.0-20180916011248-d98352740cb2
 	github.com/vishvananda/netlink v1.1.0
 	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
-	golang.org/x/mod v0.2.0
-	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
-	golang.org/x/sys v0.0.0-20201018230417-eeed37f84f13
+	golang.org/x/mod v0.3.0
+	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+	golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	k8s.io/api v0.18.4
 	k8s.io/apimachinery v0.19.4
-	k8s.io/kubernetes v1.18.4
+	k8s.io/kubernetes v1.18.19
 	k8s.io/utils v0.0.0-20200324210504-a9aa75ae1b89
 )
 
