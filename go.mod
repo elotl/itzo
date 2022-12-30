@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	cloud.google.com/go v0.56.0
-	github.com/aws/aws-sdk-go v1.28.2
+	github.com/aws/aws-sdk-go v1.33.0
 	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
 	github.com/containers/podman/v2 v2.2.1
 	github.com/elotl/wsstream v0.0.0-20180531183345-a88a26dd5a78
